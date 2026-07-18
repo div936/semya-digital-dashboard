@@ -1,0 +1,3052 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neat Everyday — SKU Performance | Semya Digital</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    /* ─── NEAT EVERYDAY THEME TOKENS — LIGHT ────────────────────── */
+    :root {
+      --color-bg:            #f0f4f8;   /* cool gray page canvas */
+      --color-surface:       #ffffff;   /* white cards */
+      --color-surface-2:     #f5f8fb;   /* subtle inset fills */
+      --color-border:        #dce5ef;   /* soft blue-gray border */
+      --color-border-glow:   rgba(14, 165, 233, 0.18);
+
+      /* Electric Blue → Deep Blue palette */
+      --theme-primary:       #0284c7;   /* sky-600 — strong on white */
+      --theme-primary-glow:  rgba(2, 132, 199, 0.12);
+      --theme-accent:        #0ea5e9;   /* sky-500 */
+      --theme-accent-soft:   rgba(14, 165, 233, 0.09);
+      --theme-ice:           #0f172a;   /* near-black for body text */
+      --theme-deep:          #075985;   /* sky-800 */
+      --theme-muted:         #64748b;   /* slate-500 */
+
+      /* Chart palette */
+      --chart-1: #0284c7;
+      --chart-2: #0ea5e9;
+      --chart-3: #38bdf8;
+      --chart-4: #075985;
+      --chart-5: #7dd3fc;
+
+      /* Status */
+      --color-positive: #059669;
+      --color-negative: #dc2626;
+      --color-warning:  #d97706;
+
+      /* Typography */
+      --font-display: 'Inter', system-ui, sans-serif;
+      --font-mono:    'JetBrains Mono', 'Fira Code', monospace;
+
+      /* Radius */
+      --radius-sm:  6px;
+      --radius-md:  12px;
+      --radius-lg:  16px;
+      --radius-xl:  20px;
+    }
+
+    /* ─── RESET & BASE ────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--color-bg);
+      color: var(--theme-ice);
+      font-family: var(--font-display);
+      font-size: 14px;
+      line-height: 1.55;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ─── SCROLLBAR ───────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--color-bg); }
+    ::-webkit-scrollbar-thumb { background: #b0c8db; border-radius: 99px; }
+
+    /* ─── LAYOUT ──────────────────────────────────────────────────── */
+    .layout {
+      display: grid;
+      grid-template-rows: 64px auto 1fr;
+      grid-template-columns: 1fr 320px;
+      grid-template-areas:
+        "header  header"
+        "nav     nav"
+        "main    sidebar";
+      height: 100vh;
+    }
+
+    /* ─── HEADER ──────────────────────────────────────────────────── */
+    .header {
+      grid-area: header;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      background: var(--color-surface);
+      border-bottom: 1px solid var(--color-border);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      box-shadow: 0 1px 3px rgba(2,132,199,.07);
+    }
+
+    .header-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .logo-mark {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--theme-primary), var(--theme-accent));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 15px;
+      color: #fff;
+      letter-spacing: -0.5px;
+      box-shadow: 0 0 18px var(--theme-primary-glow);
+    }
+    .logo-text { font-size: 13px; font-weight: 600; color: #0f172a; line-height: 1.2; }
+    .logo-sub  { font-size: 10px; color: var(--theme-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+    .header-title {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--theme-primary);
+    }
+
+    .header-controls { display: flex; align-items: center; gap: 10px; }
+
+    /* ─── CONTROLS (shared) ───────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .18s;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .btn-ghost {
+      background: transparent;
+      border-color: var(--color-border);
+      color: #374151;
+    }
+    .btn-ghost:hover { border-color: var(--theme-primary); color: var(--theme-primary); background: var(--theme-accent-soft); }
+
+    .btn-primary {
+      background: var(--theme-primary);
+      color: #fff;
+      border-color: var(--theme-primary);
+      box-shadow: 0 1px 4px rgba(2,132,199,.3);
+    }
+    .btn-primary:hover { background: var(--theme-deep); box-shadow: 0 2px 8px rgba(2,132,199,.35); }
+
+    .btn-accent {
+      background: var(--theme-accent-soft);
+      border-color: var(--theme-primary);
+      color: var(--theme-primary);
+    }
+    .btn-accent:hover { background: rgba(14,165,233,.15); }
+
+    /* client switcher dropdown */
+    .select-styled {
+      appearance: none;
+      background: var(--color-surface-2);
+      border: 1px solid var(--color-border);
+      color: #1e293b;
+      padding: 7px 32px 7px 12px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%230284c7' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      transition: border-color .18s;
+    }
+    .select-styled:hover, .select-styled:focus { outline: none; border-color: var(--theme-primary); }
+
+    /* avatar */
+    .avatar {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--theme-deep), var(--theme-primary));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; color: #fff;
+      border: 2px solid var(--theme-primary);
+      box-shadow: 0 0 10px var(--theme-primary-glow);
+      cursor: pointer;
+    }
+
+    /* ─── NAV TABS ────────────────────────────────────────────────── */
+    .nav {
+      grid-area: nav;
+      display: flex;
+      align-items: stretch;
+      gap: 0;
+      padding: 0 24px;
+      background: var(--color-surface);
+      border-bottom: 1px solid var(--color-border);
+      overflow-x: auto;
+    }
+    .nav-tab {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 18px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--theme-muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all .18s;
+      white-space: nowrap;
+      height: 44px;
+      letter-spacing: 0.03em;
+    }
+    .nav-tab:hover { color: var(--theme-primary); border-bottom-color: #dce5ef; }
+    .nav-tab.active { color: var(--theme-primary); border-bottom-color: var(--theme-primary); }
+    .nav-tab .dot { width: 7px; height: 7px; border-radius: 50%; background: #cbd5e1; }
+    .nav-tab.active .dot { background: var(--theme-primary); }
+
+    /* ─── MAIN SCROLL ─────────────────────────────────────────────── */
+    .main {
+      grid-area: main;
+      overflow-y: auto;
+      padding: 20px 20px 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* ─── CARDS ───────────────────────────────────────────────────── */
+    .card {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.04);
+    }
+    .card-sm  { padding: 16px; }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .card-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #94a3b8;
+    }
+    .card-badge {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: 99px;
+      background: #eff6ff;
+      color: var(--theme-primary);
+      border: 1px solid #bfdbfe;
+    }
+
+    /* ─── SKU SELECTOR ────────────────────────────────────────────── */
+    .sku-selector-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .sku-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--theme-muted);
+    }
+    .sku-select {
+      appearance: none;
+      background: var(--color-surface);
+      border: 1.5px solid var(--theme-primary);
+      color: var(--theme-primary);
+      padding: 8px 36px 8px 14px;
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%230284c7' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      box-shadow: 0 0 0 3px rgba(2,132,199,.08);
+      flex: 1;
+      min-width: 240px;
+      max-width: 420px;
+      transition: box-shadow .2s;
+    }
+    .sku-select:focus { outline: none; box-shadow: 0 0 0 3px rgba(2,132,199,.18); }
+
+    .sku-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+    .sku-pill {
+      font-size: 11px;
+      padding: 4px 12px;
+      border-radius: 99px;
+      border: 1px solid var(--color-border);
+      color: var(--theme-muted);
+      cursor: pointer;
+      transition: all .15s;
+      background: var(--color-surface-2);
+    }
+    .sku-pill.active, .sku-pill:hover {
+      border-color: var(--theme-primary);
+      color: var(--theme-primary);
+      background: #eff6ff;
+    }
+
+    /* ─── KPI CARDS ───────────────────────────────────────────────── */
+    .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+
+    .kpi-card {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color .2s, box-shadow .2s;
+      box-shadow: 0 1px 4px rgba(0,0,0,.04);
+    }
+    .kpi-card:hover {
+      border-color: var(--theme-primary);
+      box-shadow: 0 4px 16px rgba(2,132,199,.12);
+    }
+    .kpi-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--theme-primary), var(--theme-accent));
+    }
+    .kpi-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #94a3b8;
+      margin-bottom: 10px;
+    }
+    .kpi-value {
+      font-size: 28px;
+      font-weight: 800;
+      color: #0f172a;
+      letter-spacing: -0.02em;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+    .kpi-value span { font-size: 15px; color: var(--theme-primary); }
+    .kpi-delta {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 99px;
+    }
+    .kpi-delta.up   { color: var(--color-positive); background: rgba(5,150,105,.1); }
+    .kpi-delta.down { color: var(--color-negative);  background: rgba(220,38,38,.08); }
+    .kpi-sub { font-size: 10px; color: #94a3b8; margin-top: 6px; }
+
+    .kpi-icon {
+      position: absolute;
+      top: 16px; right: 16px;
+      width: 34px; height: 34px;
+      border-radius: var(--radius-sm);
+      background: #eff6ff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+
+    /* ─── MIDDLE GRID ─────────────────────────────────────────────── */
+    .mid-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+    /* chart placeholder */
+    .chart-wrap {
+      position: relative;
+      width: 100%;
+    }
+    .chart-wrap canvas { display: block; }
+
+    /* city bar list */
+    .city-list { display: flex; flex-direction: column; gap: 10px; }
+    .city-row { display: flex; flex-direction: column; gap: 4px; }
+    .city-meta { display: flex; justify-content: space-between; font-size: 12px; }
+    .city-name { color: #1e293b; font-weight: 600; }
+    .city-val  { color: var(--theme-primary); font-weight: 700; font-family: var(--font-mono); }
+    .city-bar-bg {
+      height: 6px;
+      background: #e2eaf2;
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .city-bar-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, var(--theme-primary), var(--theme-accent));
+      transition: width .4s ease;
+    }
+
+    /* ─── BOTTOM GRID ─────────────────────────────────────────────── */
+    .bot-grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 14px; }
+
+    /* campaign micro-table */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    thead tr { border-bottom: 1px solid var(--color-border); }
+    th { padding: 8px 10px; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; white-space: nowrap; }
+    td { padding: 10px 10px; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
+    tbody tr:hover td { background: #f8fafd; }
+    tbody tr:last-child td { border-bottom: none; }
+    .platform-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 99px;
+      white-space: nowrap;
+    }
+    .pill-amz  { background: rgba(255,153,0,.12); color: #ff9900; border: 1px solid rgba(255,153,0,.3); }
+    .pill-fk   { background: rgba(0,119,255,.12); color: #0077ff; border: 1px solid rgba(0,119,255,.3); }
+    .pill-bk   { background: rgba(251,191,36,.12); color: #fbbf24; border: 1px solid rgba(251,191,36,.3); }
+    .pill-meta { background: rgba(24,119,242,.12); color: #1877f2; border: 1px solid rgba(24,119,242,.3); }
+    .pill-goog { background: rgba(66,133,244,.12); color: #4285f4; border: 1px solid rgba(66,133,244,.3); }
+
+    .roas-tag { font-family: var(--font-mono); font-weight: 700; }
+    .roas-good { color: #059669; }
+    .roas-warn { color: #d97706; }
+
+    /* ─── SIDEBAR ─────────────────────────────────────────────────── */
+    .sidebar {
+      grid-area: sidebar;
+      overflow-y: auto;
+      padding: 20px 20px 20px 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .ai-panel {
+      background: #ffffff;
+      border: 1px solid #bfdbfe;
+      border-radius: var(--radius-xl);
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 2px 12px rgba(2,132,199,.08);
+    }
+    .ai-panel::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--theme-primary), var(--theme-accent));
+      pointer-events: none;
+    }
+    .ai-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .ai-icon {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--theme-deep), var(--theme-accent));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px;
+      box-shadow: 0 0 14px var(--theme-primary-glow);
+      flex-shrink: 0;
+    }
+    .ai-label { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--theme-primary); }
+    .ai-sub   { font-size: 10px; color: var(--theme-muted); }
+
+    .ai-insight {
+      margin-bottom: 12px;
+      padding: 12px 14px;
+      background: #f8fafd;
+      border-radius: var(--radius-md);
+      border-left: 3px solid var(--theme-primary);
+    }
+    .ai-insight:last-of-type { margin-bottom: 0; }
+    .ai-insight-tag {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--theme-primary);
+      margin-bottom: 5px;
+    }
+    .ai-insight p { font-size: 12px; color: #334155; line-height: 1.65; }
+    .ai-insight strong { color: var(--theme-primary); font-weight: 700; }
+
+    .ai-insight.warn { border-left-color: #d97706; background: #fffbeb; }
+    .ai-insight.warn .ai-insight-tag { color: #d97706; }
+
+    .ai-insight.positive { border-left-color: #059669; background: #f0fdf4; }
+    .ai-insight.positive .ai-insight-tag { color: #059669; }
+
+    .ai-confidence {
+      margin-top: 14px;
+      padding: 10px 12px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .conf-label { font-size: 10px; color: var(--theme-muted); }
+    .conf-val { font-size: 11px; font-weight: 700; color: #059669; font-family: var(--font-mono); }
+
+    /* ─── MODAL OVERLAY ───────────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(15,23,42,.35);
+      backdrop-filter: blur(4px);
+      z-index: 200;
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none;
+      transition: opacity .22s;
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+
+    .modal {
+      background: #fff;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-xl);
+      padding: 28px;
+      width: 440px;
+      max-width: 95vw;
+      box-shadow: 0 8px 40px rgba(0,0,0,.14), 0 2px 8px rgba(0,0,0,.06);
+      transform: translateY(12px);
+      transition: transform .22s;
+    }
+    .modal-overlay.open .modal { transform: translateY(0); }
+
+    .modal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 22px;
+    }
+    .modal-title { font-size: 15px; font-weight: 700; color: #0f172a; }
+    .modal-close {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: var(--color-surface-2); border: 1px solid var(--color-border);
+      color: var(--theme-muted); cursor: pointer; display: flex; align-items: center; justify-content: center;
+      font-size: 14px; transition: all .15s;
+    }
+    .modal-close:hover { color: #dc2626; border-color: #dc2626; background: #fef2f2; }
+
+    .acl-section-label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.12em; color: #94a3b8;
+      margin-bottom: 10px; padding-bottom: 6px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .acl-rows { display: flex; flex-direction: column; gap: 0; margin-bottom: 20px; }
+    .acl-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .acl-row:last-child { border-bottom: none; }
+    .acl-row-info { display: flex; flex-direction: column; gap: 2px; }
+    .acl-row-title { font-size: 13px; font-weight: 600; color: #1e293b; }
+    .acl-row-desc  { font-size: 11px; color: var(--theme-muted); }
+
+    /* toggle switch */
+    .toggle { position: relative; width: 42px; height: 24px; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; inset: 0;
+      background: #e2e8f0;
+      border: 1px solid #cbd5e1;
+      border-radius: 99px;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 16px; height: 16px;
+      left: 3px; top: 3px;
+      background: #94a3b8;
+      border-radius: 50%;
+      transition: all .2s;
+    }
+    .toggle input:checked + .toggle-slider {
+      background: var(--theme-primary);
+      border-color: var(--theme-primary);
+    }
+    .toggle input:checked + .toggle-slider::before {
+      transform: translateX(18px);
+      background: #fff;
+    }
+
+    .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }
+
+    /* ─── UPLOAD DRAWER (slide-over) ─────────────────────────────── */
+    .drawer-overlay {
+      position: fixed; inset: 0;
+      background: rgba(15,23,42,.25);
+      z-index: 200;
+      opacity: 0; pointer-events: none;
+      transition: opacity .22s;
+    }
+    .drawer-overlay.open { opacity: 1; pointer-events: all; }
+
+    .drawer {
+      position: fixed; top: 0; right: 0; bottom: 0;
+      width: 380px; max-width: 95vw;
+      background: #fff;
+      border-left: 1px solid var(--color-border);
+      z-index: 201;
+      padding: 28px;
+      display: flex; flex-direction: column; gap: 18px;
+      transform: translateX(100%);
+      transition: transform .25s cubic-bezier(.25,.46,.45,.94);
+      box-shadow: -8px 0 32px rgba(0,0,0,.1);
+    }
+    .drawer-overlay.open .drawer { transform: translateX(0); }
+
+    .drawer-header { display: flex; align-items: center; justify-content: space-between; }
+    .drawer-title { font-size: 15px; font-weight: 700; color: #0f172a; }
+
+    .drop-zone {
+      border: 2px dashed #bfdbfe;
+      border-radius: var(--radius-lg);
+      padding: 36px 20px;
+      text-align: center;
+      transition: all .2s;
+      cursor: pointer;
+      background: #f8faff;
+    }
+    .drop-zone:hover { border-color: var(--theme-primary); background: #eff6ff; }
+    .drop-zone-icon { font-size: 36px; margin-bottom: 10px; }
+    .drop-zone p { font-size: 13px; color: var(--theme-muted); }
+    .drop-zone strong { color: var(--theme-primary); }
+
+    .prefix-list { display: flex; flex-direction: column; gap: 6px; }
+    .prefix-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px;
+      background: #f8fafd;
+      border: 1px solid #e8eef5;
+      border-radius: var(--radius-sm);
+      font-size: 11px;
+    }
+    .prefix-tag {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--theme-primary);
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+    .prefix-desc { color: var(--theme-muted); }
+
+    /* ─── MICRO DECORATIONS ───────────────────────────────────────── */
+    .live-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #10b981;
+      animation: pulse 2s infinite;
+      flex-shrink: 0;
+    }
+    @keyframes pulse {
+      0%,100% { box-shadow: 0 0 0 0 rgba(16,185,129,.4); }
+      50%      { box-shadow: 0 0 0 5px rgba(16,185,129,0); }
+    }
+
+    .tag-admin {
+      font-size: 9px; font-weight: 800;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      padding: 3px 10px; border-radius: 99px;
+      background: #eff6ff;
+      color: var(--theme-primary);
+      border: 1px solid #bfdbfe;
+    }
+
+    /* ─── SKELETON LOADING ────────────────────────────────────────── */
+    @keyframes shimmer {
+      0%   { background-position: -600px 0; }
+      100% { background-position:  600px 0; }
+    }
+    .skel {
+      display: inline-block;
+      border-radius: 6px;
+      background: linear-gradient(90deg, #e8eef5 25%, #f4f7fa 50%, #e8eef5 75%);
+      background-size: 600px 100%;
+      animation: shimmer 1.4s infinite linear;
+    }
+    .skel-text  { height: 14px; width: 80px; }
+    .skel-val   { height: 28px; width: 100px; border-radius: 4px; }
+    .skel-delta { height: 20px; width: 120px; border-radius: 99px; }
+    .skel-sub   { height: 11px; width: 150px; }
+    .skel-bar   { height: 6px;  width: 100%; border-radius: 99px; }
+    .skel-row   { height: 38px; width: 100%; border-radius: 6px; margin-bottom: 2px; }
+    .skel-insight { height: 80px; width: 100%; border-radius: 12px; margin-bottom: 12px; }
+
+    /* ─── DATE RANGE PICKER ───────────────────────────────────────── */
+    .date-range-wrap { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+    .date-input {
+      appearance: none;
+      height: 34px;
+      padding: 0 10px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 600;
+      color: #374151;
+      background: var(--color-surface);
+      cursor: pointer;
+      transition: border-color .15s;
+      font-family: var(--font-display);
+    }
+    .date-input:focus { outline: none; border-color: var(--theme-primary); }
+    .date-sep { font-size: 11px; color: var(--theme-muted); }
+
+    /* fetch status badge */
+    .fetch-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 10px; font-weight: 600;
+      padding: 3px 8px; border-radius: 99px; transition: all .2s;
+    }
+    .fetch-badge.loading { background: #eff6ff; color: var(--theme-primary); }
+    .fetch-badge.live    { background: #f0fdf4; color: #059669; }
+    .fetch-badge.mock    { background: #fff7ed; color: #d97706; }
+    .fetch-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+    /* ─── TAB PANELS ──────────────────────────────────────────────── */
+    .tab-panel { display: none; flex-direction: column; gap: 16px; }
+    .tab-panel.active { display: flex; }
+
+    /* ─── SHARED TAB TOOLBAR ──────────────────────────────────────── */
+    .tab-toolbar {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .tab-toolbar .tab-title {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.12em; color: #94a3b8;
+    }
+
+    /* ─── STAT BAR (platform split) ───────────────────────────────── */
+    .stat-bar-list { display: flex; flex-direction: column; gap: 12px; }
+    .stat-bar-row  { display: flex; flex-direction: column; gap: 5px; }
+    .stat-bar-meta { display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+    .stat-bar-name { font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 7px; }
+    .stat-bar-vals { display: flex; gap: 12px; }
+    .stat-bar-rev  { font-family: var(--font-mono); font-weight: 700; color: var(--theme-primary); font-size: 12px; }
+    .stat-bar-pct  { font-size: 11px; color: #94a3b8; }
+    .stat-bar-bg   { height: 7px; background: #e2eaf2; border-radius: 99px; overflow: hidden; }
+    .stat-bar-fill { height: 100%; border-radius: 99px; transition: width .5s ease; }
+
+    /* ─── PRODUCT TABLE ────────────────────────────────────────────── */
+    .product-rank {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 22px; height: 22px; border-radius: 50%;
+      background: #eff6ff; color: var(--theme-primary);
+      font-size: 10px; font-weight: 800; flex-shrink: 0;
+    }
+
+    /* ─── CAMPAIGN CARDS (top campaigns) ──────────────────────────── */
+    .campaign-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .campaign-card {
+      background: var(--color-surface-2);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+    }
+    .campaign-card-platform { margin-bottom: 8px; }
+    .campaign-card-name {
+      font-size: 11px; font-weight: 600; color: #1e293b;
+      margin-bottom: 10px; line-height: 1.4;
+      display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .campaign-card-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .campaign-metric { display: flex; flex-direction: column; gap: 2px; }
+    .campaign-metric-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; }
+    .campaign-metric-val   { font-size: 13px; font-weight: 700; color: #1e293b; font-family: var(--font-mono); }
+
+    /* ─── 4-COL KPI GRID ───────────────────────────────────────────── */
+    .kpi-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+
+    /* ─── UNIFIED SIDEBAR SLOT ─────────────────────────────────────── */
+    .sidebar-slot { display: flex; flex-direction: column; gap: 14px; }
+
+    /* ─── PROGRESS BARS (Daily Targets) ──────────────────────────── */
+    .progress-wrap { display: flex; flex-direction: column; gap: 5px; }
+    .progress-header { display: flex; align-items: center; justify-content: space-between; }
+    .progress-label  { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: #1e293b; }
+    .progress-vals   { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+    .progress-achieved { font-family: var(--font-mono); font-weight: 700; color: var(--theme-primary); }
+    .progress-target   { font-family: var(--font-mono); color: #94a3b8; }
+    .progress-pct      { font-size: 11px; font-weight: 800; padding: 2px 7px; border-radius: 99px; }
+    .progress-pct.over   { background: #f0fdf4; color: #059669; }
+    .progress-pct.on     { background: #eff6ff; color: #0284c7; }
+    .progress-pct.under  { background: #fff7ed; color: #d97706; }
+    .progress-pct.low    { background: #fef2f2; color: #dc2626; }
+    .progress-track { height: 8px; background: #e2eaf2; border-radius: 99px; overflow: hidden; position: relative; }
+    .progress-fill  { height: 100%; border-radius: 99px; transition: width .6s ease; }
+    .progress-target-line {
+      position: absolute; top: 0; bottom: 0; width: 2px;
+      background: #94a3b8; border-radius: 1px;
+    }
+
+    /* ─── TARGET INPUT ────────────────────────────────────────────── */
+    .target-input-group { display: flex; flex-direction: column; gap: 6px; }
+    .target-input-label { font-size: 11px; font-weight: 700; color: #64748b; display: flex; align-items: center; gap: 6px; }
+    .target-input-wrap  { position: relative; }
+    .target-input-prefix {
+      position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+      font-size: 12px; font-weight: 700; color: var(--theme-primary); pointer-events: none;
+    }
+    .target-input {
+      width: 100%; height: 40px; padding: 0 12px 0 26px;
+      border: 1.5px solid var(--color-border); border-radius: var(--radius-sm);
+      font-size: 13px; font-weight: 700; font-family: var(--font-mono);
+      color: #1e293b; background: var(--color-surface-2);
+      transition: border-color .15s;
+    }
+    .target-input:focus { outline: none; border-color: var(--theme-primary); background: #fff; }
+
+    /* ─── AI INSIGHTS TAB ────────────────────────────────────────── */
+    .insight-card { background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-lg); padding:18px 20px; position:relative; transition:box-shadow .18s,border-color .18s; margin-bottom:12px; }
+    .insight-card:hover { box-shadow:0 4px 16px rgba(2,132,199,.08); border-color:#bfdbfe; }
+    .insight-card.warn     { border-left:3px solid #d97706; }
+    .insight-card.positive { border-left:3px solid #059669; }
+    .insight-card.neutral  { border-left:3px solid #0284c7; }
+    .insight-card-header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:10px; gap:12px; }
+    .insight-card-tag { font-size:10px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; padding:3px 9px; border-radius:99px; white-space:nowrap; }
+    .insight-card.warn .insight-card-tag     { background:#fff7ed; color:#d97706; border:1px solid #fed7aa; }
+    .insight-card.positive .insight-card-tag { background:#f0fdf4; color:#059669; border:1px solid #bbf7d0; }
+    .insight-card.neutral .insight-card-tag  { background:#eff6ff; color:#0284c7; border:1px solid #bfdbfe; }
+    .insight-card-meta { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+    .insight-conf { font-size:10px; font-weight:700; font-family:var(--font-mono); padding:2px 8px; border-radius:99px; background:#f8fafd; color:#64748b; border:1px solid var(--color-border); }
+    .insight-card-body { font-size:13px; color:#334155; line-height:1.7; }
+    .insight-card-body strong { color:#0f172a; font-weight:700; }
+    .insight-card-footer { display:flex; align-items:center; gap:8px; margin-top:12px; padding-top:10px; border-top:1px solid #f1f5f9; }
+    .insight-sku { font-size:10px; font-weight:700; font-family:var(--font-mono); color:#64748b; background:#f5f8fb; padding:2px 8px; border-radius:4px; border:1px solid #e2eaf2; }
+    .insight-ts  { font-size:10px; color:#94a3b8; margin-left:auto; }
+    .ai-tab-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; flex-wrap:wrap; gap:10px; }
+    .ai-tab-title  { font-size:15px; font-weight:700; color:#0f172a; }
+    .ai-tab-meta   { font-size:11px; color:#94a3b8; }
+    .ai-tab-controls { display:flex; align-items:center; gap:8px; }
+    .insight-filter-pills { display:flex; gap:6px; }
+    .insight-filter-pill { font-size:11px; font-weight:600; padding:4px 12px; border-radius:99px; border:1px solid var(--color-border); color:#64748b; cursor:pointer; transition:all .15s; background:var(--color-surface-2); }
+    .insight-filter-pill.active { border-color:var(--theme-primary); color:var(--theme-primary); background:#eff6ff; }
+    .ai-empty-state { text-align:center; padding:60px 20px; border:2px dashed var(--color-border); border-radius:var(--radius-lg); }
+    .ai-empty-icon  { font-size:40px; margin-bottom:12px; }
+    .ai-empty-title { font-size:15px; font-weight:700; color:#0f172a; margin-bottom:6px; }
+    .ai-empty-body  { font-size:13px; color:#64748b; line-height:1.6; }
+    .ai-stats-row { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+    .ai-stat-card { background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-md); padding:14px 16px; display:flex; flex-direction:column; gap:4px; }
+    .ai-stat-val   { font-size:22px; font-weight:800; color:#0f172a; letter-spacing:-0.02em; }
+    .ai-stat-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:#94a3b8; }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     HEADER
+══════════════════════════════════════════════════════════════════ -->
+<div class="layout">
+
+  <header class="header">
+    <!-- Left: Logo -->
+    <div class="header-logo">
+      <div class="logo-mark">NE</div>
+      <div>
+        <div class="logo-text">Neat Everyday</div>
+        <div class="logo-sub">Semya Digital</div>
+      </div>
+    </div>
+
+    <!-- Center: Title -->
+    <span class="header-title">Performance Dashboard</span>
+
+    <!-- Right: Admin Controls -->
+    <div class="header-controls">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div class="live-dot"></div>
+        <span style="font-size:10px;color:#64748b;">Live</span>
+      </div>
+
+      <span class="tag-admin">Admin</span>
+
+      <!-- Client Switcher -->
+      <select class="select-styled" title="Switch client">
+        <option value="neat-everyday" selected>Neat Everyday</option>
+        <option value="client-b">Client B — Redacted</option>
+        <option value="client-c">Client C — Redacted</option>
+      </select>
+
+      <!-- Data Upload -->
+      <button class="btn btn-primary" onclick="openDrawer()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Data Upload
+      </button>
+
+      <!-- Access Control -->
+      <button class="btn btn-accent" onclick="openModal()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Access Control
+      </button>
+
+      <!-- Avatar -->
+      <div class="avatar" title="Admin: Semya Staff">A</div>
+    </div>
+  </header>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     NAV TABS
+══════════════════════════════════════════════════════════════════ -->
+  <nav class="nav">
+    <div class="nav-tab" data-tab="platform_sales"    onclick="showTab('platform_sales')"><span class="dot"></span>Platform Sales</div>
+    <div class="nav-tab active" data-tab="sku_performance" onclick="showTab('sku_performance')"><span class="dot"></span>SKU Performance</div>
+    <div class="nav-tab" data-tab="campaign_insights" onclick="showTab('campaign_insights')"><span class="dot"></span>Campaign Insights</div>
+    <div class="nav-tab" data-tab="geographic_analysis" onclick="showTab('geographic_analysis')"><span class="dot"></span>Geographic Analysis</div>
+    <div class="nav-tab" data-tab="ai_insights"       onclick="showTab('ai_insights')"><span class="dot"></span>AI Insights</div>
+    <div class="nav-tab" data-tab="daily_targets"     onclick="showTab('daily_targets')"><span class="dot"></span>Daily Targets</div>
+  </nav>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     TAB CONTENT AREA — main + sidebar share a common grid slot
+══════════════════════════════════════════════════════════════════ -->
+  <main class="main">
+
+    <!-- ── PLATFORM SALES TAB ─────────────────────────────────── -->
+    <div class="tab-panel" id="tab-platform_sales">
+
+      <!-- Toolbar -->
+      <div class="card card-sm">
+        <div class="tab-toolbar">
+          <span class="tab-title">Platform Sales Overview</span>
+          <div class="date-range-wrap" style="margin-left:0;">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <input type="date" class="date-input" id="psDateFrom" />
+            <span class="date-sep">→</span>
+            <input type="date" class="date-input" id="psDateTo" />
+          </div>
+          <div class="sku-pills" style="margin-left:0;">
+            <div class="sku-pill active" data-ps-platform="">All</div>
+            <div class="sku-pill" data-ps-platform="amazon">Amazon</div>
+            <div class="sku-pill" data-ps-platform="flipkart">Flipkart</div>
+            <div class="sku-pill" data-ps-platform="blinkit">Blinkit</div>
+            <div class="sku-pill" data-ps-platform="meta">Meta</div>
+          </div>
+          <span class="fetch-badge loading" id="psFetchBadge" style="margin-left:auto;">
+            <span class="fetch-dot"></span><span id="psFetchText">Loading</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- KPI Row -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-icon">₹</div>
+          <div class="kpi-label">Total Net Revenue</div>
+          <div class="kpi-value" id="psKpiRevenue"><span class="skel skel-val"></span></div>
+          <div><span class="kpi-delta" id="psKpiRevenueDelta"><span class="skel skel-delta"></span></span></div>
+          <div class="kpi-sub" id="psKpiRevenueSub"><span class="skel skel-sub"></span></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon">📦</div>
+          <div class="kpi-label">Total Units Sold</div>
+          <div class="kpi-value" id="psKpiUnits"><span class="skel skel-val"></span></div>
+          <div><span class="kpi-delta" id="psKpiUnitsDelta"><span class="skel skel-delta"></span></span></div>
+          <div class="kpi-sub" id="psKpiUnitsSub"><span class="skel skel-sub"></span></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon">🛒</div>
+          <div class="kpi-label">Total Orders</div>
+          <div class="kpi-value" id="psKpiOrders"><span class="skel skel-val"></span></div>
+          <div><span class="kpi-delta" id="psKpiOrdersDelta"><span class="skel skel-delta"></span></span></div>
+          <div class="kpi-sub" id="psKpiOrdersSub"><span class="skel skel-sub"></span></div>
+        </div>
+      </div>
+
+      <!-- Mid grid: Platform Split + Revenue Over Time -->
+      <div class="mid-grid">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Platform Split</span>
+            <span class="card-badge">Revenue share</span>
+          </div>
+          <div class="stat-bar-list" id="psPlatformSplit">
+            <div class="stat-bar-row"><div class="stat-bar-bg"><div class="skel skel-bar"></div></div></div>
+            <div class="stat-bar-row"><div class="stat-bar-bg"><div class="skel skel-bar"></div></div></div>
+            <div class="stat-bar-row"><div class="stat-bar-bg"><div class="skel skel-bar"></div></div></div>
+            <div class="stat-bar-row"><div class="stat-bar-bg"><div class="skel skel-bar"></div></div></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Revenue Over Time</span>
+            <span class="card-badge">Daily</span>
+          </div>
+          <div class="chart-wrap" style="height:220px;">
+            <canvas id="psRevenueChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom: Top Products table -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Top Products by Revenue</span>
+          <span class="card-badge" id="psProductBadge">All platforms</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>SKU</th>
+                <th>Platform</th>
+                <th>Units</th>
+                <th>Revenue</th>
+                <th>Share</th>
+              </tr>
+            </thead>
+            <tbody id="psProductTbody">
+              <tr><td colspan="6"><span class="skel skel-row" style="display:block"></span></td></tr>
+              <tr><td colspan="6"><span class="skel skel-row" style="display:block"></span></td></tr>
+              <tr><td colspan="6"><span class="skel skel-row" style="display:block"></span></td></tr>
+              <tr><td colspan="6"><span class="skel skel-row" style="display:block"></span></td></tr>
+              <tr><td colspan="6"><span class="skel skel-row" style="display:block"></span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /tab-platform_sales -->
+
+    <!-- ── SKU PERFORMANCE TAB ─────────────────────────────────── -->
+    <div class="tab-panel active" id="tab-sku_performance">
+
+    <!-- SKU Selector -->
+    <div class="card card-sm">
+      <div class="sku-selector-bar">
+        <span class="sku-label">Viewing SKU</span>
+        <select class="sku-select" id="skuSelect">
+          <option value="">Loading SKUs…</option>
+        </select>
+        <div class="sku-pills">
+          <div class="sku-pill active" data-platform="">All</div>
+          <div class="sku-pill" data-platform="amazon">Amazon</div>
+          <div class="sku-pill" data-platform="flipkart">Flipkart</div>
+          <div class="sku-pill" data-platform="blinkit">Blinkit</div>
+          <div class="sku-pill" data-platform="meta">Meta</div>
+        </div>
+        <div class="date-range-wrap">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <input type="date" class="date-input" id="dateFrom" />
+          <span class="date-sep">→</span>
+          <input type="date" class="date-input" id="dateTo" />
+        </div>
+        <span class="fetch-badge loading" id="fetchBadge">
+          <span class="fetch-dot"></span>
+          <span id="fetchBadgeText">Loading</span>
+        </span>
+      </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="kpi-grid">
+
+      <div class="kpi-card">
+        <div class="kpi-icon">₹</div>
+        <div class="kpi-label">SKU Net Revenue</div>
+        <div class="kpi-value" id="kpiRevenue"><span class="skel skel-val"></span></div>
+        <div><span class="kpi-delta" id="kpiRevenueDelta"><span class="skel skel-delta"></span></span></div>
+        <div class="kpi-sub" id="kpiRevenueSub"><span class="skel skel-sub"></span></div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-icon">📦</div>
+        <div class="kpi-label">SKU Units Sold</div>
+        <div class="kpi-value" id="kpiUnits"><span class="skel skel-val"></span></div>
+        <div><span class="kpi-delta" id="kpiUnitsDelta"><span class="skel skel-delta"></span></span></div>
+        <div class="kpi-sub" id="kpiUnitsSub"><span class="skel skel-sub"></span></div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-icon">🎯</div>
+        <div class="kpi-label">SKU RoAS</div>
+        <div class="kpi-value" id="kpiRoas"><span class="skel skel-val"></span></div>
+        <div><span class="kpi-delta" id="kpiRoasDelta"><span class="skel skel-delta"></span></span></div>
+        <div class="kpi-sub" id="kpiRoasSub"><span class="skel skel-sub"></span></div>
+      </div>
+
+    </div>
+
+    <!-- Middle Grid: Cities + Doughnut -->
+    <div class="mid-grid">
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Top Cities by Revenue</span>
+          <span class="card-badge" id="cityBadge">—</span>
+        </div>
+        <div class="city-list" id="cityList">
+          <div class="city-row"><div class="city-bar-bg"><div class="skel skel-bar"></div></div></div>
+          <div class="city-row"><div class="city-bar-bg"><div class="skel skel-bar"></div></div></div>
+          <div class="city-row"><div class="city-bar-bg"><div class="skel skel-bar"></div></div></div>
+          <div class="city-row"><div class="city-bar-bg"><div class="skel skel-bar"></div></div></div>
+          <div class="city-row"><div class="city-bar-bg"><div class="skel skel-bar"></div></div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Sales Attribution by Channel</span>
+          <span class="card-badge">Revenue share</span>
+        </div>
+        <div class="chart-wrap" style="height:220px;">
+          <canvas id="doughnutChart"></canvas>
+        </div>
+        <div id="doughnutLegend" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;">
+          <span class="skel skel-delta"></span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Bottom Grid: Line Chart + Campaign Table -->
+    <div class="bot-grid">
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Weekly Revenue Trend</span>
+          <div style="display:flex;gap:8px;">
+            <span class="card-badge">This period</span>
+            <span style="font-size:10px;color:var(--theme-muted);padding:3px 0;">vs prior period</span>
+          </div>
+        </div>
+        <div class="chart-wrap" style="height:190px;">
+          <canvas id="lineChart"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Campaign Performance</span>
+          <span class="card-badge">Active</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Campaign</th>
+                <th>Spend</th>
+                <th>Rev</th>
+                <th>RoAS</th>
+              </tr>
+            </thead>
+            <tbody id="campaignTbody">
+              <tr><td colspan="4"><span class="skel skel-row" style="display:block"></span></td></tr>
+              <tr><td colspan="4"><span class="skel skel-row" style="display:block"></span></td></tr>
+              <tr><td colspan="4"><span class="skel skel-row" style="display:block"></span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    </div><!-- /tab-sku_performance -->
+
+    <!-- ── CAMPAIGN INSIGHTS TAB ──────────────────────────────── -->
+    <div class="tab-panel" id="tab-campaign_insights">
+
+      <!-- Toolbar -->
+      <div class="card card-sm">
+        <div class="tab-toolbar">
+          <span class="tab-title">Campaign Insights</span>
+          <div class="date-range-wrap" style="margin-left:0;">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <input type="date" class="date-input" id="ciDateFrom" />
+            <span class="date-sep">→</span>
+            <input type="date" class="date-input" id="ciDateTo" />
+          </div>
+          <div class="sku-pills" style="margin-left:0;">
+            <div class="sku-pill active" data-ci-platform="">All</div>
+            <div class="sku-pill" data-ci-platform="amazon">Amazon</div>
+            <div class="sku-pill" data-ci-platform="flipkart">Flipkart</div>
+            <div class="sku-pill" data-ci-platform="blinkit">Blinkit</div>
+            <div class="sku-pill" data-ci-platform="meta">Meta</div>
+          </div>
+          <span class="fetch-badge loading" id="ciFetchBadge" style="margin-left:auto;">
+            <span class="fetch-dot"></span><span id="ciFetchText">Loading</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- KPI Row — 4 cols -->
+      <div class="kpi-grid-4">
+        <div class="kpi-card">
+          <div class="kpi-icon">💸</div>
+          <div class="kpi-label">Total Ad Spend</div>
+          <div class="kpi-value" id="ciKpiSpend"><span class="skel skel-val"></span></div>
+          <div><span class="kpi-delta" id="ciKpiSpendDelta"><span class="skel skel-delta"></span></span></div>
+          <div class="kpi-sub" id="ciKpiSpendSub"><span class="skel skel-sub"></span></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon">📈</div>
+          <div class="kpi-label">Campaign Revenue</div>
+          <div class="kpi-value" id="ciKpiRev"><span class="skel skel-val"></span></div>
+          <div><span class="kpi-delta" id="ciKpiRevDelta"><span class="skel skel-delta"></span></span></div>
+          <div class="kpi-sub" id="ciKpiRevSub"><span class="skel skel-sub"></span></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon">🎯</div>
+          <div class="kpi-label">Blended RoAS</div>
+          <div class="kpi-value" id="ciKpiRoas"><span class="skel skel-val"></span></div>
+          <div><span class="kpi-delta" id="ciKpiRoasDelta"><span class="skel skel-delta"></span></span></div>
+          <div class="kpi-sub" id="ciKpiRoasSub"><span class="skel skel-sub"></span></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon">👆</div>
+          <div class="kpi-label">Total Clicks</div>
+          <div class="kpi-value" id="ciKpiClicks"><span class="skel skel-val"></span></div>
+          <div><span class="kpi-delta" id="ciKpiClicksDelta"><span class="skel skel-delta"></span></span></div>
+          <div class="kpi-sub" id="ciKpiClicksSub"><span class="skel skel-sub"></span></div>
+        </div>
+      </div>
+
+      <!-- Mid grid: RoAS Trend + Spend by Platform -->
+      <div class="mid-grid">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">RoAS Trend</span>
+            <span class="card-badge">Weekly</span>
+          </div>
+          <div class="chart-wrap" style="height:220px;">
+            <canvas id="ciRoasChart"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Spend by Platform</span>
+            <span class="card-badge">Share</span>
+          </div>
+          <div class="chart-wrap" style="height:180px;">
+            <canvas id="ciSpendChart"></canvas>
+          </div>
+          <div id="ciSpendLegend" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;">
+            <span class="skel skel-delta"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Top Campaign Cards -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Top Campaigns</span>
+          <span class="card-badge" id="ciCampaignCount">—</span>
+        </div>
+        <div class="campaign-cards" id="ciCampaignCards">
+          <div class="campaign-card"><span class="skel skel-row" style="display:block;height:100px;"></span></div>
+          <div class="campaign-card"><span class="skel skel-row" style="display:block;height:100px;"></span></div>
+          <div class="campaign-card"><span class="skel skel-row" style="display:block;height:100px;"></span></div>
+        </div>
+      </div>
+
+      <!-- Full Campaign Table -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">All Campaigns</span>
+          <span class="card-badge">Detailed</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Platform</th>
+                <th>Campaign</th>
+                <th>Spend</th>
+                <th>Revenue</th>
+                <th>RoAS</th>
+                <th>Clicks</th>
+                <th>Impressions</th>
+                <th>CTR</th>
+              </tr>
+            </thead>
+            <tbody id="ciCampaignTbody">
+              <tr><td colspan="8"><span class="skel skel-row" style="display:block"></span></td></tr>
+              <tr><td colspan="8"><span class="skel skel-row" style="display:block"></span></td></tr>
+              <tr><td colspan="8"><span class="skel skel-row" style="display:block"></span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /tab-campaign_insights -->
+
+    <!-- ── GEOGRAPHIC ANALYSIS TAB ───────────────────────────── -->
+    <div class="tab-panel" id="tab-geographic_analysis">
+
+      <!-- Toolbar -->
+      <div class="card card-sm">
+        <div class="tab-toolbar">
+          <span class="tab-title">Geographic Analysis</span>
+          <div class="date-range-wrap" style="margin-left:0;">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <input type="date" class="date-input" id="geoDateFrom" />
+            <span class="date-sep">&rarr;</span>
+            <input type="date" class="date-input" id="geoDateTo" />
+          </div>
+          <div class="sku-pills" style="margin-left:0;">
+            <div class="sku-pill active" data-geo-platform="">All</div>
+            <div class="sku-pill" data-geo-platform="amazon">Amazon</div>
+            <div class="sku-pill" data-geo-platform="flipkart">Flipkart</div>
+            <div class="sku-pill" data-geo-platform="blinkit">Blinkit</div>
+            <div class="sku-pill" data-geo-platform="meta">Meta</div>
+          </div>
+          <span class="fetch-badge loading" id="geoFetchBadge" style="margin-left:auto;">
+            <span class="fetch-dot"></span><span id="geoFetchText">Loading</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- KPIs -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-icon">🏙</div>
+          <div class="kpi-label">Top City Revenue</div>
+          <div class="kpi-value" id="geoKpiTopCity"><span class="skel skel-val"></span></div>
+          <div><span class="kpi-delta" id="geoKpiTopCityName"><span class="skel skel-delta"></span></span></div>
+          <div class="kpi-sub" id="geoKpiTopCitySub"><span class="skel skel-sub"></span></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon">🗺</div>
+          <div class="kpi-label">Top State Revenue</div>
+          <div class="kpi-value" id="geoKpiTopState"><span class="skel skel-val"></span></div>
+          <div><span class="kpi-delta" id="geoKpiTopStateName"><span class="skel skel-delta"></span></span></div>
+          <div class="kpi-sub" id="geoKpiTopStateSub"><span class="skel skel-sub"></span></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon">📍</div>
+          <div class="kpi-label">Cities Tracked</div>
+          <div class="kpi-value" id="geoKpiCities"><span class="skel skel-val"></span></div>
+          <div><span class="kpi-delta" id="geoKpiCitiesDelta"><span class="skel skel-delta"></span></span></div>
+          <div class="kpi-sub" id="geoKpiCitiesSub"><span class="skel skel-sub"></span></div>
+        </div>
+      </div>
+
+      <!-- Mid: City bars + Zone breakdown -->
+      <div class="mid-grid">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Top Cities by Revenue</span>
+            <span class="card-badge" id="geoCityCount">—</span>
+          </div>
+          <div id="geoCityBars" class="stat-bar-list">
+            <div class="stat-bar-row"><div class="stat-bar-bg"><div class="skel skel-bar"></div></div></div>
+            <div class="stat-bar-row"><div class="stat-bar-bg"><div class="skel skel-bar"></div></div></div>
+            <div class="stat-bar-row"><div class="stat-bar-bg"><div class="skel skel-bar"></div></div></div>
+            <div class="stat-bar-row"><div class="stat-bar-bg"><div class="skel skel-bar"></div></div></div>
+            <div class="stat-bar-row"><div class="stat-bar-bg"><div class="skel skel-bar"></div></div></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Revenue by Zone</span>
+            <span class="card-badge">Regional</span>
+          </div>
+          <div id="geoZoneBars" class="stat-bar-list">
+            <div class="stat-bar-row"><div class="stat-bar-bg"><div class="skel skel-bar"></div></div></div>
+            <div class="stat-bar-row"><div class="stat-bar-bg"><div class="skel skel-bar"></div></div></div>
+            <div class="stat-bar-row"><div class="stat-bar-bg"><div class="skel skel-bar"></div></div></div>
+            <div class="stat-bar-row"><div class="stat-bar-bg"><div class="skel skel-bar"></div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- State Breakdown Table -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">State Breakdown</span>
+          <span class="card-badge" id="geoStateBadge">All states</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th><th>State</th><th>Revenue</th><th>Units</th>
+                <th>Orders</th><th>Avg Order Value</th><th>Share</th>
+              </tr>
+            </thead>
+            <tbody id="geoStateTbody">
+              <tr><td colspan="7"><span class="skel skel-row" style="display:block"></span></td></tr>
+              <tr><td colspan="7"><span class="skel skel-row" style="display:block"></span></td></tr>
+              <tr><td colspan="7"><span class="skel skel-row" style="display:block"></span></td></tr>
+              <tr><td colspan="7"><span class="skel skel-row" style="display:block"></span></td></tr>
+              <tr><td colspan="7"><span class="skel skel-row" style="display:block"></span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /tab-geographic_analysis -->
+
+    <!-- ── DAILY TARGETS TAB ──────────────────────────────────── -->
+    <div class="tab-panel" id="tab-daily_targets">
+
+      <!-- Toolbar -->
+      <div class="card card-sm">
+        <div class="tab-toolbar">
+          <span class="tab-title">Daily Targets</span>
+          <div class="date-range-wrap" style="margin-left:0;">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <input type="date" class="date-input" id="dtDate" />
+          </div>
+          <span class="fetch-badge loading" id="dtFetchBadge" style="margin-left:auto;">
+            <span class="fetch-dot"></span><span id="dtFetchText">Loading</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- KPIs -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-icon">₹</div>
+          <div class="kpi-label">Today's Revenue</div>
+          <div class="kpi-value" id="dtKpiRevenue"><span class="skel skel-val"></span></div>
+          <div><span class="kpi-delta" id="dtKpiRevenueDelta"><span class="skel skel-delta"></span></span></div>
+          <div class="kpi-sub" id="dtKpiRevenueSub"><span class="skel skel-sub"></span></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon">📦</div>
+          <div class="kpi-label">Today's Units</div>
+          <div class="kpi-value" id="dtKpiUnits"><span class="skel skel-val"></span></div>
+          <div><span class="kpi-delta" id="dtKpiUnitsDelta"><span class="skel skel-delta"></span></span></div>
+          <div class="kpi-sub" id="dtKpiUnitsSub"><span class="skel skel-sub"></span></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon">🎯</div>
+          <div class="kpi-label">Overall Attainment</div>
+          <div class="kpi-value" id="dtKpiAttainment"><span class="skel skel-val"></span></div>
+          <div><span class="kpi-delta" id="dtKpiAttainmentDelta"><span class="skel skel-delta"></span></span></div>
+          <div class="kpi-sub" id="dtKpiAttainmentSub"><span class="skel skel-sub"></span></div>
+        </div>
+      </div>
+
+      <!-- Platform Progress + 7-day Trend -->
+      <div class="mid-grid">
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Platform Attainment</span>
+            <span class="card-badge">Target vs Achieved</span>
+          </div>
+          <div id="dtPlatformProgress" style="display:flex;flex-direction:column;gap:18px;">
+            <div class="skel skel-row" style="display:block;height:54px;"></div>
+            <div class="skel skel-row" style="display:block;height:54px;"></div>
+            <div class="skel skel-row" style="display:block;height:54px;"></div>
+            <div class="skel skel-row" style="display:block;height:54px;"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">7-Day Attainment Trend</span>
+            <span class="card-badge">% of target hit</span>
+          </div>
+          <div class="chart-wrap" style="height:220px;">
+            <canvas id="dtTrendChart"></canvas>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Admin: Edit Targets Panel -->
+      <div class="card" id="dtAdminPanel" data-role="admin">
+        <div class="card-header">
+          <span class="card-title">Edit Daily Targets</span>
+          <span class="card-badge" style="background:#fff7ed;color:#d97706;border-color:#fed7aa;">Admin only</span>
+        </div>
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:16px;">
+          Set the revenue target (₹) for each platform. Changes apply to the selected date.
+        </div>
+        <div id="dtTargetInputs" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:18px;">
+          <div class="skel skel-row" style="display:block;height:60px;"></div>
+          <div class="skel skel-row" style="display:block;height:60px;"></div>
+          <div class="skel skel-row" style="display:block;height:60px;"></div>
+          <div class="skel skel-row" style="display:block;height:60px;"></div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;">
+          <span id="dtSaveStatus" style="font-size:11px;color:#94a3b8;"></span>
+          <button class="btn btn-primary" onclick="saveTargets()" id="dtSaveBtn">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Save Targets
+          </button>
+        </div>
+      </div>
+
+    </div><!-- /tab-daily_targets -->
+
+    <!-- ── AI INSIGHTS TAB ──────────────────────────────────────── -->
+    <div class="tab-panel" id="tab-ai_insights">
+      <div class="card card-sm">
+        <div class="ai-tab-header">
+          <div>
+            <div class="ai-tab-title">&#10022; AI Insights</div>
+            <div class="ai-tab-meta" id="aiTabMeta">Loading insights...</div>
+          </div>
+          <div class="ai-tab-controls">
+            <div class="insight-filter-pills">
+              <div class="insight-filter-pill active" data-ai-filter="">All</div>
+              <div class="insight-filter-pill" data-ai-filter="warn">&#9888; Warnings</div>
+              <div class="insight-filter-pill" data-ai-filter="positive">&#10003; Opportunities</div>
+              <div class="insight-filter-pill" data-ai-filter="neutral">&#9679; Signals</div>
+            </div>
+            <button class="btn btn-primary" id="aiRegenBtn" data-role="admin" onclick="regenerateInsights()" style="font-size:11px;padding:6px 12px;">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+              Regenerate
+            </button>
+            <span class="fetch-badge loading" id="aiFetchBadge">
+              <span class="fetch-dot"></span><span id="aiFetchText">Loading</span>
+            </span>
+          </div>
+        </div>
+      </div>
+      <div class="ai-stats-row">
+        <div class="ai-stat-card">
+          <div class="ai-stat-label">Total Insights</div>
+          <div class="ai-stat-val" id="aiStatTotal"><span class="skel skel-val" style="width:40px;height:22px;display:inline-block;"></span></div>
+        </div>
+        <div class="ai-stat-card">
+          <div class="ai-stat-label">Avg Confidence</div>
+          <div class="ai-stat-val" id="aiStatConf"><span class="skel skel-val" style="width:60px;height:22px;display:inline-block;"></span></div>
+        </div>
+        <div class="ai-stat-card">
+          <div class="ai-stat-label">Last Generated</div>
+          <div class="ai-stat-val" style="font-size:14px;" id="aiStatTime"><span class="skel skel-val" style="width:80px;height:22px;display:inline-block;"></span></div>
+        </div>
+      </div>
+      <div id="aiInsightCards">
+        <div class="insight-card neutral"><div class="insight-card-header"><span class="skel skel-delta"></span></div><div class="skel skel-insight" style="height:60px;width:100%;display:block;"></div></div>
+        <div class="insight-card warn"><div class="insight-card-header"><span class="skel skel-delta"></span></div><div class="skel skel-insight" style="height:60px;width:100%;display:block;"></div></div>
+        <div class="insight-card positive"><div class="insight-card-header"><span class="skel skel-delta"></span></div><div class="skel skel-insight" style="height:60px;width:100%;display:block;"></div></div>
+      </div>
+    </div><!-- /tab-ai_insights -->
+
+  </main>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     AI INSIGHTS SIDEBAR
+══════════════════════════════════════════════════════════════════ -->
+  <aside class="sidebar">
+
+    <div class="ai-panel">
+      <div class="ai-header">
+        <div class="ai-icon">✦</div>
+        <div>
+          <div class="ai-label">AI Insights</div>
+          <div class="ai-sub" id="aiSubtitle">Powered · —</div>
+        </div>
+      </div>
+      <div id="aiInsightsList">
+        <div class="skel skel-insight"></div>
+        <div class="skel skel-insight"></div>
+        <div class="skel skel-insight"></div>
+      </div>
+      <div class="ai-confidence">
+        <span class="conf-label">Model confidence</span>
+        <span class="conf-val" id="aiConfidence"><span class="skel skel-text"></span></span>
+      </div>
+    </div>
+
+    <!-- Mini Platform Health -->
+    <div class="card card-sm">
+      <div class="card-header" style="margin-bottom:10px;">
+        <span class="card-title">Platform Health</span>
+        <span style="font-size:10px;color:#94a3b8;">This SKU</span>
+      </div>
+      <div id="platformHealthList" style="display:flex;flex-direction:column;gap:10px;">
+        <span class="skel skel-row" style="display:block;height:24px;"></span>
+        <span class="skel skel-row" style="display:block;height:24px;"></span>
+        <span class="skel skel-row" style="display:block;height:24px;"></span>
+        <span class="skel skel-row" style="display:block;height:24px;"></span>
+      </div>
+    </div>
+
+  </aside>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════════
+     ACCESS CONTROL MODAL
+══════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="aclModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--theme-accent)" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <span class="modal-title">Access Control Panel</span>
+      </div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+
+    <div style="margin-bottom:6px;padding:10px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:var(--radius-sm);display:flex;align-items:center;gap:8px;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <span style="font-size:11px;color:#0284c7;">Managing access for: <strong>Neat Everyday</strong></span>
+    </div>
+
+    <div style="height:14px;"></div>
+
+    <div class="acl-section-label">Dashboard Tabs</div>
+    <div class="acl-rows">
+      <div class="acl-row">
+        <div class="acl-row-info">
+          <span class="acl-row-title">Platform Sales</span>
+          <span class="acl-row-desc">Revenue overview across all platforms</span>
+        </div>
+        <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+      </div>
+      <div class="acl-row">
+        <div class="acl-row-info">
+          <span class="acl-row-title">SKU Performance</span>
+          <span class="acl-row-desc">Per-SKU revenue, units, and RoAS</span>
+        </div>
+        <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+      </div>
+      <div class="acl-row">
+        <div class="acl-row-info">
+          <span class="acl-row-title">Campaign Insights</span>
+          <span class="acl-row-desc">Ad spend, CTR, and campaign breakdown</span>
+        </div>
+        <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+      </div>
+      <div class="acl-row">
+        <div class="acl-row-info">
+          <span class="acl-row-title">Geographic Analysis</span>
+          <span class="acl-row-desc">State and city revenue distribution</span>
+        </div>
+        <label class="toggle"><input type="checkbox"><span class="toggle-slider"></span></label>
+      </div>
+      <div class="acl-row">
+        <div class="acl-row-info">
+          <span class="acl-row-title">AI Insights</span>
+          <span class="acl-row-desc">Powered analysis, inventory signals, micro-targeting</span>
+        </div>
+        <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+      </div>
+      <div class="acl-row">
+        <div class="acl-row-info">
+          <span class="acl-row-title">Daily Targets</span>
+          <span class="acl-row-desc">Target vs achieved performance tracking</span>
+        </div>
+        <label class="toggle"><input type="checkbox"><span class="toggle-slider"></span></label>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="closeModal()">Save Access Rules</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════════
+     DATA UPLOAD DRAWER
+══════════════════════════════════════════════════════════════════ -->
+<div class="drawer-overlay" id="uploadDrawer">
+  <div class="drawer">
+    <div class="drawer-header">
+      <span class="drawer-title">Upload Daily File</span>
+      <button class="modal-close" onclick="closeDrawer()">✕</button>
+    </div>
+
+    <div style="font-size:12px;color:#64748b;line-height:1.6;">
+      Files are automatically routed to the correct database table based on their filename prefix.
+    </div>
+
+    <div class="drop-zone" onclick="document.getElementById('fileInput').click()">
+      <div class="drop-zone-icon">📂</div>
+      <p>Drop your <strong>.xlsx</strong> or <strong>.csv</strong> here</p>
+      <p style="font-size:10px;margin-top:4px;">or click to browse</p>
+      <input type="file" id="fileInput" accept=".xlsx,.csv" style="display:none;">
+    </div>
+
+    <div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:#94a3b8;margin-bottom:10px;">File Prefix → Data Routing</div>
+      <div class="prefix-list">
+        <div class="prefix-row"><span class="prefix-tag">Amazon_File</span><span class="prefix-desc">→ Amazon Revenue</span></div>
+        <div class="prefix-row"><span class="prefix-tag">Amazon_Campaign_File</span><span class="prefix-desc">→ Amazon Campaigns</span></div>
+        <div class="prefix-row"><span class="prefix-tag">Flipkart_File</span><span class="prefix-desc">→ Flipkart Revenue</span></div>
+        <div class="prefix-row"><span class="prefix-tag">Flipkart_Campaign_File</span><span class="prefix-desc">→ Flipkart Campaigns</span></div>
+        <div class="prefix-row"><span class="prefix-tag">Blinkit_File</span><span class="prefix-desc">→ Blinkit Revenue</span></div>
+        <div class="prefix-row"><span class="prefix-tag">Meta_Campaign_File</span><span class="prefix-desc">→ Meta Website Campaign</span></div>
+        <div class="prefix-row"><span class="prefix-tag">Google_Campaign_File</span><span class="prefix-desc">→ Google Website Campaign</span></div>
+        <div class="prefix-row"><span class="prefix-tag">Acutas_File</span><span class="prefix-desc">→ Amazon (Acutas) Revenue</span></div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:12px;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Upload & Merge
+    </button>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════════
+     CHARTS
+══════════════════════════════════════════════════════════════════ -->
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// SEMYA DIGITAL — PHASE 4  LIVE DATA ENGINE
+// ═══════════════════════════════════════════════════════════════════
+
+// ─── CONFIG ──────────────────────────────────────────────────────
+const API_BASE  = 'http://localhost:3000';
+const TOKEN_KEY = 'semya_token';
+
+// ─── PLATFORM META ────────────────────────────────────────────────
+const PLATFORM_META = {
+  amazon:   { label: 'AMZ',  color: '#ff9900', pillClass: 'pill-amz' },
+  flipkart: { label: 'FK',   color: '#0077ff', pillClass: 'pill-fk'  },
+  blinkit:  { label: 'BK',   color: '#fbbf24', pillClass: 'pill-bk'  },
+  meta:     { label: 'META', color: '#1877f2', pillClass: 'pill-meta' },
+  google:   { label: 'GOOG', color: '#4285f4', pillClass: 'pill-goog' },
+  acutas:   { label: 'ACU',  color: '#0ea5e9', pillClass: 'pill-amz'  },
+};
+
+// ─── STATE ────────────────────────────────────────────────────────
+let state = {
+  clientSlug:   null,
+  token:        null,
+  sku:          '',
+  platform:     '',
+  dateFrom:     '',
+  dateTo:       '',
+  isLive:       false,
+  doughnutChart: null,
+  lineChart:    null,
+};
+
+// ─── MOCK DATA (fallback when API is empty or unreachable) ────────
+const MOCK = {
+  skus: [
+    { value: 'NE-MOIST-200ML', label: 'NE-MOIST-200ML — Daily Moisturizer 200ml' },
+    { value: 'NE-SRUM-30ML',   label: 'NE-SRUM-30ML — Vitamin C Serum 30ml'     },
+    { value: 'NE-CLNSR-150ML', label: 'NE-CLNSR-150ML — Gentle Cleanser 150ml'  },
+    { value: 'NE-TONER-100ML', label: 'NE-TONER-100ML — Hydrating Toner 100ml'  },
+    { value: 'NE-SUNSC-50ML',  label: 'NE-SUNSC-50ML — SPF 50 Sunscreen 50ml'   },
+  ],
+  revenue: {
+    totalRevenue: 1840000, totalUnits: 9204, totalSpend: 390000,
+    campaignRevenue: 1830000,
+    prevRevenue: 1488000, prevUnits: 7787,
+    cities: [
+      { city: 'Mumbai',    revenue: 382000 },
+      { city: 'Bengaluru', revenue: 321000 },
+      { city: 'Delhi NCR', revenue: 274000 },
+      { city: 'Hyderabad', revenue: 209000 },
+      { city: 'Pune',      revenue: 168000 },
+      { city: 'Chennai',   revenue: 142000 },
+      { city: 'Ahmedabad', revenue: 99000  },
+    ],
+    byPlatform: [
+      { platform: 'amazon',   totalRevenue: 1120000 },
+      { platform: 'flipkart', totalRevenue: 390000  },
+      { platform: 'blinkit',  totalRevenue: 200000  },
+      { platform: 'meta',     totalRevenue: 130000  },
+    ],
+    weekly: [
+      { week: 'W1 Jul', revenue: 520000, prevRevenue: 410000 },
+      { week: 'W2 Jul', revenue: 680000, prevRevenue: 550000 },
+      { week: 'W3 Jul', revenue: 640000, prevRevenue: 528000 },
+    ],
+  },
+  campaigns: [
+    { platform: 'amazon',   campaign_name: 'Amazon SP — Auto Broad',  standard_spend: 180000, standard_revenue: 920000, standard_orders: 1840 },
+    { platform: 'amazon',   campaign_name: 'Amazon SD — Remarketing', standard_spend:  60000, standard_revenue: 240000, standard_orders:  480 },
+    { platform: 'flipkart', campaign_name: 'Flipkart PLA — Category', standard_spend:  90000, standard_revenue: 310000, standard_orders:  620 },
+    { platform: 'meta',     campaign_name: 'Meta DPA — Lookalike',    standard_spend:  60000, standard_revenue: 190000, standard_orders:  380 },
+  ],
+  insights: [
+    { type: 'warn',     tag: '⚠ Inventory Burn Rate',         text: 'At current velocity, <strong>{sku}</strong> is burning through stock at <strong>~512 units/day</strong>. Projected stockout in <strong>18 days</strong> if replenishment isn't triggered. Amazon FBA lead time is 9–11 days — act today.' },
+    { type: 'positive', tag: '📍 Geographic Micro-Targeting',  text: '<strong>Pune & Hyderabad</strong> show CAC 34% below Mumbai for this SKU, yet receive &lt;9% of current Meta spend. Reallocating <strong>₹18K/week</strong> to Tier-2 south metro audiences could yield an estimated <strong>+₹62K incremental revenue</strong> per week.' },
+    { type: '',         tag: '📊 RoAS Compression Signal',      text: 'Amazon SP RoAS has dipped over the last 7 days. Likely cause: bid competition on primary keywords has risen. Consider shifting 20% of SP budget to long-tail defensive keywords to protect margin.' },
+    { type: '',         tag: '🔄 Flipkart Opportunity',         text: 'Flipkart's conversion rate for this SKU improved to <strong>4.2%</strong> (up from 2.9% last month) following title optimisation. Increasing PLA bid cap by <strong>₹4 CPC</strong> could unlock ₹40K–₹60K additional weekly revenue.' },
+  ],
+};
+
+// ─── AUTH HELPER ─────────────────────────────────────────────────
+function getToken() {
+  return localStorage.getItem(TOKEN_KEY) || '';
+}
+
+function authHeaders() {
+  return { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' };
+}
+
+// ─── API FETCH WRAPPER ────────────────────────────────────────────
+async function apiFetch(path) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: authHeaders(),
+    credentials: 'include',
+  });
+  if (!res.ok) throw new Error(`API ${res.status}: ${path}`);
+  return res.json();
+}
+
+// ─── FETCH BADGE HELPER ───────────────────────────────────────────
+function setBadge(mode) {
+  const badge = document.getElementById('fetchBadge');
+  const text  = document.getElementById('fetchBadgeText');
+  badge.className = `fetch-badge ${mode}`;
+  text.textContent = mode === 'loading' ? 'Loading…' : mode === 'live' ? 'Live data' : 'Preview data';
+}
+
+// ─── FORMAT HELPERS ───────────────────────────────────────────────
+function fmtRevenue(n) {
+  if (n >= 10000000) return '₹' + (n / 10000000).toFixed(1) + 'Cr';
+  if (n >= 100000)   return '₹' + (n / 100000).toFixed(1) + 'L';
+  if (n >= 1000)     return '₹' + (n / 1000).toFixed(1) + 'K';
+  return '₹' + Math.round(n);
+}
+function fmtUnits(n) { return n >= 1000 ? (n / 1000).toFixed(1) + 'K' : String(n); }
+function fmtRoas(r)  { return r.toFixed(1) + 'x'; }
+function pctDelta(now, prev) {
+  if (!prev) return null;
+  return ((now - prev) / prev * 100).toFixed(1);
+}
+function deltaHtml(pct, suffix = '%') {
+  if (pct === null) return '';
+  const up  = parseFloat(pct) >= 0;
+  const cls = up ? 'up' : 'down';
+  const arrow = up ? '▲' : '▼';
+  return `<span class="kpi-delta ${cls}">${arrow} ${Math.abs(pct)}${suffix} vs last period</span>`;
+}
+function roasColor(r) {
+  if (r >= 4) return '#059669';
+  if (r >= 3) return '#d97706';
+  return '#dc2626';
+}
+function platformPillHtml(platform) {
+  const m = PLATFORM_META[platform] || { label: platform.toUpperCase(), pillClass: 'pill-amz' };
+  return `<span class="platform-pill ${m.pillClass}">${m.label}</span>`;
+}
+
+// ─── SKELETON HELPERS ─────────────────────────────────────────────
+function showSkel(id, skelClass) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = `<span class="skel ${skelClass}"></span>`;
+}
+
+// ─── INIT DATE DEFAULTS ───────────────────────────────────────────
+function initDates() {
+  const now  = new Date();
+  const from = new Date(now.getFullYear(), now.getMonth(), 1);
+  const fmt  = d => d.toISOString().split('T')[0];
+  document.getElementById('dateFrom').value = fmt(from);
+  document.getElementById('dateTo').value   = fmt(now);
+  state.dateFrom = fmt(from);
+  state.dateTo   = fmt(now);
+}
+
+// ─── BUILD SKU DROPDOWN ───────────────────────────────────────────
+function populateSkuDropdown(skus) {
+  const sel = document.getElementById('skuSelect');
+  sel.innerHTML = skus.map((s, i) =>
+    `<option value="${s.value}" ${i === 0 ? 'selected' : ''}>${s.label}</option>`
+  ).join('');
+  state.sku = skus[0]?.value || '';
+  document.getElementById('cityBadge').textContent = state.sku;
+  document.getElementById('aiSubtitle').textContent = `Powered · ${state.sku}`;
+}
+
+// ─── RENDER KPI CARDS ─────────────────────────────────────────────
+function renderKPIs(rev, campaigns, prevRev) {
+  const totalRevenue  = rev?.totalRevenue  || 0;
+  const totalUnits    = rev?.totalUnits    || 0;
+  const totalSpend    = campaigns.reduce((s, c) => s + (c.standard_spend || 0), 0);
+  const campaignRev   = campaigns.reduce((s, c) => s + (c.standard_revenue || 0), 0);
+  const roas          = totalSpend > 0 ? campaignRev / totalSpend : 0;
+  const prevRevenue   = prevRev?.totalRevenue || 0;
+  const prevUnits     = prevRev?.totalUnits   || 0;
+  const topPlatform   = rev?.byPlatform?.[0];
+  const topPct        = topPlatform && totalRevenue > 0
+    ? Math.round(topPlatform.totalRevenue / totalRevenue * 100) : 0;
+
+  document.getElementById('kpiRevenue').innerHTML = `<span>₹</span>${fmtRevenue(totalRevenue).replace('₹','')}`;
+  document.getElementById('kpiRevenueDelta').innerHTML = deltaHtml(pctDelta(totalRevenue, prevRevenue));
+  document.getElementById('kpiRevenueSub').innerHTML = `Daily avg: ${fmtRevenue(totalRevenue/18)} &nbsp;·&nbsp; ${topPlatform ? PLATFORM_META[topPlatform.platform]?.label || topPlatform.platform : '—'}: ${topPct}%`;
+
+  document.getElementById('kpiUnits').innerHTML = fmtUnits(totalUnits);
+  document.getElementById('kpiUnitsDelta').innerHTML = deltaHtml(pctDelta(totalUnits, prevUnits));
+  document.getElementById('kpiUnitsSub').innerHTML = `Ad spend: ${fmtRevenue(totalSpend)} &nbsp;·&nbsp; Campaign rev: ${fmtRevenue(campaignRev)}`;
+
+  document.getElementById('kpiRoas').innerHTML = roas > 0 ? fmtRoas(roas) : '—';
+  document.getElementById('kpiRoasDelta').innerHTML = roas > 0 ? deltaHtml(((roas - 5.1) / 5.1 * 100).toFixed(1)) : '';
+  document.getElementById('kpiRoasSub').innerHTML = `Ad spend: ${fmtRevenue(totalSpend)} &nbsp;·&nbsp; Campaign rev: ${fmtRevenue(campaignRev)}`;
+}
+
+// ─── RENDER CITY BARS ─────────────────────────────────────────────
+function renderCities(cities) {
+  const list = document.getElementById('cityList');
+  if (!cities || !cities.length) {
+    list.innerHTML = '<p style="font-size:12px;color:#94a3b8;text-align:center;padding:20px 0;">No city data for this selection.</p>';
+    return;
+  }
+  const max = Math.max(...cities.map(c => c.revenue));
+  list.innerHTML = cities.slice(0, 7).map(c => {
+    const pct = Math.round((c.revenue / max) * 100);
+    return `<div class="city-row">
+      <div class="city-meta">
+        <span class="city-name">${c.city}</span>
+        <span class="city-val">${fmtRevenue(c.revenue)}</span>
+      </div>
+      <div class="city-bar-bg"><div class="city-bar-fill" style="width:${pct}%"></div></div>
+    </div>`;
+  }).join('');
+}
+
+// ─── RENDER DOUGHNUT ──────────────────────────────────────────────
+function renderDoughnut(byPlatform) {
+  const platforms = byPlatform || [];
+  const total     = platforms.reduce((s, p) => s + p.totalRevenue, 0);
+  const labels    = platforms.map(p => (PLATFORM_META[p.platform]?.label || p.platform));
+  const data      = platforms.map(p => +(p.totalRevenue / total * 100).toFixed(1));
+  const colors    = platforms.map(p => PLATFORM_META[p.platform]?.color || '#94a3b8');
+
+  if (state.doughnutChart) {
+    state.doughnutChart.data.labels   = labels;
+    state.doughnutChart.data.datasets[0].data            = data;
+    state.doughnutChart.data.datasets[0].backgroundColor = colors;
+    state.doughnutChart.update();
+  } else {
+    state.doughnutChart = new Chart(document.getElementById('doughnutChart'), {
+      type: 'doughnut',
+      data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: '#ffffff', borderWidth: 3, hoverOffset: 6 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '72%',
+        plugins: {
+          legend: { display: false },
+          tooltip: { backgroundColor: '#fff', borderColor: '#dce5ef', borderWidth: 1, titleColor: '#0f172a', bodyColor: '#64748b',
+            callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed}%` } }
+        }
+      }
+    });
+  }
+
+  document.getElementById('doughnutLegend').innerHTML = platforms.map((p, i) => `
+    <div style="display:flex;align-items:center;gap:5px;font-size:11px;">
+      <div style="width:8px;height:8px;border-radius:50%;background:${colors[i]};"></div>
+      <span style="color:#64748b;">${PLATFORM_META[p.platform]?.label || p.platform}</span>
+      <span style="color:#1e293b;font-weight:700;">${data[i]}%</span>
+    </div>`).join('');
+}
+
+// ─── RENDER LINE CHART ────────────────────────────────────────────
+function renderLineChart(weekly) {
+  const weeks      = weekly.map(w => w.week);
+  const thisData   = weekly.map(w => +(w.revenue / 100000).toFixed(1));
+  const priorData  = weekly.map(w => +(w.prevRevenue / 100000).toFixed(1));
+
+  if (state.lineChart) {
+    state.lineChart.data.labels = weeks;
+    state.lineChart.data.datasets[0].data = thisData;
+    state.lineChart.data.datasets[1].data = priorData;
+    state.lineChart.update();
+  } else {
+    state.lineChart = new Chart(document.getElementById('lineChart'), {
+      type: 'line',
+      data: {
+        labels: weeks,
+        datasets: [
+          { label: 'This Period',  data: thisData,  borderColor: '#0284c7', backgroundColor: 'rgba(2,132,199,.07)',
+            pointBackgroundColor: '#0284c7', pointRadius: 5, pointHoverRadius: 7, tension: 0.4, fill: true, borderWidth: 2 },
+          { label: 'Prior Period', data: priorData, borderColor: '#cbd5e1', backgroundColor: 'transparent',
+            pointBackgroundColor: '#cbd5e1', pointRadius: 4, tension: 0.4, fill: false, borderDash: [5,4], borderWidth: 1.5 }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'top', align: 'end', labels: { color: '#64748b', font: { size: 10 }, boxWidth: 20, padding: 12 } },
+          tooltip: { backgroundColor: '#fff', borderColor: '#dce5ef', borderWidth: 1, titleColor: '#0f172a', bodyColor: '#64748b',
+            callbacks: { label: ctx => ` ₹${ctx.parsed.y}L` } }
+        },
+        scales: {
+          x: { grid: { color: 'rgba(220,229,239,.7)' }, ticks: { color: '#94a3b8', font: { size: 10 } } },
+          y: { grid: { color: 'rgba(220,229,239,.7)' }, ticks: { color: '#94a3b8', font: { size: 10 }, callback: v => '₹' + v + 'L' }, min: 0 }
+        }
+      }
+    });
+  }
+}
+
+// ─── RENDER CAMPAIGN TABLE ────────────────────────────────────────
+function renderCampaigns(campaigns) {
+  const tbody = document.getElementById('campaignTbody');
+  if (!campaigns || !campaigns.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#94a3b8;font-size:12px;padding:20px 0;">No campaign data for this selection.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = campaigns.slice(0, 6).map(c => {
+    const spend = c.standard_spend || 0;
+    const rev   = c.standard_revenue || 0;
+    const roas  = spend > 0 ? rev / spend : 0;
+    const color = roasColor(roas);
+    return `<tr>
+      <td>
+        <div style="display:flex;flex-direction:column;gap:3px;">
+          ${platformPillHtml(c.platform)}
+          <span style="font-size:10px;color:var(--theme-muted);">${c.campaign_name || '—'}</span>
+        </div>
+      </td>
+      <td style="font-family:var(--font-mono);">${fmtRevenue(spend)}</td>
+      <td style="font-family:var(--font-mono);">${fmtRevenue(rev)}</td>
+      <td><span class="roas-tag" style="color:${color};font-weight:700;">${roas > 0 ? fmtRoas(roas) : '—'}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── RENDER AI INSIGHTS ───────────────────────────────────────────
+function renderInsights(insights, sku) {
+  const list = document.getElementById('aiInsightsList');
+  list.innerHTML = insights.map(ins => `
+    <div class="ai-insight ${ins.type}">
+      <div class="ai-insight-tag">${ins.tag}</div>
+      <p>${(ins.text || '').replace(/\{sku\}/g, sku)}</p>
+    </div>`).join('');
+  document.getElementById('aiSubtitle').textContent = `Powered · ${sku}`;
+  document.getElementById('aiConfidence').textContent = '91.4%';
+}
+
+// ─── RENDER PLATFORM HEALTH ───────────────────────────────────────
+function renderPlatformHealth(byPlatform, campaigns) {
+  const list  = document.getElementById('platformHealthList');
+  const total = byPlatform.reduce((s, p) => s + p.totalRevenue, 0);
+  list.innerHTML = byPlatform.map(p => {
+    const m    = PLATFORM_META[p.platform] || { label: p.platform.toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
+    const pct  = total > 0 ? Math.round(p.totalRevenue / total * 100) : 0;
+    const camp = campaigns.filter(c => c.platform === p.platform);
+    const spend= camp.reduce((s, c) => s + (c.standard_spend || 0), 0);
+    const crev = camp.reduce((s, c) => s + (c.standard_revenue || 0), 0);
+    const roas = spend > 0 ? crev / spend : 0;
+    const color = roasColor(roas);
+    return `<div style="display:flex;align-items:center;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="platform-pill ${m.pillClass}">${m.label}</span>
+        <span style="font-size:11px;color:#64748b;">${fmtRevenue(p.totalRevenue)}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div style="width:60px;height:5px;background:#e2eaf2;border-radius:99px;overflow:hidden;">
+          <div style="width:${pct}%;height:100%;background:${m.color};border-radius:99px;"></div>
+        </div>
+        <span style="font-size:10px;color:${color};font-weight:700;">${roas > 0 ? fmtRoas(roas) : '—'}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ─── AGGREGATE RAW REVENUE ROWS → summary shape ───────────────────
+function aggregateRevenue(rows) {
+  if (!rows || !rows.length) return null;
+  const byCity     = {};
+  const byPlatform = {};
+  const byWeek     = {};
+  let totalRevenue = 0, totalUnits = 0;
+
+  for (const r of rows) {
+    const rev   = Number(r.standard_revenue) || 0;
+    const units = Number(r.standard_units)   || 0;
+    totalRevenue += rev;
+    totalUnits   += units;
+
+    const city = r.standard_city || 'Unknown';
+    byCity[city] = (byCity[city] || 0) + rev;
+
+    const plat = r.platform || 'unknown';
+    byPlatform[plat] = (byPlatform[plat] || 0) + rev;
+
+    if (r.order_date) {
+      const d    = new Date(r.order_date);
+      const wkey = `W${Math.ceil(d.getDate() / 7)} ${d.toLocaleString('default', { month: 'short' })}`;
+      byWeek[wkey] = (byWeek[wkey] || 0) + rev;
+    }
+  }
+
+  const cities = Object.entries(byCity)
+    .map(([city, revenue]) => ({ city, revenue }))
+    .sort((a, b) => b.revenue - a.revenue);
+
+  const byPlatformArr = Object.entries(byPlatform)
+    .map(([platform, totalRevenue]) => ({ platform, totalRevenue }))
+    .sort((a, b) => b.totalRevenue - a.totalRevenue);
+
+  const weekly = Object.entries(byWeek)
+    .map(([week, revenue]) => ({ week, revenue, prevRevenue: revenue * 0.82 }));
+
+  return { totalRevenue, totalUnits, cities, byPlatform: byPlatformArr, weekly };
+}
+
+// ─── MAIN FETCH + RENDER CYCLE ────────────────────────────────────
+async function fetchAndRender() {
+  const { clientSlug, sku, platform, dateFrom, dateTo } = state;
+  if (!clientSlug) return;
+
+  setBadge('loading');
+
+  const qp = new URLSearchParams();
+  if (sku)      qp.set('sku', sku);
+  if (platform) qp.set('platform', platform);
+  if (dateFrom) qp.set('from', dateFrom);
+  if (dateTo)   qp.set('to', dateTo);
+  const q = qp.toString() ? '?' + qp.toString() : '';
+
+  let revenueData  = null;
+  let campaignRows = null;
+  let isLive       = false;
+
+  try {
+    const [skuResp, campaignResp] = await Promise.all([
+      apiFetch(`/clients/${clientSlug}/sku-performance${q}`),
+      apiFetch(`/clients/${clientSlug}/campaign-insights${q}`),
+    ]);
+
+    if (skuResp.revenue?.length || campaignResp?.length) {
+      revenueData  = aggregateRevenue(skuResp.revenue);
+      campaignRows = campaignResp;
+      isLive       = true;
+
+      // Populate SKU dropdown from live distinct SKUs
+      const skuSet = [...new Set(skuResp.revenue.map(r => r.standard_sku).filter(Boolean))];
+      if (skuSet.length) {
+        populateSkuDropdown(skuSet.map(v => ({ value: v, label: v })));
+      }
+    }
+  } catch (err) {
+    console.warn('[semya] API fetch failed, using mock data:', err.message);
+  }
+
+  // Fall back to mock data if live data is empty
+  if (!revenueData) {
+    revenueData  = MOCK.revenue;
+    campaignRows = MOCK.campaigns;
+    populateSkuDropdown(MOCK.skus);
+  }
+
+  const currentSku = document.getElementById('skuSelect').value || sku || 'SKU';
+
+  // ── Render all widgets ──
+  renderKPIs(revenueData, campaignRows, { totalRevenue: revenueData.prevRevenue, totalUnits: revenueData.prevUnits });
+  renderCities(revenueData.cities);
+  renderDoughnut(revenueData.byPlatform);
+  renderLineChart(revenueData.weekly || MOCK.revenue.weekly);
+  renderCampaigns(campaignRows);
+  renderInsights(MOCK.insights, currentSku);   // AI insights always use computed mock text
+  renderPlatformHealth(revenueData.byPlatform, campaignRows);
+
+  document.getElementById('cityBadge').textContent = currentSku;
+
+  state.isLive = isLive;
+  setBadge(isLive ? 'live' : 'mock');
+}
+
+// ─── CONTROLS ─────────────────────────────────────────────────────
+document.getElementById('skuSelect').addEventListener('change', function() {
+  state.sku = this.value;
+  document.getElementById('cityBadge').textContent = this.value;
+  document.getElementById('aiSubtitle').textContent = `Powered · ${this.value}`;
+  fetchAndRender();
+});
+
+document.getElementById('dateFrom').addEventListener('change', function() {
+  state.dateFrom = this.value;
+  fetchAndRender();
+});
+
+document.getElementById('dateTo').addEventListener('change', function() {
+  state.dateTo = this.value;
+  fetchAndRender();
+});
+
+document.querySelectorAll('.sku-pill').forEach(pill => {
+  pill.addEventListener('click', () => {
+    document.querySelectorAll('.sku-pill').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active');
+    state.platform = pill.dataset.platform;
+    fetchAndRender();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// PHASE 5 — TAB SWITCHING + PLATFORM SALES + CAMPAIGN INSIGHTS
+// ═══════════════════════════════════════════════════════════════════
+
+// ─── TAB STATE ────────────────────────────────────────────────────
+let activeTab  = 'sku_performance';
+const tabCache = {};
+const CACHE_TTL = 60000;
+
+// ─── SHOW TAB ─────────────────────────────────────────────────────
+function showTab(tabKey) {
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  const navEl = document.querySelector('[data-tab="' + tabKey + '"]');
+  if (navEl) navEl.classList.add('active');
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  const panel = document.getElementById('tab-' + tabKey);
+  if (panel) panel.classList.add('active');
+  updateSidebarForTab(tabKey);
+  activeTab = tabKey;
+  const cached = tabCache[tabKey];
+  const fresh  = cached && (Date.now() - cached.timestamp < CACHE_TTL);
+  if (tabKey === 'platform_sales'      && !fresh) fetchAndRenderPS();
+  if (tabKey === 'campaign_insights'   && !fresh) fetchAndRenderCI();
+  if (tabKey === 'sku_performance'      && !fresh) fetchAndRender();
+  if (tabKey === 'geographic_analysis'  && !fresh) fetchAndRenderGEO();
+  if (tabKey === 'daily_targets'        && !fresh) fetchAndRenderDT();
+  if (tabKey === 'ai_insights'          && !fresh) fetchAndRenderAI();
+}
+
+function updateSidebarForTab(tabKey) {
+  const labels = { platform_sales: 'Platform overview', sku_performance: 'SKU-level analysis', campaign_insights: 'Campaign analysis' };
+  const sub = document.getElementById('aiSubtitle');
+  if (sub) sub.textContent = 'Powered · ' + (labels[tabKey] || tabKey);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PLATFORM SALES
+// ═══════════════════════════════════════════════════════════════════
+const psState = { platform: '', dateFrom: '', dateTo: '' };
+
+const MOCK_PS = {
+  platforms: [
+    { platform: 'amazon',   totalRevenue: 4820000, totalUnits: 28400, orderCount: 22800 },
+    { platform: 'flipkart', totalRevenue: 1640000, totalUnits:  9600, orderCount:  7900 },
+    { platform: 'blinkit',  totalRevenue:  830000, totalUnits:  5200, orderCount:  5100 },
+    { platform: 'meta',     totalRevenue:  510000, totalUnits:  3100, orderCount:  2900 },
+  ],
+  grandTotal: 7800000, prevGrandTotal: 6420000, prevUnits: 39200, prevOrders: 34800,
+  weekly: [
+    { week: 'W1 Jul', revenue: 1680000 }, { week: 'W2 Jul', revenue: 2240000 },
+    { week: 'W3 Jul', revenue: 2180000 }, { week: 'W4 Jul', revenue: 1700000 },
+  ],
+  topProducts: [
+    { sku: 'NE-MOIST-200ML', platform: 'amazon',   units: 9204, revenue: 1840000 },
+    { sku: 'NE-SRUM-30ML',   platform: 'amazon',   units: 6120, revenue: 1530000 },
+    { sku: 'NE-CLNSR-150ML', platform: 'flipkart', units: 4800, revenue:  960000 },
+    { sku: 'NE-TONER-100ML', platform: 'blinkit',  units: 3600, revenue:  720000 },
+    { sku: 'NE-SUNSC-50ML',  platform: 'meta',     units: 2900, revenue:  580000 },
+  ],
+};
+
+function setBadgePS(mode) {
+  const b = document.getElementById('psFetchBadge'); const t = document.getElementById('psFetchText');
+  if (b) b.className = 'fetch-badge ' + mode;
+  if (t) t.textContent = mode === 'loading' ? 'Loading…' : mode === 'live' ? 'Live data' : 'Preview data';
+}
+
+async function fetchAndRenderPS() {
+  const { clientSlug } = state; if (!clientSlug) return;
+  setBadgePS('loading');
+  const qp = new URLSearchParams();
+  if (psState.platform) qp.set('platform', psState.platform);
+  if (psState.dateFrom) qp.set('from', psState.dateFrom);
+  if (psState.dateTo)   qp.set('to',   psState.dateTo);
+  const q = qp.toString() ? '?' + qp.toString() : '';
+  let data = null; let isLive = false;
+  try {
+    const resp = await apiFetch('/clients/' + clientSlug + '/platform-sales' + q);
+    if (resp && resp.platforms && resp.platforms.length) { data = resp; isLive = true; }
+  } catch(e) { console.warn('[PS]', e.message); }
+  if (!data) {
+    const plat = psState.platform;
+    const platRows = plat ? MOCK_PS.platforms.filter(p => p.platform === plat) : MOCK_PS.platforms;
+    const gt = platRows.reduce((s, p) => s + p.totalRevenue, 0);
+    data = { platforms: platRows, grandTotal: gt, prevGrandTotal: gt * 0.82,
+             prevUnits: MOCK_PS.prevUnits, prevOrders: MOCK_PS.prevOrders,
+             weekly: MOCK_PS.weekly, topProducts: MOCK_PS.topProducts };
+  }
+  renderPS(data);
+  tabCache['platform_sales'] = { data, timestamp: Date.now() };
+  setBadgePS(isLive ? 'live' : 'mock');
+}
+
+function renderPS(data) {
+  const { platforms, grandTotal, prevGrandTotal, prevUnits, prevOrders, weekly, topProducts } = data;
+  const totalUnits  = platforms.reduce((s, p) => s + (p.totalUnits  || 0), 0);
+  const totalOrders = platforms.reduce((s, p) => s + (p.orderCount  || 0), 0);
+
+  document.getElementById('psKpiRevenue').innerHTML = fmtRevenue(grandTotal);
+  document.getElementById('psKpiRevenueDelta').innerHTML = deltaHtml(pctDelta(grandTotal, prevGrandTotal));
+  document.getElementById('psKpiRevenueSub').innerHTML = 'Across ' + platforms.length + ' platform' + (platforms.length !== 1 ? 's' : '');
+  document.getElementById('psKpiUnits').innerHTML = fmtUnits(totalUnits);
+  document.getElementById('psKpiUnitsDelta').innerHTML = deltaHtml(pctDelta(totalUnits, prevUnits));
+  document.getElementById('psKpiUnitsSub').innerHTML = 'Avg order: ' + (totalOrders ? fmtUnits(Math.round(totalUnits/totalOrders)) : '—') + ' units';
+  document.getElementById('psKpiOrders').innerHTML = totalOrders.toLocaleString('en-IN');
+  document.getElementById('psKpiOrdersDelta').innerHTML = deltaHtml(pctDelta(totalOrders, prevOrders));
+  document.getElementById('psKpiOrdersSub').innerHTML = 'AOV: ' + (totalOrders ? fmtRevenue(grandTotal/totalOrders) : '—');
+
+  const splitEl = document.getElementById('psPlatformSplit');
+  const maxRev  = Math.max(...platforms.map(p => p.totalRevenue));
+  splitEl.innerHTML = platforms.map(p => {
+    const m   = PLATFORM_META[p.platform] || { label: p.platform.toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
+    const pct = grandTotal > 0 ? (p.totalRevenue / grandTotal * 100).toFixed(1) : 0;
+    const barW= maxRev > 0 ? (p.totalRevenue / maxRev * 100).toFixed(1) : 0;
+    return '<div class="stat-bar-row"><div class="stat-bar-meta"><span class="stat-bar-name"><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></span><div class="stat-bar-vals"><span class="stat-bar-rev">' + fmtRevenue(p.totalRevenue) + '</span><span class="stat-bar-pct">' + pct + '%</span></div></div><div class="stat-bar-bg"><div class="stat-bar-fill" style="width:' + barW + '%;background:' + m.color + ';"></div></div></div>';
+  }).join('');
+
+  const wLabels  = (weekly||[]).map(w => w.week);
+  const wRevenue = (weekly||[]).map(w => +(w.revenue/100000).toFixed(1));
+  renderOrUpdateChart('psRevenueChart', '_psRevChart', {
+    type: 'line',
+    data: { labels: wLabels, datasets: [{ label: 'Revenue', data: wRevenue, borderColor: '#0284c7', backgroundColor: 'rgba(2,132,199,.07)', pointBackgroundColor: '#0284c7', pointRadius: 5, pointHoverRadius: 7, tension: 0.4, fill: true, borderWidth: 2 }] },
+    options: lineChartOptions('₹', 'L'),
+  });
+
+  const badgeEl = document.getElementById('psProductBadge');
+  if (badgeEl) badgeEl.textContent = psState.platform ? (PLATFORM_META[psState.platform]?.label || psState.platform) : 'All platforms';
+  const tbody = document.getElementById('psProductTbody');
+  if (!topProducts || !topProducts.length) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#94a3b8;font-size:12px;padding:20px 0;">No product data.</td></tr>'; return; }
+  const sortedProds = [...topProducts].sort((a, b) => b.revenue - a.revenue);
+  tbody.innerHTML = sortedProds.slice(0, 8).map((p, i) => {
+    const share = grandTotal > 0 ? (p.revenue / grandTotal * 100).toFixed(1) : 0;
+    const m = PLATFORM_META[p.platform] || { label: (p.platform||'').toUpperCase(), pillClass: 'pill-amz' };
+    return '<tr><td style="color:#94a3b8;font-size:11px;font-weight:700;">' + (i+1) + '</td><td style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#1e293b;">' + (p.sku||'—') + '</td><td><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></td><td style="font-family:var(--font-mono);">' + fmtUnits(p.units||0) + '</td><td style="font-family:var(--font-mono);font-weight:700;color:var(--theme-primary);">' + fmtRevenue(p.revenue||0) + '</td><td><div style="display:flex;align-items:center;gap:6px;"><div style="width:40px;height:4px;background:#e2eaf2;border-radius:99px;overflow:hidden;"><div style="width:' + share + '%;height:100%;background:var(--theme-primary);border-radius:99px;"></div></div><span style="font-size:10px;color:#94a3b8;">' + share + '%</span></div></td></tr>';
+  }).join('');
+}
+
+document.querySelectorAll('[data-ps-platform]').forEach(pill => {
+  pill.addEventListener('click', () => {
+    document.querySelectorAll('[data-ps-platform]').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active'); psState.platform = pill.dataset.psPlatform;
+    tabCache['platform_sales'] = null; fetchAndRenderPS();
+  });
+});
+document.getElementById('psDateFrom').addEventListener('change', function() { psState.dateFrom = this.value; tabCache['platform_sales'] = null; fetchAndRenderPS(); });
+document.getElementById('psDateTo').addEventListener('change', function()   { psState.dateTo   = this.value; tabCache['platform_sales'] = null; fetchAndRenderPS(); });
+
+
+// ═══════════════════════════════════════════════════════════════════
+// CAMPAIGN INSIGHTS
+// ═══════════════════════════════════════════════════════════════════
+const ciState = { platform: '', dateFrom: '', dateTo: '' };
+
+const MOCK_CI = { campaigns: [
+  { platform: 'amazon',   campaign_name: 'SP — Auto Broad',        standard_spend: 180000, standard_revenue: 920000,  standard_clicks: 14200, standard_impressions: 380000, standard_orders: 1840 },
+  { platform: 'amazon',   campaign_name: 'SP — Exact Match',       standard_spend:  95000, standard_revenue: 540000,  standard_clicks:  8100, standard_impressions: 190000, standard_orders:  980 },
+  { platform: 'amazon',   campaign_name: 'SD — Remarketing',       standard_spend:  60000, standard_revenue: 240000,  standard_clicks:  4800, standard_impressions: 140000, standard_orders:  480 },
+  { platform: 'flipkart', campaign_name: 'PLA — Skincare',         standard_spend:  90000, standard_revenue: 310000,  standard_clicks:  7200, standard_impressions: 210000, standard_orders:  620 },
+  { platform: 'flipkart', campaign_name: 'PLA — Brand Defence',    standard_spend:  40000, standard_revenue: 140000,  standard_clicks:  3100, standard_impressions:  98000, standard_orders:  280 },
+  { platform: 'blinkit',  campaign_name: 'Sponsored — Moisturizer',standard_spend:  35000, standard_revenue: 105000,  standard_clicks:  2900, standard_impressions:  72000, standard_orders:  210 },
+  { platform: 'meta',     campaign_name: 'DPA — Lookalike 2%',     standard_spend:  60000, standard_revenue: 190000,  standard_clicks:  5600, standard_impressions: 220000, standard_orders:  380 },
+  { platform: 'meta',     campaign_name: 'ASC — Retargeting',      standard_spend:  28000, standard_revenue:  84000,  standard_clicks:  2400, standard_impressions:  98000, standard_orders:  168 },
+]};
+
+function setBadgeCI(mode) {
+  const b = document.getElementById('ciFetchBadge'); const t = document.getElementById('ciFetchText');
+  if (b) b.className = 'fetch-badge ' + mode;
+  if (t) t.textContent = mode === 'loading' ? 'Loading…' : mode === 'live' ? 'Live data' : 'Preview data';
+}
+
+async function fetchAndRenderCI() {
+  const { clientSlug } = state; if (!clientSlug) return;
+  setBadgeCI('loading');
+  const qp = new URLSearchParams();
+  if (ciState.platform) qp.set('platform', ciState.platform);
+  if (ciState.dateFrom) qp.set('from', ciState.dateFrom);
+  if (ciState.dateTo)   qp.set('to',   ciState.dateTo);
+  const q = qp.toString() ? '?' + qp.toString() : '';
+  let campaigns = null; let isLive = false;
+  try {
+    const resp = await apiFetch('/clients/' + clientSlug + '/campaign-insights' + q);
+    if (Array.isArray(resp) && resp.length) { campaigns = resp; isLive = true; }
+  } catch(e) { console.warn('[CI]', e.message); }
+  if (!campaigns) campaigns = ciState.platform ? MOCK_CI.campaigns.filter(c => c.platform === ciState.platform) : MOCK_CI.campaigns;
+  renderCI(campaigns);
+  tabCache['campaign_insights'] = { data: campaigns, timestamp: Date.now() };
+  setBadgeCI(isLive ? 'live' : 'mock');
+}
+
+function renderCI(campaigns) {
+  const totalSpend  = campaigns.reduce((s, c) => s + (c.standard_spend || 0), 0);
+  const totalRev    = campaigns.reduce((s, c) => s + (c.standard_revenue || 0), 0);
+  const totalClicks = campaigns.reduce((s, c) => s + (c.standard_clicks || 0), 0);
+  const totalImpr   = campaigns.reduce((s, c) => s + (c.standard_impressions || 0), 0);
+  const blendedRoas = totalSpend > 0 ? totalRev / totalSpend : 0;
+  const avgCTR      = totalImpr  > 0 ? (totalClicks / totalImpr * 100) : 0;
+
+  document.getElementById('ciKpiSpend').innerHTML    = fmtRevenue(totalSpend);
+  document.getElementById('ciKpiSpendDelta').innerHTML = '';
+  document.getElementById('ciKpiSpendSub').innerHTML  = 'Across ' + campaigns.length + ' campaigns';
+  document.getElementById('ciKpiRev').innerHTML      = fmtRevenue(totalRev);
+  document.getElementById('ciKpiRevDelta').innerHTML  = '';
+  document.getElementById('ciKpiRevSub').innerHTML    = (totalRev > 0 && totalSpend > 0 ? '+' + ((totalRev - totalSpend)/totalSpend*100).toFixed(0) + '%' : '—') + ' return on spend';
+  document.getElementById('ciKpiRoas').innerHTML     = blendedRoas > 0 ? fmtRoas(blendedRoas) : '—';
+  document.getElementById('ciKpiRoasDelta').innerHTML = '';
+  document.getElementById('ciKpiRoasSub').innerHTML   = 'Target: 4.0x · ' + (blendedRoas >= 4 ? 'Above' : 'Below') + ' target';
+  document.getElementById('ciKpiClicks').innerHTML      = totalClicks.toLocaleString('en-IN');
+  document.getElementById('ciKpiClicksDelta').innerHTML = '';
+  document.getElementById('ciKpiClicksSub').innerHTML   = 'Avg CTR: ' + avgCTR.toFixed(2) + '% · ' + fmtUnits(totalImpr) + ' impressions';
+
+  const ciWeeks = ['W1 Jul','W2 Jul','W3 Jul','W4 Jul'];
+  const ciRoasVals = [3.8, 4.2, 4.7, blendedRoas > 0 ? +blendedRoas.toFixed(1) : 4.4];
+  renderOrUpdateChart('ciRoasChart', '_ciRoasChart', {
+    type: 'line',
+    data: { labels: ciWeeks, datasets: [
+      { label: 'Blended RoAS', data: ciRoasVals, borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.06)', pointBackgroundColor: '#7c3aed', pointRadius: 5, pointHoverRadius: 7, tension: 0.4, fill: true, borderWidth: 2 },
+      { label: 'Target (4x)',  data: [4,4,4,4],  borderColor: '#d97706', backgroundColor: 'transparent', pointRadius: 0, borderDash: [6,4], borderWidth: 1.5 }
+    ]},
+    options: lineChartOptions('', 'x', 1),
+  });
+
+  const byPlatform = {};
+  campaigns.forEach(c => { byPlatform[c.platform] = (byPlatform[c.platform]||0) + (c.standard_spend||0); });
+  const spendPlats  = Object.entries(byPlatform).sort((a,b) => b[1]-a[1]);
+  const spendLabels = spendPlats.map(([p]) => PLATFORM_META[p]?.label || p.toUpperCase());
+  const spendData   = spendPlats.map(([,v]) => +(v/totalSpend*100).toFixed(1));
+  const spendColors = spendPlats.map(([p]) => PLATFORM_META[p]?.color || '#94a3b8');
+  renderOrUpdateChart('ciSpendChart', '_ciSpendChart', {
+    type: 'doughnut',
+    data: { labels: spendLabels, datasets: [{ data: spendData, backgroundColor: spendColors, borderColor: '#fff', borderWidth: 3, hoverOffset: 5 }] },
+    options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { display: false }, tooltip: { backgroundColor: '#fff', borderColor: '#dce5ef', borderWidth: 1, titleColor: '#0f172a', bodyColor: '#64748b', callbacks: { label: ctx => ' ' + ctx.label + ': ' + ctx.parsed + '%' } } } }
+  });
+  document.getElementById('ciSpendLegend').innerHTML = spendPlats.map(([p],i) =>
+    '<div style="display:flex;align-items:center;gap:5px;font-size:11px;"><div style="width:8px;height:8px;border-radius:50%;background:' + spendColors[i] + ';"></div><span style="color:#64748b;">' + (PLATFORM_META[p]?.label||p) + '</span><span style="color:#1e293b;font-weight:700;">' + spendData[i] + '%</span></div>'
+  ).join('');
+
+  const top3 = [...campaigns].sort((a,b) => (b.standard_revenue||0)-(a.standard_revenue||0)).slice(0,3);
+  const countBadge = document.getElementById('ciCampaignCount');
+  if (countBadge) countBadge.textContent = campaigns.length + ' active';
+  document.getElementById('ciCampaignCards').innerHTML = top3.map(c => {
+    const m = PLATFORM_META[c.platform] || { label: (c.platform||'').toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
+    const roas = c.standard_spend > 0 ? c.standard_revenue/c.standard_spend : 0;
+    const ctr  = c.standard_impressions > 0 ? (c.standard_clicks/c.standard_impressions*100) : 0;
+    return '<div class="campaign-card"><div class="campaign-card-platform"><span class="platform-pill ' + m.pillClass + '">' + m.label + '</span></div><div class="campaign-card-name">' + (c.campaign_name||'—') + '</div><div class="campaign-card-metrics"><div><div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px;">Spend</div><div style="font-size:13px;font-weight:700;color:#1e293b;font-family:var(--font-mono);">' + fmtRevenue(c.standard_spend||0) + '</div></div><div><div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px;">Revenue</div><div style="font-size:13px;font-weight:700;color:var(--theme-primary);font-family:var(--font-mono);">' + fmtRevenue(c.standard_revenue||0) + '</div></div><div><div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px;">RoAS</div><div style="font-size:13px;font-weight:700;color:' + roasColor(roas) + ';">' + (roas > 0 ? fmtRoas(roas) : '—') + '</div></div><div><div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px;">CTR</div><div style="font-size:13px;font-weight:700;color:#64748b;">' + ctr.toFixed(2) + '%</div></div></div></div>';
+  }).join('');
+
+  const ciTbody = document.getElementById('ciCampaignTbody');
+  const sorted  = [...campaigns].sort((a,b) => (b.standard_revenue||0)-(a.standard_revenue||0));
+  ciTbody.innerHTML = sorted.map(c => {
+    const m    = PLATFORM_META[c.platform] || { label: (c.platform||'').toUpperCase(), pillClass: 'pill-amz' };
+    const roas = c.standard_spend > 0 ? c.standard_revenue/c.standard_spend : 0;
+    const ctr  = c.standard_impressions > 0 ? (c.standard_clicks/c.standard_impressions*100) : 0;
+    return '<tr><td><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></td><td style="font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (c.campaign_name||'—') + '</td><td style="font-family:var(--font-mono);font-size:11px;">' + fmtRevenue(c.standard_spend||0) + '</td><td style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--theme-primary);">' + fmtRevenue(c.standard_revenue||0) + '</td><td><span style="font-weight:700;color:' + roasColor(roas) + ';font-family:var(--font-mono);font-size:11px;">' + (roas > 0 ? fmtRoas(roas) : '—') + '</span></td><td style="font-family:var(--font-mono);font-size:11px;">' + (c.standard_clicks||0).toLocaleString('en-IN') + '</td><td style="font-family:var(--font-mono);font-size:11px;color:#94a3b8;">' + (c.standard_impressions||0).toLocaleString('en-IN') + '</td><td style="font-family:var(--font-mono);font-size:11px;">' + ctr.toFixed(2) + '%</td></tr>';
+  }).join('');
+}
+
+document.querySelectorAll('[data-ci-platform]').forEach(pill => {
+  pill.addEventListener('click', () => {
+    document.querySelectorAll('[data-ci-platform]').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active'); ciState.platform = pill.dataset.ciPlatform;
+    tabCache['campaign_insights'] = null; fetchAndRenderCI();
+  });
+});
+document.getElementById('ciDateFrom').addEventListener('change', function() { ciState.dateFrom = this.value; tabCache['campaign_insights'] = null; fetchAndRenderCI(); });
+document.getElementById('ciDateTo').addEventListener('change', function()   { ciState.dateTo   = this.value; tabCache['campaign_insights'] = null; fetchAndRenderCI(); });
+
+
+
+// ═══════════════════════════════════════════════════════════════════
+// PHASE 6A — GEOGRAPHIC ANALYSIS
+// ═══════════════════════════════════════════════════════════════════
+const geoState = { platform: '', dateFrom: '', dateTo: '' };
+
+// Zone groupings
+const STATE_ZONES = {
+  'Maharashtra': 'West',  'Gujarat': 'West',    'Rajasthan': 'West',  'Goa': 'West',
+  'Karnataka':  'South',  'Tamil Nadu': 'South', 'Kerala': 'South',   'Telangana': 'South', 'Andhra Pradesh': 'South',
+  'Delhi':      'North',  'Punjab': 'North',     'Haryana': 'North',  'Uttar Pradesh': 'North', 'Uttarakhand': 'North', 'Himachal Pradesh': 'North',
+  'West Bengal':'East',   'Odisha': 'East',      'Bihar': 'East',     'Jharkhand': 'East', 'Assam': 'East',
+};
+
+const MOCK_GEO = {
+  cities: [
+    { city: 'Mumbai',     state: 'Maharashtra', revenue: 1820000, units: 8200, orders: 7400 },
+    { city: 'Bengaluru',  state: 'Karnataka',   revenue: 1540000, units: 6900, orders: 6200 },
+    { city: 'Delhi NCR',  state: 'Delhi',       revenue: 1310000, units: 5800, orders: 5200 },
+    { city: 'Hyderabad',  state: 'Telangana',   revenue:  990000, units: 4400, orders: 3900 },
+    { city: 'Pune',       state: 'Maharashtra', revenue:  810000, units: 3600, orders: 3200 },
+    { city: 'Chennai',    state: 'Tamil Nadu',  revenue:  680000, units: 3100, orders: 2800 },
+    { city: 'Ahmedabad',  state: 'Gujarat',     revenue:  470000, units: 2100, orders: 1900 },
+    { city: 'Kolkata',    state: 'West Bengal', revenue:  390000, units: 1800, orders: 1600 },
+    { city: 'Jaipur',     state: 'Rajasthan',   revenue:  310000, units: 1400, orders: 1200 },
+    { city: 'Surat',      state: 'Gujarat',     revenue:  260000, units: 1200, orders: 1100 },
+    { city: 'Lucknow',    state: 'Uttar Pradesh', revenue: 220000, units: 1000, orders: 900 },
+    { city: 'Chandigarh', state: 'Punjab',      revenue:  180000, units:  820, orders: 740 },
+    { city: 'Kochi',      state: 'Kerala',      revenue:  160000, units:  720, orders: 640 },
+    { city: 'Bhubaneswar',state: 'Odisha',      revenue:  130000, units:  590, orders: 530 },
+    { city: 'Guwahati',   state: 'Assam',       revenue:  110000, units:  500, orders: 450 },
+  ],
+};
+
+function setBadgeGEO(mode) {
+  const b = document.getElementById('geoFetchBadge');
+  const t = document.getElementById('geoFetchText');
+  if (b) b.className = 'fetch-badge ' + mode;
+  if (t) t.textContent = mode === 'loading' ? 'Loading…' : mode === 'live' ? 'Live data' : 'Preview data';
+}
+
+async function fetchAndRenderGEO() {
+  const { clientSlug } = state; if (!clientSlug) return;
+  setBadgeGEO('loading');
+  const qp = new URLSearchParams();
+  if (geoState.platform) qp.set('platform', geoState.platform);
+  if (geoState.dateFrom) qp.set('from', geoState.dateFrom);
+  if (geoState.dateTo)   qp.set('to',   geoState.dateTo);
+  const q = qp.toString() ? '?' + qp.toString() : '';
+  let cities = null; let isLive = false;
+  try {
+    const resp = await apiFetch('/clients/' + clientSlug + '/geographic' + q);
+    if (Array.isArray(resp) && resp.length) {
+      // Aggregate raw rows by city
+      const byCity = {};
+      resp.forEach(r => {
+        const k = r.standard_city || 'Unknown';
+        if (!byCity[k]) byCity[k] = { city: k, state: r.standard_state || '', revenue: 0, units: 0, orders: 0 };
+        byCity[k].revenue += Number(r.standard_revenue) || 0;
+        byCity[k].units   += Number(r.standard_units)   || 0;
+        byCity[k].orders  += 1;
+      });
+      cities = Object.values(byCity).sort((a, b) => b.revenue - a.revenue);
+      isLive = true;
+    }
+  } catch(e) { console.warn('[GEO]', e.message); }
+  if (!cities) cities = MOCK_GEO.cities;
+  renderGEO(cities);
+  tabCache['geographic_analysis'] = { data: cities, timestamp: Date.now() };
+  setBadgeGEO(isLive ? 'live' : 'mock');
+}
+
+function renderGEO(cities) {
+  const totalRevenue = cities.reduce((s, c) => s + c.revenue, 0);
+  const totalUnits   = cities.reduce((s, c) => s + c.units, 0);
+  const totalOrders  = cities.reduce((s, c) => s + c.orders, 0);
+  const top = cities[0] || {};
+
+  // Aggregate by state
+  const byState = {};
+  cities.forEach(c => {
+    const s = c.state || 'Unknown';
+    if (!byState[s]) byState[s] = { state: s, revenue: 0, units: 0, orders: 0 };
+    byState[s].revenue += c.revenue;
+    byState[s].units   += c.units;
+    byState[s].orders  += c.orders;
+  });
+  const states     = Object.values(byState).sort((a, b) => b.revenue - a.revenue);
+  const topState   = states[0] || {};
+
+  // KPIs
+  document.getElementById('geoKpiTopCity').innerHTML    = fmtRevenue(top.revenue || 0);
+  document.getElementById('geoKpiTopCityName').innerHTML = top.city ? '<span style="font-size:12px;font-weight:700;color:#0284c7;">' + top.city + '</span>' : '';
+  document.getElementById('geoKpiTopCitySub').innerHTML  = (top.units || 0).toLocaleString('en-IN') + ' units · ' + (top.orders || 0).toLocaleString('en-IN') + ' orders';
+  document.getElementById('geoKpiTopState').innerHTML    = fmtRevenue(topState.revenue || 0);
+  document.getElementById('geoKpiTopStateName').innerHTML = topState.state ? '<span style="font-size:12px;font-weight:700;color:#0284c7;">' + topState.state + '</span>' : '';
+  document.getElementById('geoKpiTopStateSub').innerHTML  = (topState.units || 0).toLocaleString('en-IN') + ' units · ' + states.length + ' states';
+  document.getElementById('geoKpiCities').innerHTML      = cities.length;
+  document.getElementById('geoKpiCitiesDelta').innerHTML = '';
+  document.getElementById('geoKpiCitiesSub').innerHTML   = totalUnits.toLocaleString('en-IN') + ' units total';
+
+  // City count badge
+  const cb = document.getElementById('geoCityCount');
+  if (cb) cb.textContent = 'Top ' + Math.min(cities.length, 15);
+
+  // City bars
+  const maxCityRev = cities[0]?.revenue || 1;
+  document.getElementById('geoCityBars').innerHTML = cities.slice(0, 15).map(c => {
+    const pct  = totalRevenue > 0 ? (c.revenue / totalRevenue * 100).toFixed(1) : 0;
+    const barW = (c.revenue / maxCityRev * 100).toFixed(1);
+    return '<div class="stat-bar-row"><div class="stat-bar-meta"><span class="stat-bar-name">' + c.city + (c.state ? ' <span style='font-size:10px;color:#94a3b8;'>(' + c.state + ')</span>' : '') + '</span><div class="stat-bar-vals"><span class="stat-bar-rev">' + fmtRevenue(c.revenue) + '</span><span class="stat-bar-pct">' + pct + '%</span></div></div><div class="stat-bar-bg"><div class="stat-bar-fill" style="width:' + barW + '%;background:var(--theme-primary);"></div></div></div>';
+  }).join('');
+
+  // Zone bars
+  const zones = {};
+  cities.forEach(c => {
+    const z = STATE_ZONES[c.state] || 'Other';
+    zones[z] = (zones[z] || 0) + c.revenue;
+  });
+  const zoneColors = { West: '#0284c7', South: '#059669', North: '#7c3aed', East: '#d97706', Other: '#94a3b8' };
+  const zoneSorted = Object.entries(zones).sort((a, b) => b[1] - a[1]);
+  const maxZone    = zoneSorted[0]?.[1] || 1;
+  document.getElementById('geoZoneBars').innerHTML = zoneSorted.map(([zone, rev]) => {
+    const pct  = totalRevenue > 0 ? (rev / totalRevenue * 100).toFixed(1) : 0;
+    const barW = (rev / maxZone * 100).toFixed(1);
+    const col  = zoneColors[zone] || '#94a3b8';
+    return '<div class="stat-bar-row"><div class="stat-bar-meta"><span class="stat-bar-name"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + col + ';margin-right:4px;"></span>' + zone + '</span><div class="stat-bar-vals"><span class="stat-bar-rev">' + fmtRevenue(rev) + '</span><span class="stat-bar-pct">' + pct + '%</span></div></div><div class="stat-bar-bg"><div class="stat-bar-fill" style="width:' + barW + '%;background:' + col + ';"></div></div></div>';
+  }).join('');
+
+  // State table
+  const stateBadge = document.getElementById('geoStateBadge');
+  if (stateBadge) stateBadge.textContent = states.length + ' states';
+  document.getElementById('geoStateTbody').innerHTML = states.map((s, i) => {
+    const share = totalRevenue > 0 ? (s.revenue / totalRevenue * 100).toFixed(1) : 0;
+    const aov   = s.orders > 0 ? fmtRevenue(s.revenue / s.orders) : '—';
+    return '<tr><td style="color:#94a3b8;font-size:11px;font-weight:700;">' + (i+1) + '</td><td style="font-weight:600;color:#1e293b;">' + s.state + '</td><td style="font-family:var(--font-mono);font-weight:700;color:var(--theme-primary);">' + fmtRevenue(s.revenue) + '</td><td style="font-family:var(--font-mono);">' + s.units.toLocaleString('en-IN') + '</td><td style="font-family:var(--font-mono);">' + s.orders.toLocaleString('en-IN') + '</td><td style="font-family:var(--font-mono);color:#64748b;">' + aov + '</td><td><div style="display:flex;align-items:center;gap:6px;"><div style="width:44px;height:4px;background:#e2eaf2;border-radius:99px;overflow:hidden;"><div style="width:' + share + '%;height:100%;background:var(--theme-primary);border-radius:99px;"></div></div><span style="font-size:10px;color:#94a3b8;">' + share + '%</span></div></td></tr>';
+  }).join('');
+}
+
+document.querySelectorAll('[data-geo-platform]').forEach(pill => {
+  pill.addEventListener('click', () => {
+    document.querySelectorAll('[data-geo-platform]').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active'); geoState.platform = pill.dataset.geoPlatform;
+    tabCache['geographic_analysis'] = null; fetchAndRenderGEO();
+  });
+});
+document.getElementById('geoDateFrom').addEventListener('change', function() { geoState.dateFrom = this.value; tabCache['geographic_analysis'] = null; fetchAndRenderGEO(); });
+document.getElementById('geoDateTo').addEventListener('change',   function() { geoState.dateTo   = this.value; tabCache['geographic_analysis'] = null; fetchAndRenderGEO(); });
+
+
+// ═══════════════════════════════════════════════════════════════════
+// PHASE 6B — DAILY TARGETS
+// ═══════════════════════════════════════════════════════════════════
+const dtState = { date: '', targets: {}, achieved: {} };
+
+const PLATFORMS_DT = ['amazon', 'flipkart', 'blinkit', 'meta'];
+
+const MOCK_TARGETS = {
+  amazon:   { target: 600000, achieved: 512000 },
+  flipkart: { target: 200000, achieved: 198000 },
+  blinkit:  { target: 100000, achieved:  62000 },
+  meta:     { target:  80000, achieved:  74000 },
+};
+
+const MOCK_DT_TREND = [
+  { day: 'Mon', pct: 82  },
+  { day: 'Tue', pct: 91  },
+  { day: 'Wed', pct: 78  },
+  { day: 'Thu', pct: 107 },
+  { day: 'Fri', pct: 95  },
+  { day: 'Sat', pct: 88  },
+  { day: 'Sun', pct: 85  },
+];
+
+function setBadgeDT(mode) {
+  const b = document.getElementById('dtFetchBadge');
+  const t = document.getElementById('dtFetchText');
+  if (b) b.className = 'fetch-badge ' + mode;
+  if (t) t.textContent = mode === 'loading' ? 'Loading…' : mode === 'live' ? 'Live data' : 'Preview data';
+}
+
+async function fetchAndRenderDT() {
+  const { clientSlug } = state; if (!clientSlug) return;
+  setBadgeDT('loading');
+  const date = dtState.date || new Date().toISOString().split('T')[0];
+
+  let targets  = null;
+  let achieved = null;
+  let isLive   = false;
+
+  try {
+    // Try to load saved targets
+    const resp = await apiFetch('/clients/' + clientSlug + '/targets?date=' + date);
+    if (resp && resp.targets) { targets = resp.targets; isLive = true; }
+  } catch(e) { console.warn('[DT] targets API miss:', e.message); }
+
+  try {
+    // Try to load today's actual revenue from sku-performance with today as date range
+    const resp = await apiFetch('/clients/' + clientSlug + '/platform-sales?from=' + date + '&to=' + date);
+    if (resp && resp.platforms && resp.platforms.length) {
+      achieved = {};
+      resp.platforms.forEach(p => { achieved[p.platform] = { revenue: p.totalRevenue, units: p.totalUnits }; });
+      isLive = true;
+    }
+  } catch(e) { console.warn('[DT] achieved API miss:', e.message); }
+
+  if (!targets)  targets  = MOCK_TARGETS;
+  if (!achieved) {
+    achieved = {};
+    PLATFORMS_DT.forEach(p => { achieved[p] = { revenue: MOCK_TARGETS[p].achieved, units: 0 }; });
+  }
+
+  dtState.targets  = targets;
+  dtState.achieved = achieved;
+  renderDT(targets, achieved);
+  tabCache['daily_targets'] = { data: { targets, achieved }, timestamp: Date.now() };
+  setBadgeDT(isLive ? 'live' : 'mock');
+}
+
+function renderDT(targets, achieved) {
+  const platforms = PLATFORMS_DT;
+  let totalTarget   = 0, totalAchieved = 0, totalUnits = 0;
+
+  platforms.forEach(p => {
+    totalTarget   += (targets[p]?.target   || 0);
+    totalAchieved += (achieved[p]?.revenue || targets[p]?.achieved || 0);
+    totalUnits    += (achieved[p]?.units   || 0);
+  });
+
+  const attainPct = totalTarget > 0 ? (totalAchieved / totalTarget * 100) : 0;
+  const attainCls = attainPct >= 100 ? 'up' : attainPct >= 80 ? '' : 'down';
+
+  // KPIs
+  document.getElementById('dtKpiRevenue').innerHTML    = fmtRevenue(totalAchieved);
+  document.getElementById('dtKpiRevenueDelta').innerHTML = '<span class="kpi-delta ' + attainCls + '">' + attainPct.toFixed(1) + '% of target</span>';
+  document.getElementById('dtKpiRevenueSub').innerHTML  = 'Target: ' + fmtRevenue(totalTarget);
+  document.getElementById('dtKpiUnits').innerHTML      = totalUnits > 0 ? fmtUnits(totalUnits) : '—';
+  document.getElementById('dtKpiUnitsDelta').innerHTML  = '';
+  document.getElementById('dtKpiUnitsSub').innerHTML    = 'Across all platforms';
+  document.getElementById('dtKpiAttainment').innerHTML  = attainPct.toFixed(1) + '%';
+  document.getElementById('dtKpiAttainmentDelta').innerHTML = attainPct >= 100
+    ? '<span class="kpi-delta up">✓ Target hit</span>'
+    : '<span class="kpi-delta down">' + fmtRevenue(totalTarget - totalAchieved) + ' remaining</span>';
+  document.getElementById('dtKpiAttainmentSub').innerHTML = attainPct.toFixed(0) + '% overall attainment';
+
+  // Platform progress bars
+  document.getElementById('dtPlatformProgress').innerHTML = platforms.map(p => {
+    const m        = PLATFORM_META[p] || { label: p.toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
+    const tgt      = targets[p]?.target   || 0;
+    const ach      = achieved[p]?.revenue || targets[p]?.achieved || 0;
+    const pct      = tgt > 0 ? Math.min((ach / tgt * 100), 150) : 0;  // cap bar at 150%
+    const pctLabel = tgt > 0 ? (ach / tgt * 100).toFixed(1) : '0';
+    const pctCls   = pct >= 100 ? 'over' : pct >= 80 ? 'on' : pct >= 50 ? 'under' : 'low';
+    const tgtLine  = Math.min((1 / (pct > 0 ? pct/100*1.5 : 1)) * 100, 100);
+    return '<div class="progress-wrap"><div class="progress-header"><span class="progress-label"><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></span><div class="progress-vals"><span class="progress-achieved">' + fmtRevenue(ach) + '</span><span style="color:#94a3b8;font-size:11px;">/</span><span class="progress-target">' + fmtRevenue(tgt) + '</span><span class="progress-pct ' + pctCls + '">' + pctLabel + '%</span></div></div><div class="progress-track"><div class="progress-fill" style="width:' + Math.min(pct, 100) + '%;background:' + m.color + ';opacity:' + (pct < 50 ? 0.5 : 1) + ';"></div></div></div>';
+  }).join('');
+
+  // 7-day trend sparkline
+  renderOrUpdateChart('dtTrendChart', '_dtTrendChart', {
+    type: 'bar',
+    data: {
+      labels: MOCK_DT_TREND.map(d => d.day),
+      datasets: [{
+        label: 'Attainment %',
+        data:  MOCK_DT_TREND.map(d => d.pct),
+        backgroundColor: MOCK_DT_TREND.map(d => d.pct >= 100 ? 'rgba(5,150,105,.8)' : d.pct >= 80 ? 'rgba(2,132,199,.75)' : 'rgba(217,119,6,.7)'),
+        borderRadius: 4, borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { backgroundColor: '#fff', borderColor: '#dce5ef', borderWidth: 1, titleColor: '#0f172a', bodyColor: '#64748b',
+          callbacks: { label: ctx => ' ' + ctx.parsed.y + '% attained' } }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 } } },
+        y: { grid: { color: 'rgba(220,229,239,.7)' }, ticks: { color: '#94a3b8', font: { size: 10 }, callback: v => v + '%' }, min: 0, max: 120,
+          afterBuildTicks: axis => { axis.ticks = [0, 25, 50, 75, 100].map(v => ({ value: v })); } }
+      },
+      annotation: {}
+    }
+  });
+
+  // Render admin target inputs (only shown to admins via data-role)
+  document.getElementById('dtTargetInputs').innerHTML = platforms.map(p => {
+    const m   = PLATFORM_META[p] || { label: p.toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
+    const tgt = targets[p]?.target || 0;
+    return '<div class="target-input-group"><label class="target-input-label"><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span> Daily Target</label><div class="target-input-wrap"><span class="target-input-prefix">₹</span><input type="number" class="target-input" id="dtTarget_' + p + '" value="' + tgt + '" min="0" step="10000" onchange="dtState.targets['' + p + ''] = dtState.targets['' + p + ''] || {}; dtState.targets['' + p + ''].target = Number(this.value);" /></div></div>';
+  }).join('');
+}
+
+// Save targets to backend
+async function saveTargets() {
+  const { clientSlug } = state; if (!clientSlug) return;
+  const btn    = document.getElementById('dtSaveBtn');
+  const status = document.getElementById('dtSaveStatus');
+  btn.disabled = true;
+  status.textContent = 'Saving…';
+  status.style.color = '#64748b';
+
+  // Read current input values
+  PLATFORMS_DT.forEach(p => {
+    const input = document.getElementById('dtTarget_' + p);
+    if (input) {
+      if (!dtState.targets[p]) dtState.targets[p] = {};
+      dtState.targets[p].target = Number(input.value) || 0;
+    }
+  });
+
+  const date = dtState.date || new Date().toISOString().split('T')[0];
+
+  try {
+    const res = await fetch(API_BASE + '/clients/' + clientSlug + '/targets', {
+      method: 'PUT',
+      headers: authHeaders(),
+      credentials: 'include',
+      body: JSON.stringify({ date, targets: dtState.targets }),
+    });
+    if (!res.ok) throw new Error('Server returned ' + res.status);
+    status.textContent = '✓ Saved';
+    status.style.color = '#059669';
+    tabCache['daily_targets'] = null;   // invalidate so next visit re-fetches
+    setTimeout(() => { status.textContent = ''; }, 3000);
+  } catch(e) {
+    status.textContent = 'Save failed: ' + e.message;
+    status.style.color = '#dc2626';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.getElementById('dtDate').addEventListener('change', function() {
+  dtState.date = this.value; tabCache['daily_targets'] = null; fetchAndRenderDT();
+});
+
+
+// ═══════════════════════════════════════════════════════════════════
+// PHASE 7 — AI INSIGHTS TAB
+// ═══════════════════════════════════════════════════════════════════
+const aiState = { filter: '', allInsights: [] };
+
+const MOCK_AI_INSIGHTS = [
+  {
+    insight_type: 'warn',
+    tag:          '\u26a0 Inventory Burn Rate',
+    body:         'Top SKU <strong>NE-MOIST-200ML</strong> is selling at an estimated <strong>~512 units/day</strong> across Amazon and Blinkit. At this pace, a stockout is projected within <strong>18 days</strong>. Amazon FBA replenishment lead time is 9\u201311 days \u2014 initiate a purchase order today to avoid lost sales.',
+    confidence:   91,
+    platform:     'amazon',
+    sku:          'NE-MOIST-200ML',
+    generated_at: null,
+  },
+  {
+    insight_type: 'positive',
+    tag:          '\ud83d\udccd Geographic Opportunity',
+    body:         '<strong>Pune and Hyderabad</strong> show customer acquisition cost 34% below Mumbai for this SKU, yet receive less than 9% of current Meta ad spend. Reallocating <strong>\u20b918K/week</strong> to Tier-2 south metro audiences is estimated to yield <strong>+\u20b962K incremental revenue</strong> per week at no increase in total budget.',
+    confidence:   87,
+    platform:     'meta',
+    sku:          null,
+    generated_at: null,
+  },
+  {
+    insight_type: 'warn',
+    tag:          '\ud83d\udcca RoAS Compression',
+    body:         'Amazon SP blended RoAS has declined from <strong>5.8x \u2192 5.1x</strong> over the last 7 days. Bid competition on the keyword "daily moisturizer" has risen an estimated 18% since the start of the month. Consider shifting <strong>20% of SP budget</strong> to long-tail defensive keywords to protect margin.',
+    confidence:   84,
+    platform:     'amazon',
+    sku:          null,
+    generated_at: null,
+  },
+  {
+    insight_type: 'neutral',
+    tag:          '\ud83d\udd04 Flipkart Channel Signal',
+    body:         'Flipkart conversion rate for NE-MOIST-200ML has improved to <strong>4.2%</strong> (up from 2.9% last month) following recent title optimisation. Increasing PLA bid cap by <strong>\u20b94 CPC</strong> could unlock an estimated \u20b940K\u2013\u20b960K additional weekly revenue.',
+    confidence:   79,
+    platform:     'flipkart',
+    sku:          'NE-MOIST-200ML',
+    generated_at: null,
+  },
+];
+
+function setBadgeAI(mode) {
+  const b = document.getElementById('aiFetchBadge');
+  const t = document.getElementById('aiFetchText');
+  if (b) b.className = 'fetch-badge ' + mode;
+  if (t) t.textContent = mode === 'loading' ? 'Loading...' : mode === 'live' ? 'Live data' : 'Preview data';
+}
+
+async function fetchAndRenderAI() {
+  const { clientSlug } = state; if (!clientSlug) return;
+  setBadgeAI('loading');
+
+  let insights = null, isLive = false, genAt = null;
+
+  try {
+    const resp = await apiFetch('/clients/' + clientSlug + '/ai-insights?limit=10');
+    if (resp && resp.insights && resp.insights.length) {
+      insights = resp.insights; genAt = resp.generatedAt; isLive = true;
+    }
+  } catch(e) { console.warn('[AI]', e.message); }
+
+  if (!insights) insights = MOCK_AI_INSIGHTS;
+
+  aiState.allInsights = insights;
+  aiState.filter      = '';
+  document.querySelectorAll('[data-ai-filter]').forEach(p => p.classList.toggle('active', p.dataset.aiFilter === ''));
+
+  renderAI(insights, genAt, isLive);
+  tabCache['ai_insights'] = { data: { insights, genAt }, timestamp: Date.now() };
+  setBadgeAI(isLive ? 'live' : 'mock');
+}
+
+function renderAI(insights, genAt, isLive) {
+  const avgConf = insights.length
+    ? Math.round(insights.reduce((s, i) => s + (i.confidence || 0), 0) / insights.length) : 0;
+  const timeLabel = genAt
+    ? new Date(genAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
+    : (isLive ? 'Just now' : 'Preview data');
+
+  document.getElementById('aiStatTotal').textContent = insights.length;
+  document.getElementById('aiStatConf').textContent  = avgConf + '%';
+  document.getElementById('aiStatTime').textContent  = timeLabel;
+
+  const meta = document.getElementById('aiTabMeta');
+  if (meta) meta.textContent = isLive
+    ? insights.length + ' insights generated ' + timeLabel
+    : insights.length + ' preview insights — upload data to generate live analysis';
+
+  renderAICards(insights);
+}
+
+function renderAICards(insights) {
+  const container = document.getElementById('aiInsightCards');
+  if (!insights.length) {
+    container.innerHTML = '<div class="ai-empty-state"><div class="ai-empty-icon">&#10024;</div><div class="ai-empty-title">No insights yet</div><div class="ai-empty-body">Upload a revenue or campaign file to trigger AI analysis,<br>or click Regenerate if data is already loaded.</div></div>';
+    return;
+  }
+  const order = { warn: 0, positive: 1, neutral: 2 };
+  const sorted = [...insights].sort((a, b) => (order[a.insight_type] || 0) - (order[b.insight_type] || 0));
+
+  container.innerHTML = sorted.map(ins => {
+    const cls      = ins.insight_type || 'neutral';
+    const confCls  = (ins.confidence || 0) >= 85 ? 'color:#059669' : (ins.confidence || 0) >= 70 ? 'color:#0284c7' : 'color:#d97706';
+    const platM    = ins.platform ? (PLATFORM_META[ins.platform] || { label: ins.platform.toUpperCase(), pillClass: 'pill-amz' }) : null;
+    const platHtml = platM ? '<span class="platform-pill ' + platM.pillClass + '" style="font-size:9px;padding:2px 7px;">' + platM.label + '</span>' : '';
+    const skuHtml  = ins.sku ? '<span class="insight-sku">' + ins.sku + '</span>' : '';
+    const tsHtml   = ins.generated_at ? '<span class="insight-ts">' + new Date(ins.generated_at).toLocaleDateString('en-IN') + '</span>' : '';
+    const hasFooter= ins.sku || ins.platform || ins.generated_at;
+    return '<div class="insight-card ' + cls + '" style="margin-bottom:12px;">' +
+      '<div class="insight-card-header">' +
+        '<span class="insight-card-tag">' + (ins.tag || '') + '</span>' +
+        '<div class="insight-card-meta">' +
+          (ins.confidence != null ? '<span class="insight-conf" style="' + confCls + ';">' + ins.confidence + '% confidence</span>' : '') +
+          platHtml +
+        '</div>' +
+      '</div>' +
+      '<div class="insight-card-body">' + (ins.body || '') + '</div>' +
+      (hasFooter ? '<div class="insight-card-footer">' + skuHtml + platHtml + tsHtml + '</div>' : '') +
+    '</div>';
+  }).join('');
+}
+
+document.querySelectorAll('[data-ai-filter]').forEach(pill => {
+  pill.addEventListener('click', () => {
+    document.querySelectorAll('[data-ai-filter]').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active');
+    aiState.filter = pill.dataset.aiFilter;
+    const filtered = aiState.filter
+      ? aiState.allInsights.filter(i => i.insight_type === aiState.filter)
+      : aiState.allInsights;
+    renderAICards(filtered);
+  });
+});
+
+async function regenerateInsights() {
+  const { clientSlug } = state; if (!clientSlug) return;
+  const btn = document.getElementById('aiRegenBtn');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+  setBadgeAI('loading');
+  try {
+    const res = await fetch(API_BASE + '/clients/' + clientSlug + '/ai-insights/generate', {
+      method: 'POST', headers: authHeaders(), credentials: 'include', body: JSON.stringify({}),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Generation failed');
+    tabCache['ai_insights'] = null;
+    await fetchAndRenderAI();
+    const meta = document.getElementById('aiTabMeta');
+    if (meta) meta.textContent = data.count + ' fresh insights generated — ' + data.tokensUsed + ' tokens used';
+  } catch(e) {
+    console.error('[AI regen]', e.message);
+    setBadgeAI('mock');
+    const meta = document.getElementById('aiTabMeta');
+    if (meta) meta.textContent = 'Generation failed: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Regenerate';
+  }
+}
+
+
+
+// ─── SHARED CHART HELPER ──────────────────────────────────────────
+function renderOrUpdateChart(canvasId, stateKey, config) {
+  const canvas = document.getElementById(canvasId); if (!canvas) return;
+  if (state[stateKey]) {
+    state[stateKey].data.labels = config.data.labels;
+    config.data.datasets.forEach((ds, i) => { if (state[stateKey].data.datasets[i]) state[stateKey].data.datasets[i].data = ds.data; });
+    state[stateKey].update();
+  } else {
+    state[stateKey] = new Chart(canvas, config);
+  }
+}
+
+function lineChartOptions(prefix, suffix, decimals) {
+  decimals = decimals !== undefined ? decimals : 1;
+  return {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'top', align: 'end', labels: { color: '#64748b', font: { size: 10 }, boxWidth: 20, padding: 12 } },
+      tooltip: { backgroundColor: '#fff', borderColor: '#dce5ef', borderWidth: 1, titleColor: '#0f172a', bodyColor: '#64748b',
+        callbacks: { label: ctx => ' ' + prefix + ctx.parsed.y.toFixed(decimals) + suffix } }
+    },
+    scales: {
+      x: { grid: { color: 'rgba(220,229,239,.7)' }, ticks: { color: '#94a3b8', font: { size: 10 } } },
+      y: { grid: { color: 'rgba(220,229,239,.7)' }, ticks: { color: '#94a3b8', font: { size: 10 }, callback: v => prefix + v + suffix }, min: 0 }
+    }
+  };
+}
+
+
+// ─── MODAL + DRAWER ───────────────────────────────────────────────
+function openModal()  { document.getElementById('aclModal').classList.add('open'); }
+function closeModal() { document.getElementById('aclModal').classList.remove('open'); }
+document.getElementById('aclModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+function openDrawer()  { document.getElementById('uploadDrawer').classList.add('open'); }
+function closeDrawer() { document.getElementById('uploadDrawer').classList.remove('open'); }
+document.getElementById('uploadDrawer').addEventListener('click', e => { if (e.target === e.currentTarget) closeDrawer(); });
+
+
+// ─── BOOT ─────────────────────────────────────────────────────────
+function boot(user) {
+  state.token      = user && user.token ? user.token : getToken();
+  state.clientSlug = (user && user.clientSlug) || (window.location.pathname.match(/\/clients\/([^/]+)/)||[])[1] || 'neat-everyday';
+  initDates();
+  const from = state.dateFrom; const to = state.dateTo;
+  const today = new Date().toISOString().split('T')[0];
+  const psF = document.getElementById('psDateFrom');  const psT = document.getElementById('psDateTo');
+  const ciF = document.getElementById('ciDateFrom');  const ciT = document.getElementById('ciDateTo');
+  const geoF= document.getElementById('geoDateFrom'); const geoT= document.getElementById('geoDateTo');
+  const dtD = document.getElementById('dtDate');
+  if (psF)  psF.value  = from; if (psT)  psT.value  = to;
+  if (ciF)  ciF.value  = from; if (ciT)  ciT.value  = to;
+  if (geoF) geoF.value = from; if (geoT) geoT.value = to;
+  if (dtD)  dtD.value  = today;
+  psState.dateFrom  = from; psState.dateTo  = to;
+  ciState.dateFrom  = from; ciState.dateTo  = to;
+  geoState.dateFrom = from; geoState.dateTo = to;
+  dtState.date = today;
+  fetchAndRender();
+}
+
+if (window.semyaUser) {
+  boot(window.semyaUser);
+} else {
+  document.addEventListener('semya:auth-ready', e => boot(e.detail));
+  setTimeout(function() { if (!state.clientSlug) boot({}); }, 400);
+}
+</script>
+
+</body>
+</html>

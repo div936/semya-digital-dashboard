@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign in — Semya Digital</title>
+  <style>
+    /* ─── TOKENS ──────────────────────────────────────────────────── */
+    :root {
+      --bg:           #f0f4f8;
+      --surface:      #ffffff;
+      --border:       #dce5ef;
+      --border-focus: #0284c7;
+      --primary:      #0284c7;
+      --primary-dark: #075985;
+      --primary-soft: #eff6ff;
+      --text:         #0f172a;
+      --text-muted:   #64748b;
+      --text-light:   #94a3b8;
+      --error-bg:     #fef2f2;
+      --error-border: #fecaca;
+      --error-text:   #dc2626;
+      --success-bg:   #f0fdf4;
+      --success-text: #15803d;
+      --radius:       10px;
+      --radius-lg:    16px;
+      --shadow:       0 4px 24px rgba(2, 132, 199, 0.08), 0 1px 4px rgba(0,0,0,0.06);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    /* ─── LEFT PANEL — branding ───────────────────────────────────── */
+    .brand-panel {
+      background: var(--primary-dark);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 48px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* subtle grid overlay */
+    .brand-panel::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+    }
+
+    /* accent circle */
+    .brand-panel::after {
+      content: '';
+      position: absolute;
+      width: 400px; height: 400px;
+      border-radius: 50%;
+      background: rgba(14, 165, 233, 0.12);
+      bottom: -120px; right: -80px;
+      pointer-events: none;
+    }
+
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: relative;
+      z-index: 1;
+    }
+    .brand-mark {
+      width: 42px; height: 42px;
+      background: #0ea5e9;
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; font-weight: 900; color: #fff;
+      letter-spacing: -0.5px;
+      flex-shrink: 0;
+    }
+    .brand-name { font-size: 15px; font-weight: 700; color: #fff; }
+    .brand-tagline { font-size: 11px; color: rgba(255,255,255,.5); margin-top: 2px; letter-spacing: 0.05em; text-transform: uppercase; }
+
+    .brand-hero {
+      position: relative;
+      z-index: 1;
+    }
+    .brand-eyebrow {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #38bdf8;
+      margin-bottom: 16px;
+    }
+    .brand-headline {
+      font-size: 36px;
+      font-weight: 800;
+      color: #fff;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      margin-bottom: 20px;
+    }
+    .brand-headline em {
+      font-style: normal;
+      color: #7dd3fc;
+    }
+    .brand-desc {
+      font-size: 14px;
+      color: rgba(255,255,255,.6);
+      line-height: 1.7;
+      max-width: 340px;
+    }
+
+    .brand-stats {
+      display: flex;
+      gap: 32px;
+      position: relative;
+      z-index: 1;
+    }
+    .stat-item { display: flex; flex-direction: column; gap: 4px; }
+    .stat-val {
+      font-size: 22px;
+      font-weight: 800;
+      color: #fff;
+      letter-spacing: -0.02em;
+    }
+    .stat-label {
+      font-size: 11px;
+      color: rgba(255,255,255,.45);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    /* ─── RIGHT PANEL — form ─────────────────────────────────────── */
+    .form-panel {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 48px 40px;
+      overflow-y: auto;
+    }
+
+    .form-card {
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .form-header { margin-bottom: 32px; }
+    .form-title {
+      font-size: 24px;
+      font-weight: 800;
+      color: var(--text);
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+    }
+    .form-subtitle { font-size: 14px; color: var(--text-muted); line-height: 1.5; }
+
+    /* ─── FORM ELEMENTS ───────────────────────────────────────────── */
+    .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+
+    label {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: 0.02em;
+    }
+
+    .input-wrap { position: relative; }
+    .input-icon {
+      position: absolute;
+      left: 13px; top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-light);
+      pointer-events: none;
+      display: flex;
+    }
+
+    input[type="email"],
+    input[type="password"],
+    input[type="text"] {
+      width: 100%;
+      height: 44px;
+      padding: 0 14px 0 40px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 14px;
+      color: var(--text);
+      background: var(--surface);
+      outline: none;
+      transition: border-color .15s, box-shadow .15s;
+      font-family: inherit;
+    }
+    input:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px rgba(2, 132, 199, .12);
+    }
+    input.error-field { border-color: var(--error-text); }
+    input.error-field:focus { box-shadow: 0 0 0 3px rgba(220,38,38,.1); }
+
+    /* password toggle */
+    .pw-toggle {
+      position: absolute;
+      right: 12px; top: 50%;
+      transform: translateY(-50%);
+      background: none; border: none;
+      cursor: pointer;
+      color: var(--text-light);
+      padding: 4px;
+      display: flex;
+      transition: color .15s;
+    }
+    .pw-toggle:hover { color: var(--primary); }
+
+    /* role selector tabs */
+    .role-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+    .role-tab {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 14px 10px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      cursor: pointer;
+      background: var(--surface);
+      transition: all .15s;
+      color: var(--text-muted);
+    }
+    .role-tab:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+    .role-tab.active {
+      border-color: var(--primary);
+      background: var(--primary-soft);
+      color: var(--primary);
+    }
+    .role-tab-icon { font-size: 20px; }
+    .role-tab-label { font-size: 12px; font-weight: 700; }
+    .role-tab-desc  { font-size: 10px; color: var(--text-light); text-align: center; }
+    .role-tab.active .role-tab-desc { color: #0284c7; opacity: .7; }
+
+    /* submit button */
+    .btn-submit {
+      width: 100%;
+      height: 46px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: background .15s, box-shadow .15s, transform .1s;
+      font-family: inherit;
+      letter-spacing: 0.01em;
+      margin-top: 6px;
+    }
+    .btn-submit:hover:not(:disabled) {
+      background: var(--primary-dark);
+      box-shadow: 0 4px 14px rgba(2,132,199,.35);
+    }
+    .btn-submit:active:not(:disabled) { transform: scale(0.99); }
+    .btn-submit:disabled {
+      opacity: .7;
+      cursor: not-allowed;
+    }
+
+    /* spinner */
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .btn-submit.loading .spinner { display: block; }
+    .btn-submit.loading .btn-text { opacity: .6; }
+
+    /* alerts */
+    .alert {
+      padding: 12px 14px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      line-height: 1.5;
+      display: none;
+      margin-bottom: 18px;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .alert.visible { display: flex; }
+    .alert-error {
+      background: var(--error-bg);
+      border: 1px solid var(--error-border);
+      color: var(--error-text);
+    }
+    .alert-success {
+      background: var(--success-bg);
+      border: 1px solid #bbf7d0;
+      color: var(--success-text);
+    }
+    .alert svg { flex-shrink: 0; margin-top: 1px; }
+
+    /* divider */
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 22px 0;
+    }
+    .divider-line { flex: 1; height: 1px; background: var(--border); }
+    .divider-text { font-size: 11px; color: var(--text-light); }
+
+    /* footer */
+    .form-footer {
+      margin-top: 28px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-light);
+    }
+    .form-footer a { color: var(--primary); text-decoration: none; font-weight: 600; }
+    .form-footer a:hover { text-decoration: underline; }
+
+    /* ─── ALREADY LOGGED IN BANNER ────────────────────────────────── */
+    .logged-in-banner {
+      background: var(--success-bg);
+      border: 1px solid #bbf7d0;
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 24px;
+      display: none;
+    }
+    .logged-in-banner.visible { display: block; }
+    .logged-in-banner p { font-size: 13px; color: var(--success-text); margin-bottom: 10px; }
+    .btn-go {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 700;
+      color: var(--primary); background: var(--primary-soft);
+      border: 1px solid #bfdbfe; border-radius: 6px;
+      padding: 6px 14px; cursor: pointer; text-decoration: none;
+      transition: background .15s;
+    }
+    .btn-go:hover { background: #dbeafe; }
+
+    /* ─── RESPONSIVE ──────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      body { grid-template-columns: 1fr; }
+      .brand-panel { display: none; }
+      .form-panel { padding: 32px 24px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════════
+     LEFT — BRAND PANEL
+══════════════════════════════════════════════════════════════ -->
+<div class="brand-panel">
+
+  <div class="brand-logo">
+    <div class="brand-mark">SD</div>
+    <div>
+      <div class="brand-name">Semya Digital</div>
+      <div class="brand-tagline">Analytics Platform</div>
+    </div>
+  </div>
+
+  <div class="brand-hero">
+    <div class="brand-eyebrow">Multi-brand analytics</div>
+    <h1 class="brand-headline">
+      Every metric,<br>
+      every platform,<br>
+      <em>one view.</em>
+    </h1>
+    <p class="brand-desc">
+      Real-time sales intelligence across Amazon, Flipkart, Blinkit, Meta,
+      and Google — normalised, unified, and ready to act on.
+    </p>
+  </div>
+
+  <div class="brand-stats">
+    <div class="stat-item">
+      <span class="stat-val">6</span>
+      <span class="stat-label">Platforms</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-val">120+</span>
+      <span class="stat-label">Column variants</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-val">Live</span>
+      <span class="stat-label">Data sync</span>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════
+     RIGHT — FORM PANEL
+══════════════════════════════════════════════════════════════ -->
+<div class="form-panel">
+  <div class="form-card">
+
+    <!-- Already logged in -->
+    <div class="logged-in-banner" id="loggedInBanner">
+      <p id="loggedInMsg">You're already signed in.</p>
+      <a class="btn-go" id="loggedInLink" href="#">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        Go to dashboard
+      </a>
+    </div>
+
+    <div class="form-header">
+      <h2 class="form-title">Welcome back</h2>
+      <p class="form-subtitle">Sign in to your Semya Digital account to continue.</p>
+    </div>
+
+    <!-- Role selector -->
+    <div class="role-tabs" role="radiogroup" aria-label="Account type">
+      <button class="role-tab active" data-role="admin" onclick="selectRole('admin')" aria-pressed="true">
+        <span class="role-tab-icon">🛡</span>
+        <span class="role-tab-label">Admin</span>
+        <span class="role-tab-desc">Semya Digital staff</span>
+      </button>
+      <button class="role-tab" data-role="client" onclick="selectRole('client')" aria-pressed="false">
+        <span class="role-tab-icon">📊</span>
+        <span class="role-tab-label">Client</span>
+        <span class="role-tab-desc">Brand / e-commerce team</span>
+      </button>
+    </div>
+
+    <!-- Error / success alerts -->
+    <div class="alert alert-error" id="alertError" role="alert">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <span id="alertErrorMsg">Something went wrong.</span>
+    </div>
+    <div class="alert alert-success" id="alertSuccess" role="status">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      <span id="alertSuccessMsg">Signed in. Redirecting…</span>
+    </div>
+
+    <!-- Login form -->
+    <form id="loginForm" novalidate>
+
+      <div class="field">
+        <label for="email">Email address</label>
+        <div class="input-wrap">
+          <span class="input-icon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,12 2,6"/></svg>
+          </span>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            placeholder="you@example.com"
+            autocomplete="email"
+            required
+          />
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="password">Password</label>
+        <div class="input-wrap">
+          <span class="input-icon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </span>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            placeholder="Enter your password"
+            autocomplete="current-password"
+            required
+          />
+          <button type="button" class="pw-toggle" id="pwToggle" aria-label="Show password" onclick="togglePassword()">
+            <svg id="eyeIcon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <button type="submit" class="btn-submit" id="submitBtn">
+        <div class="spinner" id="spinner"></div>
+        <span class="btn-text" id="btnText">Sign in</span>
+        <svg id="btnArrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </button>
+
+    </form>
+
+    <div class="form-footer">
+      Trouble signing in? Contact
+      <a href="mailto:support@semyadigital.com">support@semyadigital.com</a>
+    </div>
+
+  </div>
+</div>
+
+
+<script>
+  // ─── CONFIG ──────────────────────────────────────────────────────
+  // Point this at your Express backend
+  const API_BASE = 'http://localhost:3000';
+  const TOKEN_KEY = 'semya_token';
+
+  // ─── ON LOAD: check if already signed in ─────────────────────────
+  (async () => {
+    const existing = localStorage.getItem(TOKEN_KEY);
+    if (!existing) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/auth/me`, {
+        headers: { Authorization: `Bearer ${existing}` },
+        credentials: 'include',
+      });
+      if (res.ok) {
+        const me = await res.json();
+        showLoggedInBanner(me, existing);
+      } else {
+        localStorage.removeItem(TOKEN_KEY);
+      }
+    } catch {
+      // Server unreachable — silently skip the pre-check
+    }
+  })();
+
+  // ─── ROLE SELECTOR ────────────────────────────────────────────────
+  let selectedRole = 'admin';
+
+  function selectRole(role) {
+    selectedRole = role;
+    document.querySelectorAll('.role-tab').forEach(tab => {
+      const active = tab.dataset.role === role;
+      tab.classList.toggle('active', active);
+      tab.setAttribute('aria-pressed', String(active));
+    });
+    clearAlerts();
+  }
+
+  // ─── PASSWORD TOGGLE ──────────────────────────────────────────────
+  function togglePassword() {
+    const input = document.getElementById('password');
+    const isText = input.type === 'text';
+    input.type = isText ? 'password' : 'text';
+    document.getElementById('eyeIcon').innerHTML = isText
+      ? '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'
+      : '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+  }
+
+  // ─── FORM SUBMIT ──────────────────────────────────────────────────
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearAlerts();
+
+    const email    = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+
+    // Client-side validation
+    if (!email || !password) {
+      showError('Please enter your email and password.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      showError('Please enter a valid email address.');
+      document.getElementById('email').classList.add('error-field');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method:      'POST',
+        headers:     { 'Content-Type': 'application/json' },
+        credentials: 'include',            // receives httpOnly cookie
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        showError(data.error ?? 'Login failed. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      // Store JWT in localStorage as fallback (httpOnly cookie is primary)
+      if (data.token) {
+        localStorage.setItem(TOKEN_KEY, data.token);
+      }
+
+      // Show success then redirect
+      showSuccess(`Signed in as ${selectedRole}. Redirecting…`);
+
+      setTimeout(() => {
+        window.location.href = data.redirectTo ?? '/';
+      }, 900);
+
+    } catch (err) {
+      showError('Could not reach the server. Check your connection and try again.');
+      setLoading(false);
+    }
+  });
+
+  // ─── ALREADY LOGGED IN BANNER ─────────────────────────────────────
+  function showLoggedInBanner(me, token) {
+    const banner = document.getElementById('loggedInBanner');
+    document.getElementById('loggedInMsg').textContent =
+      `You're signed in as ${me.email} (${me.role}).`;
+
+    // Build redirect URL from role
+    const link = document.getElementById('loggedInLink');
+    if (me.role === 'client' && me.clientId) {
+      // We'd need the slug — fall back to dashboard-config to get it
+      resolveClientSlug(me.clientId, token).then(slug => {
+        link.href = slug ? `/clients/${slug}/dashboard` : '/';
+      });
+    } else {
+      link.href = '/';
+    }
+
+    banner.classList.add('visible');
+  }
+
+  async function resolveClientSlug(clientId, token) {
+    try {
+      const res = await fetch(`${API_BASE}/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
+      });
+      // The redirectTo field on login has the slug — but for /me we don't have it.
+      // Simple heuristic: re-POST isn't possible, so we read from localStorage if stored.
+      return localStorage.getItem('semya_last_slug') ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  // ─── UI HELPERS ───────────────────────────────────────────────────
+  function setLoading(loading) {
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = loading;
+    btn.classList.toggle('loading', loading);
+    document.getElementById('btnText').textContent = loading ? 'Signing in…' : 'Sign in';
+    document.getElementById('btnArrow').style.display = loading ? 'none' : '';
+  }
+
+  function showError(msg) {
+    document.getElementById('alertErrorMsg').textContent = msg;
+    document.getElementById('alertError').classList.add('visible');
+    document.getElementById('alertSuccess').classList.remove('visible');
+  }
+
+  function showSuccess(msg) {
+    document.getElementById('alertSuccessMsg').textContent = msg;
+    document.getElementById('alertSuccess').classList.add('visible');
+    document.getElementById('alertError').classList.remove('visible');
+  }
+
+  function clearAlerts() {
+    document.getElementById('alertError').classList.remove('visible');
+    document.getElementById('alertSuccess').classList.remove('visible');
+    document.querySelectorAll('.error-field').forEach(el => el.classList.remove('error-field'));
+  }
+</script>
+
+</body>
+</html>
