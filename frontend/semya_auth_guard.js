@@ -21,7 +21,7 @@
   'use strict';
 
   // ── CONFIG ──────────────────────────────────────────────────────
-  const API_BASE    = 'http://localhost:3000';   // ← update to your server URL
+  const API_BASE    = 'https://semya-api.onrender.com';   // ← update to your server URL
   const TOKEN_KEY   = 'semya_token';
   const LOGIN_PAGE  = '/login';                  // ← update to your login page path
 
