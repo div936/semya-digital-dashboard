@@ -29,6 +29,7 @@ export const REVENUE_MAP = {
   'asin/isbn':                  'standard_sku',
   'sku':                        'standard_sku',
   'sku id':                     'standard_sku',
+  'sku id':                     'standard_sku',
   'sku_id':                     'standard_sku',
   'seller sku':                 'standard_sku',
   'merchant sku':               'standard_sku',
@@ -42,6 +43,7 @@ export const REVENUE_MAP = {
 
   // ── Revenue / Sales amount ────────────────────────────────────
   'item price':                 'standard_revenue',
+  'item-price':                 'standard_revenue',
   'net revenue':                'standard_revenue',
   'net sale value':             'standard_revenue',
   'sale amount':                'standard_revenue',
@@ -61,6 +63,7 @@ export const REVENUE_MAP = {
 
   // ── Units / Quantity ──────────────────────────────────────────
   'quantity':                   'standard_units',
+  'quantity-purchased':         'standard_units',
   'units':                      'standard_units',
   'units sold':                 'standard_units',
   'units ordered':              'standard_units',
@@ -78,6 +81,7 @@ export const REVENUE_MAP = {
   'date':                       'order_date',
   'order date':                 'order_date',
   'purchase date':              'order_date',
+  'purchase-date':              'order_date',
   'transaction date':           'order_date',
   'shipment date':              'order_date',
   'dispatch date':              'order_date',
@@ -92,6 +96,7 @@ export const REVENUE_MAP = {
   // ── City ──────────────────────────────────────────────────────
   'city':                       'standard_city',
   'ship city':                  'standard_city',
+  'ship-city':                  'standard_city',
   'buyer city':                 'standard_city',
   'shipping city':              'standard_city',
   'delivery city':              'standard_city',
@@ -101,6 +106,7 @@ export const REVENUE_MAP = {
   // ── State ─────────────────────────────────────────────────────
   'state':                      'standard_state',
   'ship state':                 'standard_state',
+  'ship-state':                 'standard_state',
   'buyer state':                'standard_state',
   'shipping state':             'standard_state',
   'delivery state':             'standard_state',
@@ -207,7 +213,8 @@ export function normaliseRow(rawRow, map) {
 
   for (const [rawKey, rawValue] of Object.entries(rawRow)) {
     // Normalise the column header: lowercase, collapse whitespace, trim
-    const normKey = rawKey.toLowerCase().trim().replace(/\s+/g, ' ');
+    // Normalise: lowercase, trim, collapse whitespace, also try hyphen variant
+    const normKey = rawKey.toLowerCase().trim().replace(/\s+/g, ' ').replace(/-/g, ' ');
 
     if (map[normKey]) {
       const target = map[normKey];
