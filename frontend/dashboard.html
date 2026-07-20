@@ -2926,7 +2926,7 @@ async function loadPendingRequests() {
     list.innerHTML = pending.map(r => {
       const ts = r.requested_at ? new Date(r.requested_at).toLocaleDateString("en-IN") : "";
       const clientOpts = (cachedClients || []).map(cl => "<option value=\"" + cl.id + "\">" + cl.name + "</option>").join("");
-      return "<div class=\"request-row\" id=\"req-" + r.id + "\"><div><div class=\"request-email\">" + r.email + "</div><div class=\"request-time\">Requested " + ts + "</div></div><div class=\"request-actions\"><select class=\"client-assign-select\" id=\"client-" + r.id + "\">" + clientOpts + "</select><button class=\"btn-approve\" onclick=\"approveRequest(&apos;" + r.email + "&apos;,&apos;" + r.id + "&apos;)\">Approve</button><button class=\"btn-reject\" onclick=\"rejectRequest(&apos;" + r.email + "&apos;,&apos;" + r.id + "&apos;)\">Reject</button></div></div>";
+      return '<div class="request-row" id="req-' + r.id + '"><div><div class="request-email">' + r.email + '</div><div class="request-time">Requested ' + ts + '</div></div><div class="request-actions"><select class="client-assign-select" id="client-' + r.id + '">' + clientOpts + '</select><button class="btn-approve" data-email="' + r.email + '" data-reqid="' + r.id + '" onclick="handleApprove(this)">Approve</button><button class="btn-reject" data-email="' + r.email + '" data-reqid="' + r.id + '" onclick="handleReject(this)">Reject</button></div></div>';
     }).join("");
 
   } catch(e) {
@@ -2934,6 +2934,9 @@ async function loadPendingRequests() {
   }
 }
 
+
+function handleApprove(btn) { approveRequest(btn.dataset.email, btn.dataset.reqid); }
+function handleReject(btn)  { rejectRequest(btn.dataset.email,  btn.dataset.reqid); }
 async function approveRequest(email, reqId) {
   const select   = document.getElementById('client-' + reqId);
   const clientId = select?.value;
