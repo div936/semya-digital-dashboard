@@ -146,11 +146,11 @@
   const API_BASE      = 'https://semya-api.onrender.com';
   const DASHBOARD_URL = 'https://bright-twilight-fcf255.netlify.app';
 
-  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+  const _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
   // On load: if user clicked a magic link, redirect to dashboard
   (async () => {
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session } } = await _sb.auth.getSession();
     if (session) window.location.replace(DASHBOARD_URL);
   })();
 
@@ -187,7 +187,7 @@
       const data = await res.json();
 
       if (data.status === 'approved') {
-        const { error } = await supabase.auth.signInWithOtp({
+        const { error } = await _sb.auth.signInWithOtp({
           email, options: { emailRedirectTo: DASHBOARD_URL },
         });
         if (error) throw new Error(error.message);
