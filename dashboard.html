@@ -2003,7 +2003,7 @@ function showSkel(id, skelClass) {
 // ─── INIT DATE DEFAULTS ───────────────────────────────────────────
 function initDates() {
   const now  = new Date();
-  const from = new Date(now.getFullYear(), now.getMonth(), 1);
+  const from = new Date(now.getFullYear(), 0, 1); // Jan 1 of current year
   const fmt  = d => d.toISOString().split('T')[0];
   document.getElementById('dateFrom').value = fmt(from);
   document.getElementById('dateTo').value   = fmt(now);
