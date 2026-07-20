@@ -10,7 +10,7 @@
   const API_BASE      = 'https://semya-api.onrender.com';
   const SUPABASE_URL  = 'https://oeusnopzqsrbgqqarepj.supabase.co';
   const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ldXNub3B6cXNyYmdxcWFyZXBqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzNzI0MDUsImV4cCI6MjA5OTk0ODQwNX0.DU4xBf6fib8EKiAqh1AFn86RqFQNo3vgm48MwbDY1eM';
-  const LOGIN_PAGE    = '/index.html';
+  const LOGIN_PAGE    = '/semya-digital-dashboard/index.html';
   const TOKEN_KEY     = 'semya_token';
 
   // Read slug from URL
