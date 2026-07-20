@@ -2893,41 +2893,44 @@ async function loadClients() {
 
 // Load pending access requests from backend
 async function loadPendingRequests() {
-  const section = document.getElementById('pendingRequestsSection');
-  const list    = document.getElementById('pendingRequestsList');
-  const empty   = document.getElementById('pendingEmpty');
-  const badge   = document.getElementById('pendingCount');
-  if (!section || !list) return;
+  const list  = document.getElementById('pendingRequestsList');
+  const badge = document.getElementById('pendingCount');
+  if (!list) return;
 
   try {
-    const res  = await fetch(API_BASE + '/auth/requests', {
+    const res = await fetch(API_BASE + '/auth/requests', {
       headers: authHeaders(), credentials: 'include',
     });
     if (!res.ok) return;
     const requests = await res.json();
     const pending  = requests.filter(r => r.status === 'pending');
 
-    badge.textContent = pending.length;
-    badge.style.display = pending.length ? 'inline-flex' : 'none';
+    if (badge) {
+      badge.textContent = pending.length;
+      badge.style.display = pending.length ? 'inline-flex' : 'none';
+    }
 
     if (!pending.length) {
       list.innerHTML = '<p style="font-size:12px;color:#94a3b8;padding:12px 0;">No pending requests.</p>';
       return;
     }
 
-    // Get clients list for dropdowns
-    const { data: clients } = await supabaseAdmin().from('clients').select('id,name,slug');
-    const clientOpts = (clients || [{ id: '', name: 'Select client...' }])
-      .map(cl => '<option value="' + cl.id + '">' + cl.name + '</option>').join('');
+    // Build client options for dropdown
+    const clientOptStr = '<option value="">Select client...</option><option value="neat-everyday-id">Neat Everyday</option>';
 
-    list.innerHTML = pending.map(r => {
+    list.innerHTML = pending.map(function(r) {
       const ts = r.requested_at ? new Date(r.requested_at).toLocaleDateString('en-IN') : '';
-
-    list.innerHTML = pending.map(r => {
-      const ts = r.requested_at ? new Date(r.requested_at).toLocaleDateString("en-IN") : "";
-      const clientOpts = (cachedClients || []).map(cl => "<option value=\"" + cl.id + "\">" + cl.name + "</option>").join("");
-      return '<div class="request-row" id="req-' + r.id + '"><div><div class="request-email">' + r.email + '</div><div class="request-time">Requested ' + ts + '</div></div><div class="request-actions"><select class="client-assign-select" id="client-' + r.id + '">' + clientOpts + '</select><button class="btn-approve" data-email="' + r.email + '" data-reqid="' + r.id + '" onclick="handleApprove(this)">Approve</button><button class="btn-reject" data-email="' + r.email + '" data-reqid="' + r.id + '" onclick="handleReject(this)">Reject</button></div></div>';
-    }).join("");
+      return [
+        '<div class="request-row" id="req-' + r.id + '">',
+        '<div><div class="request-email">' + r.email + '</div>',
+        '<div class="request-time">Requested ' + ts + '</div></div>',
+        '<div class="request-actions">',
+        '<select class="client-assign-select" id="client-' + r.id + '">' + clientOptStr + '</select>',
+        '<button class="btn-approve" data-email="' + r.email + '" data-reqid="' + r.id + '" onclick="handleApprove(this)">Approve</button>',
+        '<button class="btn-reject" data-email="' + r.email + '" data-reqid="' + r.id + '" onclick="handleReject(this)">Reject</button>',
+        '</div></div>'
+      ].join('');
+    }).join('');
 
   } catch(e) {
     console.warn('[pending requests]', e.message);
@@ -2935,8 +2938,6 @@ async function loadPendingRequests() {
 }
 
 
-function handleApprove(btn) { approveRequest(btn.dataset.email, btn.dataset.reqid); }
-function handleReject(btn)  { rejectRequest(btn.dataset.email,  btn.dataset.reqid); }
 async function approveRequest(email, reqId) {
   const select   = document.getElementById('client-' + reqId);
   const clientId = select?.value;
