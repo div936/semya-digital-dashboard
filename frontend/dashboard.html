@@ -2922,15 +2922,12 @@ async function loadPendingRequests() {
 
     list.innerHTML = pending.map(r => {
       const ts = r.requested_at ? new Date(r.requested_at).toLocaleDateString('en-IN') : '';
-      return '<div class="request-row" id="req-' + r.id + '">' +
-        '<div><div class="request-email">' + r.email + '</div><div class="request-time">Requested ' + ts + '</div></div>' +
-        '<div class="request-actions">' +
-          '<select class="client-assign-select" id="client-' + r.id + '">' + clientOpts + '</select>' +
-          '<button class="btn-approve" onclick="approveRequest('' + r.email + '','' + r.id + '')">Approve</button>' +
-          '<button class="btn-reject"  onclick="rejectRequest('' + r.email + '','' + r.id + '')">Reject</button>' +
-        '</div>' +
-      '</div>';
-    }).join('');
+
+    list.innerHTML = pending.map(r => {
+      const ts = r.requested_at ? new Date(r.requested_at).toLocaleDateString("en-IN") : "";
+      const clientOpts = (cachedClients || []).map(cl => "<option value=\"" + cl.id + "\">" + cl.name + "</option>").join("");
+      return "<div class=\"request-row\" id=\"req-" + r.id + "\"><div><div class=\"request-email\">" + r.email + "</div><div class=\"request-time\">Requested " + ts + "</div></div><div class=\"request-actions\"><select class=\"client-assign-select\" id=\"client-" + r.id + "\">" + clientOpts + "</select><button class=\"btn-approve\" onclick=\"approveRequest(&apos;" + r.email + "&apos;,&apos;" + r.id + "&apos;)\">Approve</button><button class=\"btn-reject\" onclick=\"rejectRequest(&apos;" + r.email + "&apos;,&apos;" + r.id + "&apos;)\">Reject</button></div></div>";
+    }).join("");
 
   } catch(e) {
     console.warn('[pending requests]', e.message);
