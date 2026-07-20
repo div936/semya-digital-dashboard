@@ -872,6 +872,44 @@
     .ai-stat-card { background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-md); padding:14px 16px; display:flex; flex-direction:column; gap:4px; }
     .ai-stat-val   { font-size:22px; font-weight:800; color:#0f172a; letter-spacing:-0.02em; }
     .ai-stat-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:#94a3b8; }
+
+    /* ─── PENDING REQUESTS ───────────────────────────────────────── */
+    .request-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 0; border-bottom: 1px solid #f1f5f9; gap: 12px;
+    }
+    .request-row:last-child { border-bottom: none; }
+    .request-email { font-size: 12px; font-weight: 600; color: #1e293b; }
+    .request-time  { font-size: 10px; color: #94a3b8; margin-top: 2px; }
+    .request-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .btn-approve {
+      font-size: 11px; font-weight: 700; padding: 5px 12px;
+      border-radius: 6px; border: none; cursor: pointer;
+      background: #f0fdf4; color: #059669; border: 1px solid #bbf7d0;
+      transition: all .15s;
+    }
+    .btn-approve:hover { background: #dcfce7; }
+    .btn-reject {
+      font-size: 11px; font-weight: 700; padding: 5px 12px;
+      border-radius: 6px; border: none; cursor: pointer;
+      background: #fef2f2; color: #dc2626; border: 1px solid #fecaca;
+      transition: all .15s;
+    }
+    .btn-reject:hover { background: #fee2e2; }
+    .client-assign-select {
+      appearance: none; font-size: 11px; font-weight: 600;
+      padding: 5px 28px 5px 10px; border-radius: 6px;
+      border: 1px solid var(--color-border); color: #374151;
+      background: #f8fafd; cursor: pointer;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%230284c7' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 8px center;
+    }
+    .pending-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 18px; height: 18px; border-radius: 50%;
+      background: #dc2626; color: #fff;
+      font-size: 10px; font-weight: 800; margin-left: 6px;
+    }
   </style>
 </head>
 <body>
@@ -1633,48 +1671,59 @@
           <span class="acl-row-title">Platform Sales</span>
           <span class="acl-row-desc">Revenue overview across all platforms</span>
         </div>
-        <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+        <label class="toggle"><input type="checkbox" checked data-tab="platform_sales"><span class="toggle-slider"></span></label>
       </div>
       <div class="acl-row">
         <div class="acl-row-info">
           <span class="acl-row-title">SKU Performance</span>
           <span class="acl-row-desc">Per-SKU revenue, units, and RoAS</span>
         </div>
-        <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+        <label class="toggle"><input type="checkbox" checked data-tab="sku_performance"><span class="toggle-slider"></span></label>
       </div>
       <div class="acl-row">
         <div class="acl-row-info">
           <span class="acl-row-title">Campaign Insights</span>
           <span class="acl-row-desc">Ad spend, CTR, and campaign breakdown</span>
         </div>
-        <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+        <label class="toggle"><input type="checkbox" checked data-tab="campaign_insights"><span class="toggle-slider"></span></label>
       </div>
       <div class="acl-row">
         <div class="acl-row-info">
           <span class="acl-row-title">Geographic Analysis</span>
           <span class="acl-row-desc">State and city revenue distribution</span>
         </div>
-        <label class="toggle"><input type="checkbox"><span class="toggle-slider"></span></label>
+        <label class="toggle"><input type="checkbox" data-tab="geographic_analysis"><span class="toggle-slider"></span></label>
       </div>
       <div class="acl-row">
         <div class="acl-row-info">
           <span class="acl-row-title">AI Insights</span>
           <span class="acl-row-desc">Powered analysis, inventory signals, micro-targeting</span>
         </div>
-        <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+        <label class="toggle"><input type="checkbox" checked data-tab="ai_insights"><span class="toggle-slider"></span></label>
       </div>
       <div class="acl-row">
         <div class="acl-row-info">
           <span class="acl-row-title">Daily Targets</span>
           <span class="acl-row-desc">Target vs achieved performance tracking</span>
         </div>
-        <label class="toggle"><input type="checkbox"><span class="toggle-slider"></span></label>
+        <label class="toggle"><input type="checkbox" data-tab="daily_targets"><span class="toggle-slider"></span></label>
+      </div>
+    </div>
+
+    <!-- Pending Access Requests — admin only -->
+    <div id="pendingRequestsSection" style="margin-top:4px;">
+      <div class="acl-section-label" style="display:flex;align-items:center;gap:6px;">
+        Pending Access Requests
+        <span class="pending-badge" id="pendingCount">0</span>
+      </div>
+      <div id="pendingRequestsList" style="min-height:40px;">
+        <p style="font-size:12px;color:#94a3b8;padding:12px 0;" id="pendingEmpty">No pending requests.</p>
       </div>
     </div>
 
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="closeModal()">Save Access Rules</button>
+      <button class="btn btn-primary" onclick="saveTabPermissions()">Save Access Rules</button>
     </div>
   </div>
 </div>
@@ -2811,6 +2860,170 @@ async function saveTargets() {
 document.getElementById('dtDate').addEventListener('change', function() {
   dtState.date = this.value; tabCache['daily_targets'] = null; fetchAndRenderDT();
 });
+
+
+
+// ═══════════════════════════════════════════════════════════════════
+// PHASE 8 — MAGIC LINK AUTH + PENDING REQUESTS
+// ═══════════════════════════════════════════════════════════════════
+
+// Override openModal to also load pending requests
+const _originalOpenModal = openModal;
+function openModal() {
+  _originalOpenModal();
+  if (window.semyaUser?.role === 'admin') loadPendingRequests();
+}
+
+// Load clients list for the assign dropdown
+let cachedClients = [];
+async function loadClients() {
+  if (cachedClients.length) return cachedClients;
+  try {
+    // We get clients from the dashboard-config endpoint
+    const res = await apiFetch('/clients/' + state.clientSlug + '/dashboard-config');
+    // For now use a hardcoded list — extend this as you add more clients
+    cachedClients = [
+      { id: '', name: 'Select client...' },
+      { id: 'neat-everyday-id', name: 'Neat Everyday', slug: 'neat-everyday' },
+    ];
+    // Ideally fetch from /admin/clients — add that route later
+  } catch(e) {}
+  return cachedClients;
+}
+
+// Load pending access requests from backend
+async function loadPendingRequests() {
+  const section = document.getElementById('pendingRequestsSection');
+  const list    = document.getElementById('pendingRequestsList');
+  const empty   = document.getElementById('pendingEmpty');
+  const badge   = document.getElementById('pendingCount');
+  if (!section || !list) return;
+
+  try {
+    const res  = await fetch(API_BASE + '/auth/requests', {
+      headers: authHeaders(), credentials: 'include',
+    });
+    if (!res.ok) return;
+    const requests = await res.json();
+    const pending  = requests.filter(r => r.status === 'pending');
+
+    badge.textContent = pending.length;
+    badge.style.display = pending.length ? 'inline-flex' : 'none';
+
+    if (!pending.length) {
+      list.innerHTML = '<p style="font-size:12px;color:#94a3b8;padding:12px 0;">No pending requests.</p>';
+      return;
+    }
+
+    // Get clients list for dropdowns
+    const { data: clients } = await supabaseAdmin().from('clients').select('id,name,slug');
+    const clientOpts = (clients || [{ id: '', name: 'Select client...' }])
+      .map(cl => '<option value="' + cl.id + '">' + cl.name + '</option>').join('');
+
+    list.innerHTML = pending.map(r => {
+      const ts = r.requested_at ? new Date(r.requested_at).toLocaleDateString('en-IN') : '';
+      return '<div class="request-row" id="req-' + r.id + '">' +
+        '<div><div class="request-email">' + r.email + '</div><div class="request-time">Requested ' + ts + '</div></div>' +
+        '<div class="request-actions">' +
+          '<select class="client-assign-select" id="client-' + r.id + '">' + clientOpts + '</select>' +
+          '<button class="btn-approve" onclick="approveRequest('' + r.email + '','' + r.id + '')">Approve</button>' +
+          '<button class="btn-reject"  onclick="rejectRequest('' + r.email + '','' + r.id + '')">Reject</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+  } catch(e) {
+    console.warn('[pending requests]', e.message);
+  }
+}
+
+async function approveRequest(email, reqId) {
+  const select   = document.getElementById('client-' + reqId);
+  const clientId = select?.value;
+  if (!clientId) { alert('Please select a client to assign this user to.'); return; }
+
+  const btn = document.querySelector('#req-' + reqId + ' .btn-approve');
+  if (btn) { btn.disabled = true; btn.textContent = 'Approving...'; }
+
+  try {
+    const res = await fetch(API_BASE + '/auth/approve', {
+      method: 'POST', headers: authHeaders(), credentials: 'include',
+      body: JSON.stringify({ email, clientId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    // Remove from list
+    const row = document.getElementById('req-' + reqId);
+    if (row) row.innerHTML = '<div style="font-size:12px;color:#059669;padding:10px 0;">&#10003; Approved — sign-in link sent to ' + email + '</div>';
+
+    // Update badge
+    const badge = document.getElementById('pendingCount');
+    if (badge) badge.textContent = Math.max(0, parseInt(badge.textContent) - 1);
+
+  } catch(e) {
+    alert('Approval failed: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Approve'; }
+  }
+}
+
+async function rejectRequest(email, reqId) {
+  if (!confirm('Reject access for ' + email + '?')) return;
+
+  try {
+    await fetch(API_BASE + '/auth/reject', {
+      method: 'POST', headers: authHeaders(), credentials: 'include',
+      body: JSON.stringify({ email }),
+    });
+    const row = document.getElementById('req-' + reqId);
+    if (row) row.innerHTML = '<div style="font-size:12px;color:#dc2626;padding:10px 0;">&#10007; Rejected — ' + email + '</div>';
+
+    const badge = document.getElementById('pendingCount');
+    if (badge) badge.textContent = Math.max(0, parseInt(badge.textContent) - 1);
+  } catch(e) {
+    alert('Rejection failed: ' + e.message);
+  }
+}
+
+// Save tab permissions (replaces the old closeModal on save)
+async function saveTabPermissions() {
+  const { clientSlug } = state;
+  if (!clientSlug) { closeModal(); return; }
+
+  const toggles = document.querySelectorAll('#aclModal input[type=checkbox][data-tab]');
+  const saves   = [];
+
+  toggles.forEach(toggle => {
+    saves.push(
+      fetch(API_BASE + '/clients/' + clientSlug + '/admin/tab-permissions', {
+        method: 'PATCH', headers: authHeaders(), credentials: 'include',
+        body: JSON.stringify({ tab_key: toggle.dataset.tab, is_enabled: toggle.checked }),
+      })
+    );
+  });
+
+  try {
+    await Promise.all(saves);
+    tabCache['sku_performance'] = null;
+    tabCache['platform_sales']  = null;
+  } catch(e) {
+    console.warn('[tab-permissions] save failed:', e.message);
+  }
+
+  closeModal();
+}
+
+// Update auth guard to use Supabase session instead of localStorage JWT
+// The Supabase JS client handles the session automatically after magic link click
+async function checkSupabaseSession() {
+  if (typeof window.supabase === 'undefined') return; // no supabase loaded
+
+  const { data: { session } } = await window._supabaseClient.auth.getSession();
+  if (!session) return; // no session — let auth guard handle redirect
+
+  // Use the Supabase access token for API calls
+  localStorage.setItem('semya_token', session.access_token);
+}
 
 
 // ═══════════════════════════════════════════════════════════════════
