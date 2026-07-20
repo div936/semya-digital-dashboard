@@ -1,148 +1,213 @@
-// routes/authRouter.js
-// ─────────────────────────────────────────────────────────────────
-// Auth endpoints:
-//   POST /auth/login    — validate credentials, issue JWT + cookie
-//   POST /auth/logout   — clear cookie
-//   GET  /auth/me       — return decoded token payload (token check)
-//
-// Mount in app.js:
-//   import authRouter from './routes/authRouter.js';
-//   app.use('/auth', authRouter);
-// ─────────────────────────────────────────────────────────────────
-import { Router } from 'express';
-import jwt        from 'jsonwebtoken';
-import bcrypt     from 'bcrypt';
+// routes/authRouter.js  (Phase 8 — Magic Link + Approval Flow)
+import { Router }       from 'express';
+import { createClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from '../lib/supabase.js';
 
-const router     = Router();
-const JWT_SECRET = process.env.JWT_SECRET;
+const router = Router();
 
-// Cookie config — httpOnly so JS can't touch it, Secure in prod
-const COOKIE_NAME = 'semya_token';
-const cookieOpts  = {
-  httpOnly: true,
-  secure:   process.env.NODE_ENV === 'production',
-  sameSite: 'lax',
-  maxAge:   7 * 24 * 60 * 60 * 1000,   // 7 days in ms
-  path:     '/',
-};
+const supabaseAuth = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  { auth: { autoRefreshToken: false, persistSession: false } }
+);
+
+const ADMIN_EMAIL  = process.env.ADMIN_EMAIL  || 'admin@semyadigital.com';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://bright-twilight-fcf255.netlify.app';
+const RENDER_URL   = process.env.RENDER_URL   || 'https://semya-api.onrender.com';
 
 
-// ═══════════════════════════════════════════════════════════════════
-// POST /auth/login
-// Body: { email, password }
-// ═══════════════════════════════════════════════════════════════════
-router.post('/login', async (req, res) => {
-  const { email, password } = req.body ?? {};
+// ── POST /auth/check-access ───────────────────────────────────────
+// Returns: { status: 'approved' | 'pending' | 'new' }
+router.post('/check-access', async (req, res) => {
+  const { email } = req.body || {};
+  if (!email) return res.status(400).json({ error: 'Email required.' });
 
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required.' });
-  }
-
-  // 1. Look up user + their client association
-  const { data: user, error } = await supabaseAdmin
-    .from('users')
-    .select('id, email, hashed_pw, role, client_id, is_active')
+  const { data } = await supabaseAdmin
+    .from('access_requests')
+    .select('status')
     .eq('email', email.toLowerCase().trim())
     .single();
 
-  // Deliberate vague error — don't reveal whether email exists
-  if (error || !user) {
-    return res.status(401).json({ error: 'Invalid email or password.' });
-  }
-
-  if (!user.is_active) {
-    return res.status(403).json({ error: 'This account has been deactivated.' });
-  }
-
-  // 2. Verify password
-  const passwordMatch = await bcrypt.compare(password, user.hashed_pw);
-  if (!passwordMatch) {
-    return res.status(401).json({ error: 'Invalid email or password.' });
-  }
-
-  // 3. Build JWT payload
-  const payload = {
-    userId:   user.id,
-    email:    user.email,
-    role:     user.role,
-    clientId: user.client_id ?? null,
-  };
-
-  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
-
-  // 4. Resolve the redirect URL
-  //    Admin → dashboard of first client (or admin home)
-  //    Client → their own client slug dashboard
-  let redirectTo = '/';
-  if (user.role === 'client' && user.client_id) {
-    const { data: client } = await supabaseAdmin
-      .from('clients')
-      .select('slug')
-      .eq('id', user.client_id)
-      .single();
-    if (client) {
-      redirectTo = `/clients/${client.slug}/dashboard`;
-    }
-  } else if (user.role === 'admin') {
-    // Admins land on the first active client by default
-    const { data: firstClient } = await supabaseAdmin
-      .from('clients')
-      .select('slug')
-      .eq('is_active', true)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .single();
-    redirectTo = firstClient
-      ? `/clients/${firstClient.slug}/dashboard`
-      : '/admin';
-  }
-
-  // 5. Set httpOnly cookie
-  res.cookie(COOKIE_NAME, token, cookieOpts);
-
-  return res.json({
-    ok: true,
-    token,          // also returned in body so JS can store in localStorage
-    role:       user.role,
-    redirectTo,
-  });
+  return res.json({ status: data?.status || 'new' });
 });
 
 
-// ═══════════════════════════════════════════════════════════════════
-// POST /auth/logout
-// ═══════════════════════════════════════════════════════════════════
-router.post('/logout', (_req, res) => {
-  res.clearCookie(COOKIE_NAME, { path: '/' });
+// ── POST /auth/request-access ────────────────────────────────────
+// New user: create pending request + notify admin by email
+router.post('/request-access', async (req, res) => {
+  const { email } = req.body || {};
+  if (!email) return res.status(400).json({ error: 'Email required.' });
+  const cleanEmail = email.toLowerCase().trim();
+
+  // Check if already exists
+  const { data: existing } = await supabaseAdmin
+    .from('access_requests')
+    .select('id, status')
+    .eq('email', cleanEmail)
+    .single();
+
+  if (existing?.status === 'approved') return res.json({ ok: true });
+  if (!existing) {
+    await supabaseAdmin.from('access_requests').insert({ email: cleanEmail, status: 'pending' });
+  }
+
+  // Notify admin via Supabase email (uses your project SMTP)
+  // We send the admin a magic link to a special approve page
+  const approveUrl = `${FRONTEND_URL}/approve.html?email=${encodeURIComponent(cleanEmail)}`;
+  console.log(`[access-request] NEW from ${cleanEmail}`);
+  console.log(`[access-request] Admin approve at: ${approveUrl}`);
+
+  // Use Supabase to send admin a notification
+  try {
+    await supabaseAuth.auth.admin.inviteUserByEmail(ADMIN_EMAIL, {
+      redirectTo: approveUrl,
+      data: { notification: 'new_access_request', requester: cleanEmail },
+    });
+  } catch (e) {
+    console.warn('[auth] Admin invite email failed (non-fatal):', e.message);
+  }
+
   return res.json({ ok: true });
 });
 
 
-// ═══════════════════════════════════════════════════════════════════
-// GET /auth/me  — lightweight token validation
-// Returns the decoded payload; 401 if missing/expired
-// ═══════════════════════════════════════════════════════════════════
-router.get('/me', (req, res) => {
-  const token =
-    req.cookies?.[COOKIE_NAME] ||
-    req.headers.authorization?.replace('Bearer ', '');
+// ── GET /auth/requests  — admin: list all requests ────────────────
+router.get('/requests', async (req, res) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Auth required.' });
 
-  if (!token) {
-    return res.status(401).json({ error: 'Not authenticated.' });
-  }
+  const { data: { user }, error } = await supabaseAuth.auth.getUser(token);
+  if (error || !user) return res.status(401).json({ error: 'Invalid token.' });
 
+  const { data: dbUser } = await supabaseAdmin
+    .from('users').select('role').eq('email', user.email).single();
+  if (dbUser?.role !== 'admin') return res.status(403).json({ error: 'Admin only.' });
+
+  const { data } = await supabaseAdmin
+    .from('access_requests')
+    .select('id, email, status, requested_at, client_id, clients(name,slug)')
+    .order('requested_at', { ascending: false });
+
+  return res.json(data || []);
+});
+
+
+// ── POST /auth/approve  — admin approves + assigns to client ──────
+// Body: { email, clientId }
+router.post('/approve', async (req, res) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  const { data: { user }, error } = await supabaseAuth.auth.getUser(token);
+  if (error || !user) return res.status(401).json({ error: 'Invalid token.' });
+
+  const { data: dbAdmin } = await supabaseAdmin
+    .from('users').select('role').eq('email', user.email).single();
+  if (dbAdmin?.role !== 'admin') return res.status(403).json({ error: 'Admin only.' });
+
+  const { email, clientId } = req.body || {};
+  if (!email || !clientId) return res.status(400).json({ error: 'email and clientId required.' });
+
+  const cleanEmail = email.toLowerCase().trim();
+
+  // 1. Update access_requests
+  await supabaseAdmin.from('access_requests').update({
+    status: 'approved', client_id: clientId, reviewed_at: new Date().toISOString(),
+  }).eq('email', cleanEmail);
+
+  // 2. Create Supabase Auth user if they don't exist yet
+  let authUserId = null;
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    return res.json({
-      userId:   decoded.userId,
-      email:    decoded.email,
-      role:     decoded.role,
-      clientId: decoded.clientId,
+    const { data: newAuthUser } = await supabaseAuth.auth.admin.createUser({
+      email: cleanEmail, email_confirm: true,
     });
-  } catch {
-    return res.status(401).json({ error: 'Token expired or invalid.' });
+    authUserId = newAuthUser?.user?.id;
+  } catch (e) {
+    // User may already exist in Auth — look them up
+    const { data: { users } } = await supabaseAuth.auth.admin.listUsers();
+    authUserId = users.find(u => u.email === cleanEmail)?.id;
   }
+
+  // 3. Upsert into our users table
+  await supabaseAdmin.from('users').upsert({
+    id: authUserId, email: cleanEmail,
+    role: 'client', client_id: clientId, is_active: true,
+    hashed_pw: 'MAGIC_LINK_AUTH',
+  }, { onConflict: 'email' });
+
+  // 4. Send approved user a magic sign-in link
+  const { data: linkData } = await supabaseAuth.auth.admin.generateLink({
+    type: 'magiclink', email: cleanEmail,
+    options: { redirectTo: `${FRONTEND_URL}/dashboard.html` },
+  });
+
+  // Get client info for response
+  const { data: client } = await supabaseAdmin
+    .from('clients').select('slug, name').eq('id', clientId).single();
+
+  console.log(`[auth] Approved ${cleanEmail} for client ${client?.slug}`);
+
+  return res.json({
+    ok: true, email: cleanEmail,
+    clientName: client?.name, clientSlug: client?.slug,
+    magicLink: linkData?.properties?.action_link || null,
+  });
+});
+
+
+// ── POST /auth/reject ─────────────────────────────────────────────
+router.post('/reject', async (req, res) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  const { data: { user }, error } = await supabaseAuth.auth.getUser(token);
+  if (error || !user) return res.status(401).json({ error: 'Invalid token.' });
+
+  const { data: dbAdmin } = await supabaseAdmin
+    .from('users').select('role').eq('email', user.email).single();
+  if (dbAdmin?.role !== 'admin') return res.status(403).json({ error: 'Admin only.' });
+
+  const { email } = req.body || {};
+  if (!email) return res.status(400).json({ error: 'email required.' });
+
+  await supabaseAdmin.from('access_requests').update({
+    status: 'rejected', reviewed_at: new Date().toISOString(),
+  }).eq('email', email.toLowerCase().trim());
+
+  return res.json({ ok: true });
+});
+
+
+// ── GET /auth/me ──────────────────────────────────────────────────
+router.get('/me', async (req, res) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authenticated.' });
+
+  const { data: { user }, error } = await supabaseAuth.auth.getUser(token);
+  if (error || !user) return res.status(401).json({ error: 'Invalid or expired session.' });
+
+  const { data: dbUser } = await supabaseAdmin
+    .from('users').select('role, client_id, is_active').eq('email', user.email).single();
+
+  if (!dbUser || !dbUser.is_active) return res.status(403).json({ error: 'Account not active.' });
+
+  let clientSlug = null;
+  if (dbUser.client_id) {
+    const { data: client } = await supabaseAdmin
+      .from('clients').select('slug').eq('id', dbUser.client_id).single();
+    clientSlug = client?.slug || null;
+  }
+
+  return res.json({
+    userId: user.id, email: user.email,
+    role: dbUser.role, clientId: dbUser.client_id, clientSlug,
+  });
+});
+
+
+// ── POST /auth/logout ─────────────────────────────────────────────
+router.post('/logout', async (req, res) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  if (token) {
+    try { await supabaseAuth.auth.admin.signOut(token); } catch(e) {}
+  }
+  return res.json({ ok: true });
 });
 
 
