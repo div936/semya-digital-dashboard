@@ -3,19 +3,18 @@
 // Attaches to every /clients/:client_slug/* route.
 //
 // What it does:
-//   1. Verifies the Bearer JWT (issued by your auth layer)
-//   2. Resolves the :client_slug to a client row in Supabase
-//   3. For 'client' role users: enforces they can only view THEIR client
-//   4. Loads the tab_permissions for the resolved client
-//   5. Attaches req.semya = { client, user, permissions } for downstream use
-//
-// Usage:
-//   router.use('/:client_slug', rbacMiddleware, yourHandler)
+//   1. Verifies the Bearer JWT (Supabase-issued)
+//   2. Looks up the user in our users table using decoded.sub (Supabase user id)
+//   3. Resolves the :client_slug to a client row in Supabase
+//   4. For 'client' role users: enforces they can only view THEIR client
+//   5. Loads the tab_permissions for the resolved client
+//   6. Attaches req.semya = { client, user, permissions } for downstream use
 // ─────────────────────────────────────────────────────────────────
 import jwt from 'jsonwebtoken';
 import { supabaseAdmin } from '../lib/supabase.js';
 
-const JWT_SECRET = process.env.JWT_SECRET;
+// Supabase signs tokens with its own JWT secret (Project Settings → API → JWT Secret)
+const JWT_SECRET = process.env.SUPABASE_JWT_SECRET || process.env.JWT_SECRET;
 
 // All valid tab keys — single source of truth
 export const ALL_TABS = [
@@ -33,7 +32,6 @@ function extractToken(req) {
   if (authHeader && authHeader.startsWith('Bearer ')) {
     return authHeader.slice(7);
   }
-  // Also allow token via cookie for SSR pages
   if (req.cookies?.semya_token) {
     return req.cookies.semya_token;
   }
@@ -56,9 +54,31 @@ export async function rbacMiddleware(req, res, next) {
       return res.status(401).json({ error: 'Invalid or expired token.' });
     }
 
-    const { userId, role, clientId } = decoded;
+    // Supabase puts the user's UUID in `sub`, not `userId`
+    const supabaseUserId = decoded.sub;
+    if (!supabaseUserId) {
+      return res.status(401).json({ error: 'Invalid token: missing subject.' });
+    }
 
-    // 2. Resolve the :client_slug from the URL to a client row
+    // 2. Look up our user record using the Supabase auth user ID
+    const { data: dbUser, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('id, email, role, client_id, is_active')
+      .eq('id', supabaseUserId)
+      .single();
+
+    if (userError || !dbUser) {
+      console.error('[rbac] User not found for sub:', supabaseUserId, userError?.message);
+      return res.status(401).json({ error: 'User not found or not registered.' });
+    }
+
+    if (!dbUser.is_active) {
+      return res.status(403).json({ error: 'Account is inactive.' });
+    }
+
+    const { role, client_id: clientId } = dbUser;
+
+    // 3. Resolve the :client_slug from the URL to a client row
     const requestedSlug = req.params.client_slug;
 
     const { data: client, error: clientError } = await supabaseAdmin
@@ -75,7 +95,7 @@ export async function rbacMiddleware(req, res, next) {
       return res.status(403).json({ error: 'This client account is inactive.' });
     }
 
-    // 3. Enforce client-role scoping
+    // 4. Enforce client-role scoping
     //    Admin users can view any client_slug.
     //    Client users can ONLY view their own client.
     if (role === 'client') {
@@ -86,7 +106,7 @@ export async function rbacMiddleware(req, res, next) {
       }
     }
 
-    // 4. Load tab permissions for this client
+    // 5. Load tab permissions for this client
     const { data: tabRows, error: tabError } = await supabaseAdmin
       .from('tab_permissions')
       .select('tab_key, is_enabled')
@@ -97,22 +117,20 @@ export async function rbacMiddleware(req, res, next) {
       return res.status(500).json({ error: 'Failed to load permissions.' });
     }
 
-    // Build a clean permissions map: { platform_sales: true, ai_insights: false, ... }
-    // Admins always get all tabs; the map is still populated for UI hints
+    // Build a clean permissions map
     const tabPermissions = {};
     for (const tab of ALL_TABS) {
       const row = tabRows?.find((r) => r.tab_key === tab);
       if (role === 'admin') {
-        // Admins see everything, but we still surface the client's toggle state
         tabPermissions[tab] = { enabled: true, clientEnabled: row?.is_enabled ?? true };
       } else {
         tabPermissions[tab] = { enabled: row?.is_enabled ?? false };
       }
     }
 
-    // 5. Attach resolved context to request for downstream handlers
+    // 6. Attach resolved context to request for downstream handlers
     req.semya = {
-      user: { id: userId, role },
+      user: { id: supabaseUserId, role, email: dbUser.email },
       client,
       permissions: tabPermissions,
       isAdmin: role === 'admin',
@@ -127,11 +145,6 @@ export async function rbacMiddleware(req, res, next) {
 
 
 // ─── Tab guard helper ─────────────────────────────────────────────
-// Use inside route handlers to block access to a specific tab.
-//
-// Usage:
-//   router.get('/sku-data', rbacMiddleware, requireTab('sku_performance'), handler)
-//
 export function requireTab(tabKey) {
   return (req, res, next) => {
     const perm = req.semya?.permissions?.[tabKey];
