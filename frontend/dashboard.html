@@ -1869,7 +1869,69 @@ const MOCK = {
 
 // ─── AUTH HELPER ─────────────────────────────────────────────────
 function getToken() {
-  return localStorage.getItem(TOKEN_KEY) || '';
+  // Try localStorage first (set on login)
+  const stored = localStorage.getItem(TOKEN_KEY);
+  if (stored) return stored;
+  // Fallback: try semya_token directly
+  return localStorage.getItem('semya_token') || '';
+}
+
+async function getFreshToken() {
+  // Get fresh token from Supabase session if available
+  if (window._supabaseClient) {
+    try {
+      // First try to get current session
+      let { data: { session } } = await window._supabaseClient.auth.getSession();
+
+      // If no session or token is about to expire, try refreshing
+      if (!session || isTokenExpired(session.access_token)) {
+        const { data: refreshed, error } = await window._supabaseClient.auth.refreshSession();
+        if (!error && refreshed.session) {
+          session = refreshed.session;
+        }
+      }
+
+      if (session && session.access_token) {
+        localStorage.setItem(TOKEN_KEY, session.access_token);
+        return session.access_token;
+      }
+    } catch (e) {
+      console.warn('[auth] Session refresh failed:', e.message);
+    }
+  }
+
+  // No valid session — clear stale token and redirect to login
+  const stored = getToken();
+  if (stored && isTokenExpired(stored)) {
+    console.warn('[auth] Stored token expired, redirecting to login.');
+    handleSessionExpiry();
+    return '';
+  }
+
+  return stored;
+}
+
+// Check if a JWT is expired (with 60s buffer)
+function isTokenExpired(token) {
+  if (!token) return true;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.exp && (payload.exp - 60) < (Date.now() / 1000);
+  } catch {
+    return false; // can't decode, assume it's ok
+  }
+}
+
+// Handle session expiry — clear state and redirect to login
+function handleSessionExpiry() {
+  localStorage.removeItem(TOKEN_KEY);
+  if (window._supabaseClient) {
+    window._supabaseClient.auth.signOut().catch(() => {});
+  }
+  // Small delay so any in-flight UI updates complete
+  setTimeout(() => {
+    window.location.href = '/index.html';
+  }, 300);
 }
 
 function authHeaders() {
@@ -1882,6 +1944,18 @@ async function apiFetch(path) {
     headers: authHeaders(),
     credentials: 'include',
   });
+
+  // Auto-handle expired session on any API call
+  if (res.status === 401) {
+    console.warn('[apiFetch] 401 received, attempting token refresh for:', path);
+    const freshToken = await getFreshToken();
+    if (!freshToken) return res; // getFreshToken already redirected
+    // Retry once with the fresh token
+    return fetch(`${API_BASE}${path}`, {
+      headers: { 'Authorization': `Bearer ${freshToken}`, 'Content-Type': 'application/json' },
+      credentials: 'include',
+    });
+  }
   if (!res.ok) throw new Error(`API ${res.status}: ${path}`);
   return res.json();
 }
@@ -3036,6 +3110,18 @@ async function checkSupabaseSession() {
 
   // Use the Supabase access token for API calls
   localStorage.setItem('semya_token', session.access_token);
+
+  // Listen for token refreshes — keep localStorage in sync automatically
+  window._supabaseClient.auth.onAuthStateChange((event, newSession) => {
+    if (event === 'TOKEN_REFRESHED' && newSession?.access_token) {
+      localStorage.setItem(TOKEN_KEY, newSession.access_token);
+      console.log('[auth] Token auto-refreshed by Supabase.');
+    }
+    if (event === 'SIGNED_OUT') {
+      localStorage.removeItem(TOKEN_KEY);
+      window.location.href = '/index.html';
+    }
+  });
 }
 
 
@@ -3292,12 +3378,39 @@ async function handleUpload() {
     const formData = new FormData();
     formData.append('file', file);
 
-    const res = await fetch(API_BASE + '/clients/' + clientSlug + '/upload', {
+    const freshToken = await getFreshToken();
+    if (!freshToken) return; // Session expired, redirecting to login
+
+    let res = await fetch(API_BASE + '/clients/' + clientSlug + '/upload', {
       method:      'POST',
-      headers:     { 'Authorization': 'Bearer ' + getToken() },
+      headers:     { 'Authorization': 'Bearer ' + freshToken },
       credentials: 'include',
       body:        formData,
     });
+
+    // If 401, try one token refresh and retry
+    if (res.status === 401) {
+      console.warn('[upload] 401 received, refreshing token and retrying...');
+      if (window._supabaseClient) {
+        const { data: refreshed } = await window._supabaseClient.auth.refreshSession();
+        if (refreshed?.session?.access_token) {
+          const newToken = refreshed.session.access_token;
+          localStorage.setItem(TOKEN_KEY, newToken);
+          // Rebuild formData (consumed by first request)
+          const retryForm = new FormData();
+          retryForm.append('file', file);
+          res = await fetch(API_BASE + '/clients/' + clientSlug + '/upload', {
+            method:      'POST',
+            headers:     { 'Authorization': 'Bearer ' + newToken },
+            credentials: 'include',
+            body:        retryForm,
+          });
+        } else {
+          handleSessionExpiry();
+          return;
+        }
+      }
+    }
 
     const data = await res.json();
 
