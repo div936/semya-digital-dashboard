@@ -12,7 +12,7 @@ const supabaseAuth = createClient(
 );
 
 const ADMIN_EMAIL  = process.env.ADMIN_EMAIL  || 'admin@semyadigital.com';
-const FRONTEND_URL = process.env.FRONTEND_URL || 'https://bright-twilight-fcf255.netlify.app';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://div936.github.io/semya-digital-dashboard';
 const RENDER_URL   = process.env.RENDER_URL   || 'https://semya-api.onrender.com';
 
 
