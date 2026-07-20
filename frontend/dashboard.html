@@ -1744,12 +1744,23 @@
       Files are automatically routed to the correct database table based on their filename prefix.
     </div>
 
-    <div class="drop-zone" onclick="document.getElementById('fileInput').click()">
+    <!-- File picker -->
+    <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
       <div class="drop-zone-icon">📂</div>
-      <p>Drop your <strong>.xlsx</strong> or <strong>.csv</strong> here</p>
-      <p style="font-size:10px;margin-top:4px;">or click to browse</p>
-      <input type="file" id="fileInput" accept=".xlsx,.csv" style="display:none;">
+      <p id="dropZoneText">Drop your <strong>.xlsx</strong> or <strong>.csv</strong> here</p>
+      <p style="font-size:10px;margin-top:4px;" id="dropZoneSubtext">or click to browse</p>
+      <input type="file" id="fileInput" accept=".xlsx,.csv" style="display:none;" onchange="handleFileSelected(this)">
     </div>
+
+    <!-- Selected file display -->
+    <div id="selectedFileInfo" style="display:none;padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">
+      <div style="font-size:11px;font-weight:700;color:#059669;margin-bottom:3px;">File selected:</div>
+      <div id="selectedFileName" style="font-size:12px;color:#1e293b;font-weight:600;word-break:break-all;"></div>
+      <div id="selectedFileSize" style="font-size:10px;color:#64748b;margin-top:2px;"></div>
+    </div>
+
+    <!-- Upload status -->
+    <div id="uploadStatus" style="display:none;padding:10px 14px;border-radius:8px;font-size:12px;font-weight:600;"></div>
 
     <div>
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:#94a3b8;margin-bottom:10px;">File Prefix → Data Routing</div>
@@ -1765,7 +1776,7 @@
       </div>
     </div>
 
-    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:12px;">
+    <button class="btn btn-primary" id="uploadBtn" onclick="handleUpload()" style="width:100%;justify-content:center;padding:12px;margin-top:auto;">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       Upload & Merge
     </button>
@@ -3223,6 +3234,105 @@ function lineChartOptions(prefix, suffix, decimals) {
   };
 }
 
+
+
+// ─── FILE UPLOAD HANDLER ──────────────────────────────────────────
+function handleFileSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  // Show file info
+  const info = document.getElementById('selectedFileInfo');
+  const name = document.getElementById('selectedFileName');
+  const size = document.getElementById('selectedFileSize');
+  const zone = document.getElementById('dropZone');
+  const status = document.getElementById('uploadStatus');
+
+  name.textContent = file.name;
+  size.textContent = (file.size / 1024).toFixed(1) + ' KB';
+  info.style.display = 'block';
+  status.style.display = 'none';
+  zone.style.borderColor = '#059669';
+  zone.style.background  = '#f0fdf4';
+}
+
+async function handleUpload() {
+  const input  = document.getElementById('fileInput');
+  const file   = input.files[0];
+  const btn    = document.getElementById('uploadBtn');
+  const status = document.getElementById('uploadStatus');
+
+  if (!file) {
+    status.style.display = 'block';
+    status.style.background = '#fef2f2';
+    status.style.border = '1px solid #fecaca';
+    status.style.color  = '#dc2626';
+    status.textContent  = 'Please select a file first.';
+    return;
+  }
+
+  const { clientSlug } = state;
+  if (!clientSlug) {
+    status.style.display = 'block';
+    status.style.color = '#dc2626';
+    status.textContent = 'No client selected.';
+    return;
+  }
+
+  // Show loading state
+  btn.disabled = true;
+  btn.textContent = 'Uploading...';
+  status.style.display = 'block';
+  status.style.background = '#eff6ff';
+  status.style.border = '1px solid #bfdbfe';
+  status.style.color  = '#0284c7';
+  status.textContent  = 'Uploading ' + file.name + '...';
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const res = await fetch(API_BASE + '/clients/' + clientSlug + '/upload', {
+      method:      'POST',
+      headers:     { 'Authorization': 'Bearer ' + getToken() },
+      credentials: 'include',
+      body:        formData,
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) throw new Error(data.error || 'Upload failed');
+
+    // Success
+    status.style.background = '#f0fdf4';
+    status.style.border = '1px solid #bbf7d0';
+    status.style.color  = '#059669';
+    status.textContent  = '✓ ' + data.rowsIngested + ' rows uploaded for ' + data.platform + '. Dashboard will refresh shortly.';
+
+    // Reset file input
+    input.value = '';
+    document.getElementById('selectedFileInfo').style.display = 'none';
+    document.getElementById('dropZone').style.borderColor = '';
+    document.getElementById('dropZone').style.background  = '';
+
+    // Refresh data after 2 seconds
+    setTimeout(() => {
+      tabCache['platform_sales']  = null;
+      tabCache['sku_performance'] = null;
+      fetchAndRender();
+      closeDrawer();
+    }, 2000);
+
+  } catch(err) {
+    status.style.background = '#fef2f2';
+    status.style.border = '1px solid #fecaca';
+    status.style.color  = '#dc2626';
+    status.textContent  = '✗ ' + (err.message || 'Upload failed. Check filename prefix.');
+  } finally {
+    btn.disabled    = false;
+    btn.innerHTML   = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Upload & Merge';
+  }
+}
 
 // ─── MODAL + DRAWER ───────────────────────────────────────────────
 function openModal()  { document.getElementById('aclModal').classList.add('open'); }
