@@ -1961,7 +1961,7 @@ function setBadge(mode) {
   const badge = document.getElementById('fetchBadge');
   const text  = document.getElementById('fetchBadgeText');
   badge.className = `fetch-badge ${mode}`;
-  text.textContent = mode === 'loading' ? 'Loading…' : mode === 'live' ? 'Live data' : 'Preview data';
+  text.textContent = mode === 'loading' ? 'Loading…' : mode === 'live' ? 'Live data' : 'No data — upload a file';
 }
 
 // ─── FORMAT HELPERS ───────────────────────────────────────────────
@@ -2290,9 +2290,9 @@ async function fetchAndRender() {
 
   // Fall back to mock data if live data is empty
   if (!revenueData) {
-    revenueData  = MOCK.revenue;
-    campaignRows = MOCK.campaigns;
-    populateSkuDropdown(MOCK.skus);
+    revenueData  = null;
+    campaignRows = [];
+    populateSkuDropdown([]);
   }
 
   const currentSku = document.getElementById('skuSelect').value || sku || 'SKU';
@@ -2301,15 +2301,15 @@ async function fetchAndRender() {
   renderKPIs(revenueData, campaignRows, { totalRevenue: revenueData.prevRevenue, totalUnits: revenueData.prevUnits });
   renderCities(revenueData.cities);
   renderDoughnut(revenueData.byPlatform);
-  renderLineChart(revenueData.weekly || MOCK.revenue.weekly);
+  if (revenueData && revenueData.weekly) renderLineChart(revenueData.weekly);
   renderCampaigns(campaignRows);
-  renderInsights(MOCK.insights, currentSku);   // AI insights always use computed mock text
+  // AI insights loaded from API only
   renderPlatformHealth(revenueData.byPlatform, campaignRows);
 
   document.getElementById('cityBadge').textContent = currentSku;
 
   state.isLive = isLive;
-  setBadge(isLive ? 'live' : 'mock');
+  setBadge(isLive ? 'live' : 'empty');
 }
 
 // ─── CONTROLS ─────────────────────────────────────────────────────
@@ -2403,7 +2403,7 @@ const MOCK_PS = {
 function setBadgePS(mode) {
   const b = document.getElementById('psFetchBadge'); const t = document.getElementById('psFetchText');
   if (b) b.className = 'fetch-badge ' + mode;
-  if (t) t.textContent = mode === 'loading' ? 'Loading…' : mode === 'live' ? 'Live data' : 'Preview data';
+  if (t) t.textContent = mode === 'loading' ? 'Loading…' : mode === 'live' ? 'Live data' : 'No data — upload a file';
 }
 
 async function fetchAndRenderPS() {
@@ -2421,15 +2421,15 @@ async function fetchAndRenderPS() {
   } catch(e) { console.warn('[PS]', e.message); }
   if (!data) {
     const plat = psState.platform;
-    const platRows = plat ? MOCK_PS.platforms.filter(p => p.platform === plat) : MOCK_PS.platforms;
+    const platRows = [];
     const gt = platRows.reduce((s, p) => s + p.totalRevenue, 0);
     data = { platforms: platRows, grandTotal: gt, prevGrandTotal: gt * 0.82,
-             prevUnits: MOCK_PS.prevUnits, prevOrders: MOCK_PS.prevOrders,
-             weekly: MOCK_PS.weekly, topProducts: MOCK_PS.topProducts };
+             prevUnits: 0, prevOrders: 0,
+             weekly: [], topProducts: [] };
   }
   renderPS(data);
   tabCache['platform_sales'] = { data, timestamp: Date.now() };
-  setBadgePS(isLive ? 'live' : 'mock');
+  setBadgePS(isLive ? 'live' : 'empty');
 }
 
 function renderPS(data) {
@@ -2506,7 +2506,7 @@ const MOCK_CI = { campaigns: [
 function setBadgeCI(mode) {
   const b = document.getElementById('ciFetchBadge'); const t = document.getElementById('ciFetchText');
   if (b) b.className = 'fetch-badge ' + mode;
-  if (t) t.textContent = mode === 'loading' ? 'Loading…' : mode === 'live' ? 'Live data' : 'Preview data';
+  if (t) t.textContent = mode === 'loading' ? 'Loading…' : mode === 'live' ? 'Live data' : 'No data — upload a file';
 }
 
 async function fetchAndRenderCI() {
@@ -2522,10 +2522,10 @@ async function fetchAndRenderCI() {
     const resp = await apiFetch('/clients/' + clientSlug + '/campaign-insights' + q);
     if (Array.isArray(resp) && resp.length) { campaigns = resp; isLive = true; }
   } catch(e) { console.warn('[CI]', e.message); }
-  if (!campaigns) campaigns = ciState.platform ? MOCK_CI.campaigns.filter(c => c.platform === ciState.platform) : MOCK_CI.campaigns;
+  if (!campaigns) campaigns = [];
   renderCI(campaigns);
   tabCache['campaign_insights'] = { data: campaigns, timestamp: Date.now() };
-  setBadgeCI(isLive ? 'live' : 'mock');
+  setBadgeCI(isLive ? 'live' : 'empty');
 }
 
 function renderCI(campaigns) {
@@ -2644,7 +2644,7 @@ function setBadgeGEO(mode) {
   const b = document.getElementById('geoFetchBadge');
   const t = document.getElementById('geoFetchText');
   if (b) b.className = 'fetch-badge ' + mode;
-  if (t) t.textContent = mode === 'loading' ? 'Loading…' : mode === 'live' ? 'Live data' : 'Preview data';
+  if (t) t.textContent = mode === 'loading' ? 'Loading…' : mode === 'live' ? 'Live data' : 'No data — upload a file';
 }
 
 async function fetchAndRenderGEO() {
@@ -2672,10 +2672,10 @@ async function fetchAndRenderGEO() {
       isLive = true;
     }
   } catch(e) { console.warn('[GEO]', e.message); }
-  if (!cities) cities = MOCK_GEO.cities;
+  if (!cities) cities = [];
   renderGEO(cities);
   tabCache['geographic_analysis'] = { data: cities, timestamp: Date.now() };
-  setBadgeGEO(isLive ? 'live' : 'mock');
+  setBadgeGEO(isLive ? 'live' : 'empty');
 }
 
 function renderGEO(cities) {
@@ -2784,7 +2784,7 @@ function setBadgeDT(mode) {
   const b = document.getElementById('dtFetchBadge');
   const t = document.getElementById('dtFetchText');
   if (b) b.className = 'fetch-badge ' + mode;
-  if (t) t.textContent = mode === 'loading' ? 'Loading…' : mode === 'live' ? 'Live data' : 'Preview data';
+  if (t) t.textContent = mode === 'loading' ? 'Loading…' : mode === 'live' ? 'Live data' : 'No data — upload a file';
 }
 
 async function fetchAndRenderDT() {
@@ -2812,17 +2812,17 @@ async function fetchAndRenderDT() {
     }
   } catch(e) { console.warn('[DT] achieved API miss:', e.message); }
 
-  if (!targets)  targets  = MOCK_TARGETS;
+  if (!targets) targets = {};
   if (!achieved) {
     achieved = {};
-    PLATFORMS_DT.forEach(p => { achieved[p] = { revenue: MOCK_TARGETS[p].achieved, units: 0 }; });
+    PLATFORMS_DT.forEach(p => { achieved[p] = { revenue: 0, units: 0 }; });
   }
 
   dtState.targets  = targets;
   dtState.achieved = achieved;
   renderDT(targets, achieved);
   tabCache['daily_targets'] = { data: { targets, achieved }, timestamp: Date.now() };
-  setBadgeDT(isLive ? 'live' : 'mock');
+  setBadgeDT(isLive ? 'live' : 'empty');
 }
 
 function renderDT(targets, achieved) {
@@ -3169,7 +3169,7 @@ function setBadgeAI(mode) {
   const b = document.getElementById('aiFetchBadge');
   const t = document.getElementById('aiFetchText');
   if (b) b.className = 'fetch-badge ' + mode;
-  if (t) t.textContent = mode === 'loading' ? 'Loading...' : mode === 'live' ? 'Live data' : 'Preview data';
+  if (t) t.textContent = mode === 'loading' ? 'Loading...' : mode === 'live' ? 'Live data' : 'No data — upload a file';
 }
 
 async function fetchAndRenderAI() {
@@ -3185,7 +3185,7 @@ async function fetchAndRenderAI() {
     }
   } catch(e) { console.warn('[AI]', e.message); }
 
-  if (!insights) insights = MOCK_AI_INSIGHTS;
+  if (!insights) insights = [];
 
   aiState.allInsights = insights;
   aiState.filter      = '';
