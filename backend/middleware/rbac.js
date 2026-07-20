@@ -1,22 +1,9 @@
 // middleware/rbac.js
-// ─────────────────────────────────────────────────────────────────
-// Attaches to every /clients/:client_slug/* route.
-//
-// What it does:
-//   1. Verifies the Bearer JWT (Supabase-issued)
-//   2. Looks up the user in our users table using decoded.sub (Supabase user id)
-//   3. Resolves the :client_slug to a client row in Supabase
-//   4. For 'client' role users: enforces they can only view THEIR client
-//   5. Loads the tab_permissions for the resolved client
-//   6. Attaches req.semya = { client, user, permissions } for downstream use
-// ─────────────────────────────────────────────────────────────────
 import jwt from 'jsonwebtoken';
 import { supabaseAdmin } from '../lib/supabase.js';
 
-// Supabase signs tokens with its own JWT secret (Project Settings → API → JWT Secret)
 const JWT_SECRET = process.env.SUPABASE_JWT_SECRET || process.env.JWT_SECRET;
 
-// All valid tab keys — single source of truth
 export const ALL_TABS = [
   'platform_sales',
   'sku_performance',
@@ -26,26 +13,18 @@ export const ALL_TABS = [
   'daily_targets',
 ];
 
-// ─── Token extraction helper ──────────────────────────────────────
 function extractToken(req) {
   const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    return authHeader.slice(7);
-  }
-  if (req.cookies?.semya_token) {
-    return req.cookies.semya_token;
-  }
+  if (authHeader && authHeader.startsWith('Bearer ')) return authHeader.slice(7);
+  if (req.cookies?.semya_token) return req.cookies.semya_token;
   return null;
 }
 
-// ─── Main RBAC middleware ─────────────────────────────────────────
 export async function rbacMiddleware(req, res, next) {
   try {
     // 1. Extract and verify JWT
     const token = extractToken(req);
-    if (!token) {
-      return res.status(401).json({ error: 'Authentication required.' });
-    }
+    if (!token) return res.status(401).json({ error: 'Authentication required.' });
 
     let decoded;
     try {
@@ -54,21 +33,22 @@ export async function rbacMiddleware(req, res, next) {
       return res.status(401).json({ error: 'Invalid or expired token.' });
     }
 
-    // Supabase puts the user's UUID in `sub`, not `userId`
-    const supabaseUserId = decoded.sub;
-    if (!supabaseUserId) {
-      return res.status(401).json({ error: 'Invalid token: missing subject.' });
+    // Supabase puts email in decoded.email and user UUID in decoded.sub
+    const email = decoded.email;
+    if (!email) {
+      return res.status(401).json({ error: 'Invalid token: missing email.' });
     }
 
-    // 2. Look up our user record using the Supabase auth user ID
+    // 2. Look up our user record by EMAIL (users table was seeded by email,
+    //    not by Supabase Auth UUID, so we match on email not id)
     const { data: dbUser, error: userError } = await supabaseAdmin
       .from('users')
       .select('id, email, role, client_id, is_active')
-      .eq('id', supabaseUserId)
+      .eq('email', email.toLowerCase().trim())
       .single();
 
     if (userError || !dbUser) {
-      console.error('[rbac] User not found for sub:', supabaseUserId, userError?.message);
+      console.error('[rbac] User not found for email:', email, userError?.message);
       return res.status(401).json({ error: 'User not found or not registered.' });
     }
 
@@ -78,9 +58,8 @@ export async function rbacMiddleware(req, res, next) {
 
     const { role, client_id: clientId } = dbUser;
 
-    // 3. Resolve the :client_slug from the URL to a client row
+    // 3. Resolve the :client_slug to a client row
     const requestedSlug = req.params.client_slug;
-
     const { data: client, error: clientError } = await supabaseAdmin
       .from('clients')
       .select('id, slug, name, logo_url, theme, is_active')
@@ -96,8 +75,6 @@ export async function rbacMiddleware(req, res, next) {
     }
 
     // 4. Enforce client-role scoping
-    //    Admin users can view any client_slug.
-    //    Client users can ONLY view their own client.
     if (role === 'client') {
       if (!clientId || clientId !== client.id) {
         return res.status(403).json({
@@ -106,7 +83,7 @@ export async function rbacMiddleware(req, res, next) {
       }
     }
 
-    // 5. Load tab permissions for this client
+    // 5. Load tab permissions
     const { data: tabRows, error: tabError } = await supabaseAdmin
       .from('tab_permissions')
       .select('tab_key, is_enabled')
@@ -117,7 +94,6 @@ export async function rbacMiddleware(req, res, next) {
       return res.status(500).json({ error: 'Failed to load permissions.' });
     }
 
-    // Build a clean permissions map
     const tabPermissions = {};
     for (const tab of ALL_TABS) {
       const row = tabRows?.find((r) => r.tab_key === tab);
@@ -128,9 +104,9 @@ export async function rbacMiddleware(req, res, next) {
       }
     }
 
-    // 6. Attach resolved context to request for downstream handlers
+    // 6. Attach resolved context
     req.semya = {
-      user: { id: supabaseUserId, role, email: dbUser.email },
+      user: { id: dbUser.id, role, email: dbUser.email },
       client,
       permissions: tabPermissions,
       isAdmin: role === 'admin',
@@ -143,8 +119,6 @@ export async function rbacMiddleware(req, res, next) {
   }
 }
 
-
-// ─── Tab guard helper ─────────────────────────────────────────────
 export function requireTab(tabKey) {
   return (req, res, next) => {
     const perm = req.semya?.permissions?.[tabKey];
