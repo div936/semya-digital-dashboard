@@ -2813,7 +2813,7 @@ function renderDT(targets, achieved) {
   document.getElementById('dtTargetInputs').innerHTML = platforms.map(p => {
     const m   = PLATFORM_META[p] || { label: p.toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
     const tgt = targets[p]?.target || 0;
-    return '<div class="target-input-group"><label class="target-input-label"><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span> Daily Target</label><div class="target-input-wrap"><span class="target-input-prefix">₹</span><input type="number" class="target-input" id="dtTarget_' + p + '" value="' + tgt + '" min="0" step="10000" onchange="dtState.targets['' + p + ''] = dtState.targets['' + p + ''] || {}; dtState.targets['' + p + ''].target = Number(this.value);" /></div></div>';
+    return '<div class="target-input-group"><label class="target-input-label">' + m.label + ' Daily Target</label><div class="target-input-wrap"><span class="target-input-prefix">&#8377;</span><input type="number" class="target-input" id="dtTarget_' + p + '" value="' + tgt + '" min="0" step="10000" /></div></div>';
   }).join('');
 }
 
