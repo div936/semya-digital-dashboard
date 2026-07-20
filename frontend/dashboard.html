@@ -2634,7 +2634,7 @@ function renderGEO(cities) {
   document.getElementById('geoCityBars').innerHTML = cities.slice(0, 15).map(c => {
     const pct  = totalRevenue > 0 ? (c.revenue / totalRevenue * 100).toFixed(1) : 0;
     const barW = (c.revenue / maxCityRev * 100).toFixed(1);
-    return '<div class="stat-bar-row"><div class="stat-bar-meta"><span class="stat-bar-name">' + c.city + (c.state ? ' <span style='font-size:10px;color:#94a3b8;'>(' + c.state + ')</span>' : '') + '</span><div class="stat-bar-vals"><span class="stat-bar-rev">' + fmtRevenue(c.revenue) + '</span><span class="stat-bar-pct">' + pct + '%</span></div></div><div class="stat-bar-bg"><div class="stat-bar-fill" style="width:' + barW + '%;background:var(--theme-primary);"></div></div></div>';
+    return '<div class="stat-bar-row"><div class="stat-bar-meta"><span class="stat-bar-name">' + c.city + (c.state ? ' (' + c.state + ')' : '') + '</span><div class="stat-bar-vals"><span class="stat-bar-rev">' + fmtRevenue(c.revenue) + '</span><span class="stat-bar-pct">' + pct + '%</span></div></div><div class="stat-bar-bg"><div class="stat-bar-fill" style="width:' + barW + '%;background:var(--theme-primary);"></div></div></div>';
   }).join('');
 
   // Zone bars
