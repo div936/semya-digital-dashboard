@@ -148,11 +148,21 @@
 
   const _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-  // On load: if user clicked a magic link, redirect to dashboard
-  (async () => {
-    const { data: { session } } = await _sb.auth.getSession();
-    if (session) window.location.replace(DASHBOARD_URL);
-  })();
+  // On load: handle magic link callback + existing session
+(async () => {
+  // Handle magic link token in URL (Supabase puts it in the hash)
+  const hash = window.location.hash;
+  if (hash && hash.includes('access_token')) {
+    const { data: { session }, error } = await _sb.auth.getSession();
+    if (session && !error) {
+      window.location.replace(DASHBOARD_URL);
+      return;
+    }
+  }
+  // Check for existing active session
+  const { data: { session } } = await _sb.auth.getSession();
+  if (session) window.location.replace(DASHBOARD_URL);
+})();
 
   function showStep(id) {
     document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
