@@ -963,8 +963,12 @@
         Access Control
       </button>
 
-      <!-- Avatar -->
-      <div class="avatar" title="Admin: Semya Staff">A</div>
+      <!-- Avatar + Logout -->
+      <div class="avatar" title="Admin: Semya Staff" id="userAvatar">A</div>
+      <button class="btn" onclick="window.semyaLogout()" title="Sign out" style="padding:6px 10px;background:#fee2e2;color:#dc2626;border:1px solid #fecaca;font-size:11px;gap:4px;">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Sign Out
+      </button>
     </div>
   </header>
 
@@ -3483,7 +3487,21 @@ function boot(user) {
 if (window.semyaUser) {
   boot(window.semyaUser);
 } else {
-  document.addEventListener('semya:auth-ready', e => boot(e.detail));
+  document.addEventListener('semya:auth-ready', async e => {
+    // Force refresh token on every page load to avoid stale token 401s
+    if (window._supabaseClient) {
+      try {
+        const { data: refreshed } = await window._supabaseClient.auth.refreshSession();
+        if (refreshed?.session?.access_token) {
+          localStorage.setItem('semya_token', refreshed.session.access_token);
+          e.detail.token = refreshed.session.access_token;
+        }
+      } catch(err) {
+        console.warn('[boot] Token refresh failed:', err.message);
+      }
+    }
+    boot(e.detail);
+  });
   setTimeout(function() { if (!state.clientSlug) boot({}); }, 400);
 }
 </script>
