@@ -1883,30 +1883,20 @@ function getToken() {
 }
 
 async function getFreshToken() {
-  // Get fresh token from Supabase session if available
+  // Always refresh from Supabase first to avoid stale token 401s
   if (window._supabaseClient) {
     try {
-      // First try to get current session
-      let { data: { session } } = await window._supabaseClient.auth.getSession();
-
-      // If no session or token is about to expire, try refreshing
-      if (!session || isTokenExpired(session.access_token)) {
-        const { data: refreshed, error } = await window._supabaseClient.auth.refreshSession();
-        if (!error && refreshed.session) {
-          session = refreshed.session;
-        }
-      }
-
-      if (session && session.access_token) {
-        localStorage.setItem(TOKEN_KEY, session.access_token);
-        return session.access_token;
+      const { data: refreshed, error } = await window._supabaseClient.auth.refreshSession();
+      if (!error && refreshed?.session?.access_token) {
+        localStorage.setItem(TOKEN_KEY, refreshed.session.access_token);
+        return refreshed.session.access_token;
       }
     } catch (e) {
       console.warn('[auth] Session refresh failed:', e.message);
     }
   }
 
-  // No valid session — clear stale token and redirect to login
+  // Fallback to stored token
   const stored = getToken();
   if (stored && isTokenExpired(stored)) {
     console.warn('[auth] Stored token expired, redirecting to login.');
