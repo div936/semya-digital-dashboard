@@ -132,6 +132,7 @@
     /* Avatar dropdown */
     .avatar-wrap {
       position: relative;
+      z-index: 60;
     }
     .avatar-dropdown {
       display: none;
@@ -466,6 +467,8 @@
       margin-bottom: 8px;
     }
     .kpi-value span { font-size: 15px; color: var(--theme-primary); }
+    /* Revenue KPI full unified styling */
+    .kpi-value.revenue-kpi { font-size: 32px; letter-spacing: -0.03em; }
     .kpi-delta {
       display: inline-flex;
       align-items: center;
@@ -546,6 +549,27 @@
     .pill-goog { background: rgba(66,133,244,.12); color: #4285f4; border: 1px solid rgba(66,133,244,.3); }
 
     .roas-tag { font-family: var(--font-mono); font-weight: 700; }
+
+    /* ─── TREND PERIOD TOGGLE ─────────────────────────────────────── */
+    .trend-period-btn {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 99px;
+      border: 1px solid var(--color-border);
+      background: var(--color-surface-2);
+      color: var(--theme-muted);
+      cursor: pointer;
+      transition: all .15s;
+      letter-spacing: 0.04em;
+    }
+    .trend-period-btn:hover { border-color: var(--theme-primary); color: var(--theme-primary); }
+    .trend-period-btn.active {
+      background: var(--theme-primary);
+      border-color: var(--theme-primary);
+      color: #fff;
+      box-shadow: 0 1px 4px rgba(2,132,199,.3);
+    }
     .roas-good { color: #059669; }
     .roas-warn { color: #d97706; }
 
@@ -1321,13 +1345,14 @@
 
       <div class="card">
         <div class="card-header">
-          <span class="card-title">Weekly Revenue Trend</span>
-          <div style="display:flex;gap:8px;">
-            <span class="card-badge">This period</span>
-            <span style="font-size:10px;color:var(--theme-muted);padding:3px 0;">vs prior period</span>
+          <span class="card-title" id="trendChartTitle">Revenue Trend</span>
+          <div style="display:flex;gap:4px;align-items:center;">
+            <button class="trend-period-btn active" data-period="week" onclick="setTrendPeriod('week')">Weekly</button>
+            <button class="trend-period-btn" data-period="month" onclick="setTrendPeriod('month')">Monthly</button>
+            <button class="trend-period-btn" data-period="year" onclick="setTrendPeriod('year')">Yearly</button>
           </div>
         </div>
-        <div class="chart-wrap" style="height:190px;">
+        <div class="chart-wrap" style="height:200px;">
           <canvas id="lineChart"></canvas>
         </div>
       </div>
@@ -1558,11 +1583,8 @@
             <span class="card-title">Revenue by Zone</span>
             <span class="card-badge">Regional</span>
           </div>
-          <div id="geoZoneBars" class="stat-bar-list">
-            <div class="stat-bar-row"><div class="stat-bar-bg"><div class="skel skel-bar"></div></div></div>
-            <div class="stat-bar-row"><div class="stat-bar-bg"><div class="skel skel-bar"></div></div></div>
-            <div class="stat-bar-row"><div class="stat-bar-bg"><div class="skel skel-bar"></div></div></div>
-            <div class="stat-bar-row"><div class="stat-bar-bg"><div class="skel skel-bar"></div></div></div>
+          <div id="geoZoneBars">
+            <div class="chart-wrap" style="height:200px;"><canvas id="geoZoneChart"></canvas></div>
           </div>
         </div>
       </div>
@@ -1664,26 +1686,17 @@
 
       </div>
 
-      <!-- Admin: Edit Targets Panel -->
-      <div class="card" id="dtAdminPanel" data-role="admin">
-        <div class="card-header">
-          <span class="card-title">Edit Daily Targets</span>
-          <span class="card-badge" style="background:#fff7ed;color:#d97706;border-color:#fed7aa;">Admin only</span>
-        </div>
-        <div style="font-size:12px;color:#94a3b8;margin-bottom:16px;">
-          Set the revenue target (₹) for each platform. Changes apply to the selected date.
-        </div>
-        <div id="dtTargetInputs" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:18px;">
-          <div class="skel skel-row" style="display:block;height:60px;"></div>
-          <div class="skel skel-row" style="display:block;height:60px;"></div>
-          <div class="skel skel-row" style="display:block;height:60px;"></div>
-          <div class="skel skel-row" style="display:block;height:60px;"></div>
-        </div>
-        <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;">
-          <span id="dtSaveStatus" style="font-size:11px;color:#94a3b8;"></span>
-          <button class="btn btn-primary" onclick="saveTargets()" id="dtSaveBtn">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-            Save Targets
+      <!-- Edit Daily Targets moved to Profile → Settings → Daily Targets modal -->
+      <div class="card" id="dtAdminPanel" data-role="admin" style="background:#f8fafd;border-style:dashed;">
+        <div style="display:flex;align-items:center;gap:12px;padding:4px 0;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <div>
+            <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:2px;">Set Daily Targets</div>
+            <div style="font-size:11px;color:#64748b;">Configure per-platform revenue targets via <strong>Profile → Settings → Daily Targets</strong></div>
+          </div>
+          <button class="btn btn-accent" onclick="openDailyTargetsPanel()" style="margin-left:auto;white-space:nowrap;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            Edit Targets
           </button>
         </div>
       </div>
@@ -1985,6 +1998,8 @@ let state = {
   isLive:       false,
   doughnutChart: null,
   lineChart:    null,
+  _trendPeriod: 'week',
+  _revenueAgg:  null,
 };
 
 // ─── MOCK DATA (fallback when API is empty or unreachable) ────────
@@ -2205,7 +2220,7 @@ function renderKPIs(rev, campaigns, prevRev) {
   const topPct        = topPlatform && totalRevenue > 0
     ? Math.round(topPlatform.totalRevenue / totalRevenue * 100) : 0;
 
-  document.getElementById('kpiRevenue').innerHTML = `<span>₹</span>${fmtRevenue(totalRevenue).replace('₹','')}`;
+  document.getElementById('kpiRevenue').innerHTML = fmtRevenue(totalRevenue);
   document.getElementById('kpiRevenueDelta').innerHTML = deltaHtml(pctDelta(totalRevenue, prevRevenue));
   document.getElementById('kpiRevenueSub').innerHTML = `Daily avg: ${fmtRevenue(totalRevenue/18)} &nbsp;·&nbsp; ${topPlatform ? PLATFORM_META[topPlatform.platform]?.label || topPlatform.platform : '—'}: ${topPct}%`;
 
@@ -2272,6 +2287,24 @@ function renderDoughnut(byPlatform) {
       <span style="color:#64748b;">${PLATFORM_META[p.platform]?.label || p.platform}</span>
       <span style="color:#1e293b;font-weight:700;">${data[i]}%</span>
     </div>`).join('');
+}
+
+// ─── TREND PERIOD SWITCHING ──────────────────────────────────────
+function setTrendPeriod(period) {
+  state._trendPeriod = period;
+  document.querySelectorAll('.trend-period-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.period === period);
+  });
+  const titles = { week: 'Weekly Revenue Trend', month: 'Monthly Revenue Trend', year: 'Yearly Revenue Trend' };
+  const titleEl = document.getElementById('trendChartTitle');
+  if (titleEl) titleEl.textContent = titles[period] || 'Revenue Trend';
+  renderLineChartForPeriod(period, state._revenueAgg);
+}
+
+function renderLineChartForPeriod(period, agg) {
+  if (!agg) return;
+  const data = period === 'month' ? agg.monthly : period === 'year' ? agg.yearly : agg.weekly;
+  if (data && data.length) renderLineChart(data);
 }
 
 // ─── RENDER LINE CHART (Image 7 style — gradient area + solid dots) ──────
@@ -2461,6 +2494,8 @@ function aggregateRevenue(rows) {
   const byCity     = {};
   const byPlatform = {};
   const byWeek     = {};
+  const byMonth    = {};
+  const byYear     = {};
   let totalRevenue = 0, totalUnits = 0;
 
   for (const r of rows) {
@@ -2476,9 +2511,28 @@ function aggregateRevenue(rows) {
     byPlatform[plat] = (byPlatform[plat] || 0) + rev;
 
     if (r.order_date) {
-      const d    = new Date(r.order_date);
-      const wkey = `W${Math.ceil(d.getDate() / 7)} ${d.toLocaleString('default', { month: 'short' })}`;
-      byWeek[wkey] = (byWeek[wkey] || 0) + rev;
+      const d = new Date(r.order_date);
+      const yr = d.getFullYear();
+      const mo = d.getMonth(); // 0-11
+      const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+      // Weekly: "W1 Jan 25"
+      const wkey = 'W' + Math.ceil(d.getDate() / 7) + ' ' + MONTHS[mo] + " '" + String(yr).slice(2);
+      // Store sort key alongside label
+      const wSort = yr * 10000 + mo * 100 + Math.ceil(d.getDate() / 7);
+      if (!byWeek[wkey]) byWeek[wkey] = { rev: 0, sort: wSort };
+      byWeek[wkey].rev += rev;
+
+      // Monthly: "Jan '25"
+      const mkey = MONTHS[mo] + " '" + String(yr).slice(2);
+      const mSort = yr * 100 + mo;
+      if (!byMonth[mkey]) byMonth[mkey] = { rev: 0, sort: mSort };
+      byMonth[mkey].rev += rev;
+
+      // Yearly: "FY25" / "2024"
+      const ykey = String(yr);
+      if (!byYear[ykey]) byYear[ykey] = { rev: 0, sort: yr };
+      byYear[ykey].rev += rev;
     }
   }
 
@@ -2491,9 +2545,18 @@ function aggregateRevenue(rows) {
     .sort((a, b) => b.totalRevenue - a.totalRevenue);
 
   const weekly = Object.entries(byWeek)
-    .map(([week, revenue]) => ({ week, revenue, prevRevenue: revenue * 0.82 }));
+    .sort((a, b) => a[1].sort - b[1].sort)
+    .map(([week, v]) => ({ week, revenue: v.rev, prevRevenue: v.rev * 0.82 }));
 
-  return { totalRevenue, totalUnits, cities, byPlatform: byPlatformArr, weekly };
+  const monthly = Object.entries(byMonth)
+    .sort((a, b) => a[1].sort - b[1].sort)
+    .map(([month, v]) => ({ week: month, revenue: v.rev, prevRevenue: v.rev * 0.82 }));
+
+  const yearly = Object.entries(byYear)
+    .sort((a, b) => a[1].sort - b[1].sort)
+    .map(([year, v]) => ({ week: year, revenue: v.rev, prevRevenue: v.rev * 0.82 }));
+
+  return { totalRevenue, totalUnits, cities, byPlatform: byPlatformArr, weekly, monthly, yearly };
 }
 
 // ─── MAIN FETCH + RENDER CYCLE ────────────────────────────────────
@@ -2544,13 +2607,15 @@ async function fetchAndRender() {
 
   const currentSku = document.getElementById('skuSelect').value || sku || 'SKU';
 
+  // Store aggregated data for period switching
+  state._revenueAgg = revenueData;
+
   // ── Render all widgets ──
   renderKPIs(revenueData, campaignRows, { totalRevenue: revenueData.prevRevenue, totalUnits: revenueData.prevUnits });
   renderCities(revenueData.cities);
   renderDoughnut(revenueData.byPlatform);
-  if (revenueData && revenueData.weekly) renderLineChart(revenueData.weekly);
+  renderLineChartForPeriod(state._trendPeriod || 'week', revenueData);
   renderCampaigns(campaignRows);
-  // AI insights loaded from API only
   renderPlatformHealth(revenueData.byPlatform, campaignRows);
 
   document.getElementById('cityBadge').textContent = currentSku;
@@ -3000,7 +3065,7 @@ function renderGEO(cities) {
     return '<div class="stat-bar-row"><div class="stat-bar-meta"><span class="stat-bar-name">' + c.city + (c.state ? ' (' + c.state + ')' : '') + '</span><div class="stat-bar-vals"><span class="stat-bar-rev">' + fmtRevenue(c.revenue) + '</span><span class="stat-bar-pct">' + pct + '%</span></div></div><div class="stat-bar-bg"><div class="stat-bar-fill" style="width:' + barW + '%;background:var(--theme-primary);"></div></div></div>';
   }).join('');
 
-  // Zone bars
+  // Zone chart — horizontal bar via Chart.js
   const zones = {};
   cities.forEach(c => {
     const z = STATE_ZONES[c.state] || 'Other';
@@ -3008,13 +3073,60 @@ function renderGEO(cities) {
   });
   const zoneColors = { West: '#0284c7', South: '#059669', North: '#7c3aed', East: '#d97706', Other: '#94a3b8' };
   const zoneSorted = Object.entries(zones).sort((a, b) => b[1] - a[1]);
-  const maxZone    = zoneSorted[0]?.[1] || 1;
-  document.getElementById('geoZoneBars').innerHTML = zoneSorted.map(([zone, rev]) => {
-    const pct  = totalRevenue > 0 ? (rev / totalRevenue * 100).toFixed(1) : 0;
-    const barW = (rev / maxZone * 100).toFixed(1);
-    const col  = zoneColors[zone] || '#94a3b8';
-    return '<div class="stat-bar-row"><div class="stat-bar-meta"><span class="stat-bar-name"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + col + ';margin-right:4px;"></span>' + zone + '</span><div class="stat-bar-vals"><span class="stat-bar-rev">' + fmtRevenue(rev) + '</span><span class="stat-bar-pct">' + pct + '%</span></div></div><div class="stat-bar-bg"><div class="stat-bar-fill" style="width:' + barW + '%;background:' + col + ';"></div></div></div>';
-  }).join('');
+  const zLabels = zoneSorted.map(([z]) => z);
+  const zData   = zoneSorted.map(([,v]) => +(v / 100000).toFixed(2));
+  const zCols   = zoneSorted.map(([z]) => zoneColors[z] || '#94a3b8');
+  renderOrUpdateChart('geoZoneChart', '_geoZoneChart', {
+    type: 'bar',
+    data: {
+      labels: zLabels,
+      datasets: [{
+        label: 'Revenue (Lakhs)',
+        data: zData,
+        backgroundColor: zCols.map(c => c + 'cc'),
+        borderColor: zCols,
+        borderWidth: 2,
+        borderRadius: 6,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#fff',
+          borderColor: '#dce5ef',
+          borderWidth: 1,
+          titleColor: '#0f172a',
+          bodyColor: '#64748b',
+          padding: 10,
+          callbacks: {
+            label: ctx => {
+              const rawRev = zoneSorted[ctx.dataIndex]?.[1] || 0;
+              const pct = totalRevenue > 0 ? (rawRev / totalRevenue * 100).toFixed(1) : 0;
+              return ' ' + fmtRevenue(rawRev) + '  (' + pct + '%)';
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(220,229,239,0.5)', drawBorder: false },
+          ticks: { color: '#94a3b8', font: { size: 10 }, callback: v => '\u20b9' + v + 'L' }
+        },
+        y: {
+          grid: { display: false },
+          ticks: {
+            color: '#1e293b',
+            font: { size: 12, weight: '600' },
+          }
+        }
+      }
+    }
+  });
 
   // State table
   const stateBadge = document.getElementById('geoStateBadge');
@@ -3830,18 +3942,18 @@ function filterSkuOptions(query) {
   if (empty) empty.style.display = anyVisible ? 'none' : 'block';
 }
 
-function selectSkuOption(value, label) {
+function selectSkuOption(el) {
+  const value  = el.dataset.value || '';
+  const label  = el.textContent.trim();
   const hidden = document.getElementById('skuSelect');
   const lbl    = document.getElementById('skuCustomLabel');
   const wrap   = document.getElementById('skuCustomWrap');
   if (hidden) hidden.value = value;
   if (lbl)   lbl.textContent = label;
-  // mark selected
   document.querySelectorAll('.sku-custom-option').forEach(opt => {
     opt.classList.toggle('selected', opt.dataset.value === value);
   });
   wrap.classList.remove('open');
-  // Trigger change logic (same as old select change handler)
   state.sku = value;
   document.getElementById('cityBadge').textContent = value;
   document.getElementById('aiSubtitle').textContent = 'Powered · ' + value;
@@ -3862,7 +3974,7 @@ function populateSkuDropdown(skus) {
     return;
   }
   list.innerHTML = skus.map((s, i) =>
-    '<div class="sku-custom-option' + (i === 0 ? ' selected' : '') + '" data-value="' + s.value + '" onclick="selectSkuOption('' + s.value.replace(/'/g, "\'") + '', '' + (s.label || s.value).replace(/'/g, "\'") + '')">' + (s.label || s.value) + '</div>'
+    '<div class="sku-custom-option' + (i === 0 ? ' selected' : '') + '" data-value="' + s.value + '" onclick="selectSkuOption(this)">' + (s.label || s.value) + '</div>'
   ).join('');
   if (lbl) lbl.textContent = skus[0]?.label || skus[0]?.value || '—';
   if (hidden) hidden.value = skus[0]?.value || '';
