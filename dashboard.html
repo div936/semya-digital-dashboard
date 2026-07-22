@@ -125,9 +125,57 @@
       letter-spacing: 0.2em;
       text-transform: uppercase;
       color: var(--theme-primary);
+      z-index: 0;
+      pointer-events: none;
     }
 
-    .header-controls { display: flex; align-items: center; gap: 10px; }
+    /* Avatar dropdown */
+    .avatar-wrap {
+      position: relative;
+    }
+    .avatar-dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      box-shadow: 0 4px 16px rgba(2,132,199,.12);
+      min-width: 160px;
+      z-index: 200;
+      overflow: hidden;
+    }
+    .avatar-wrap.open .avatar-dropdown { display: block; }
+    .avatar-dropdown-header {
+      padding: 10px 14px 8px;
+      border-bottom: 1px solid var(--color-border);
+      font-size: 11px;
+      color: var(--theme-muted);
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .avatar-dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 14px;
+      font-size: 12px;
+      font-weight: 500;
+      color: #374151;
+      cursor: pointer;
+      transition: background .15s;
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+    }
+    .avatar-dropdown-item:hover { background: var(--color-surface-2); color: var(--theme-primary); }
+    .avatar-dropdown-item.danger { color: #dc2626; }
+    .avatar-dropdown-item.danger:hover { background: #fee2e2; color: #dc2626; }
+
+    .header-controls { display: flex; align-items: center; gap: 10px; position: relative; z-index: 1; }
 
     /* ─── CONTROLS (shared) ───────────────────────────────────────── */
     .btn {
@@ -963,12 +1011,21 @@
         Access Control
       </button>
 
-      <!-- Avatar + Logout -->
-      <div class="avatar" title="Admin: Semya Staff" id="userAvatar">A</div>
-      <button class="btn" onclick="window.semyaLogout()" title="Sign out" style="padding:6px 10px;background:#fee2e2;color:#dc2626;border:1px solid #fecaca;font-size:11px;gap:4px;">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        Sign Out
-      </button>
+      <!-- Avatar Dropdown -->
+      <div class="avatar-wrap" id="avatarWrap">
+        <div class="avatar" title="Admin: Semya Staff" id="userAvatar" onclick="toggleAvatarMenu()">A</div>
+        <div class="avatar-dropdown" id="avatarDropdown">
+          <div class="avatar-dropdown-header">Account</div>
+          <button class="avatar-dropdown-item" onclick="closeAvatarMenu()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+            Settings
+          </button>
+          <button class="avatar-dropdown-item danger" onclick="closeAvatarMenu(); window.semyaLogout();">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            Sign Out
+          </button>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -3494,6 +3551,21 @@ if (window.semyaUser) {
   });
   setTimeout(function() { if (!state.clientSlug) boot({}); }, 400);
 }
+</script>
+
+<script>
+// ── Avatar dropdown ──────────────────────────────────────────────
+function toggleAvatarMenu() {
+  document.getElementById('avatarWrap').classList.toggle('open');
+}
+function closeAvatarMenu() {
+  document.getElementById('avatarWrap').classList.remove('open');
+}
+// Close when clicking outside
+document.addEventListener('click', function(e) {
+  var wrap = document.getElementById('avatarWrap');
+  if (wrap && !wrap.contains(e.target)) closeAvatarMenu();
+});
 </script>
 
 </body>
