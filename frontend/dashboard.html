@@ -1686,20 +1686,7 @@
 
       </div>
 
-      <!-- Edit Daily Targets moved to Profile → Settings → Daily Targets modal -->
-      <div class="card" id="dtAdminPanel" data-role="admin" style="background:#f8fafd;border-style:dashed;">
-        <div style="display:flex;align-items:center;gap:12px;padding:4px 0;">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          <div>
-            <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:2px;">Set Daily Targets</div>
-            <div style="font-size:11px;color:#64748b;">Configure per-platform revenue targets via <strong>Profile → Settings → Daily Targets</strong></div>
-          </div>
-          <button class="btn btn-accent" onclick="openDailyTargetsPanel()" style="margin-left:auto;white-space:nowrap;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            Edit Targets
-          </button>
-        </div>
-      </div>
+
 
     </div><!-- /tab-daily_targets -->
 
@@ -3256,33 +3243,61 @@ function renderDT(targets, achieved) {
     return '<div class="progress-wrap"><div class="progress-header"><span class="progress-label"><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></span><div class="progress-vals"><span class="progress-achieved">' + fmtRevenue(ach) + '</span><span style="color:#94a3b8;font-size:11px;">/</span><span class="progress-target">' + fmtRevenue(tgt) + '</span><span class="progress-pct ' + pctCls + '">' + pctLabel + '%</span></div></div><div class="progress-track"><div class="progress-fill" style="width:' + Math.min(pct, 100) + '%;background:' + m.color + ';opacity:' + (pct < 50 ? 0.5 : 1) + ';"></div></div></div>';
   }).join('');
 
-  // 7-day trend sparkline
-  renderOrUpdateChart('dtTrendChart', '_dtTrendChart', {
-    type: 'bar',
-    data: {
-      labels: MOCK_DT_TREND.map(d => d.day),
-      datasets: [{
-        label: 'Attainment %',
-        data:  MOCK_DT_TREND.map(d => d.pct),
-        backgroundColor: MOCK_DT_TREND.map(d => d.pct >= 100 ? 'rgba(5,150,105,.8)' : d.pct >= 80 ? 'rgba(2,132,199,.75)' : 'rgba(217,119,6,.7)'),
-        borderRadius: 4, borderSkipped: false,
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: { backgroundColor: '#fff', borderColor: '#dce5ef', borderWidth: 1, titleColor: '#0f172a', bodyColor: '#64748b',
-          callbacks: { label: ctx => ' ' + ctx.parsed.y + '% attained' } }
+  // 7-day attainment trend — only render when real achieved data exists
+  const trendCanvas  = document.getElementById('dtTrendChart');
+  const trendWrap    = trendCanvas ? trendCanvas.closest('.chart-wrap') || trendCanvas.parentElement : null;
+  // Build trend data only from real achieved values (not mock)
+  const trendDays = Object.entries(achieved)
+    .map(([plat, a]) => ({ plat, rev: a.revenue || 0 }))
+    .filter(d => d.rev > 0);
+  const hasRealTrendData = isLive && trendDays.some(d => d.rev > 0);
+
+  if (hasRealTrendData && trendWrap) {
+    trendWrap.style.display = '';
+    const trendLabels = platforms.map(p => (PLATFORM_META[p]?.label || p.toUpperCase()));
+    const trendPcts   = platforms.map(p => {
+      const tgt = targets[p]?.target || 0;
+      const ach = achieved[p]?.revenue || 0;
+      return tgt > 0 ? Math.round(ach / tgt * 100) : 0;
+    });
+    const trendBg = trendPcts.map(v => v >= 100 ? 'rgba(5,150,105,.8)' : v >= 80 ? 'rgba(2,132,199,.75)' : 'rgba(217,119,6,.7)');
+    renderOrUpdateChart('dtTrendChart', '_dtTrendChart', {
+      type: 'bar',
+      data: {
+        labels: trendLabels,
+        datasets: [{
+          label: 'Attainment %',
+          data: trendPcts,
+          backgroundColor: trendBg,
+          borderRadius: 6, borderSkipped: false,
+        }]
       },
-      scales: {
-        x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 } } },
-        y: { grid: { color: 'rgba(220,229,239,.7)' }, ticks: { color: '#94a3b8', font: { size: 10 }, callback: v => v + '%' }, min: 0, max: 120,
-          afterBuildTicks: axis => { axis.ticks = [0, 25, 50, 75, 100].map(v => ({ value: v })); } }
-      },
-      annotation: {}
-    }
-  });
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { backgroundColor: '#fff', borderColor: '#dce5ef', borderWidth: 1,
+            titleColor: '#0f172a', bodyColor: '#64748b',
+            callbacks: { label: ctx => ' ' + ctx.parsed.y + '% attained' } }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 } } },
+          y: { grid: { color: 'rgba(220,229,239,.7)' },
+            ticks: { color: '#94a3b8', font: { size: 10 }, callback: v => v + '%' },
+            min: 0, max: 120,
+            afterBuildTicks: axis => { axis.ticks = [0, 25, 50, 75, 100].map(v => ({ value: v })); } }
+        }
+      }
+    });
+  } else if (trendWrap) {
+    // No real daily data yet — show empty state
+    if (state['_dtTrendChart']) { state['_dtTrendChart'].destroy(); state['_dtTrendChart'] = null; }
+    trendWrap.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:10px;padding:20px 0;">' +
+      '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/><polyline points="9 15 12 12 15 15 18 12"/></svg>' +
+      '<div style="font-size:12px;font-weight:600;color:#94a3b8;">No attainment data yet</div>' +
+      '<div style="font-size:11px;color:#cbd5e1;text-align:center;max-width:180px;line-height:1.5;">Set daily targets and upload platform data to see your attainment trend here.</div>' +
+    '</div>';
+  }
 
   // Render admin target inputs (only shown to admins via data-role)
   document.getElementById('dtTargetInputs').innerHTML = platforms.map(p => {
