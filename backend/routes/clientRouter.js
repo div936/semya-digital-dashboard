@@ -97,7 +97,8 @@ router.get(
       .from('revenue_data')
       .select('platform, order_date, standard_revenue, standard_units, standard_status')
       .eq('client_id', client.id)
-      .eq('standard_status', 'delivered');
+      .not('standard_status', 'in', '("Cancelled","Pending","Unshipped")')
+      .limit(50000);
 
     if (from) query = query.gte('order_date', from);
     if (to)   query = query.lte('order_date', to);
@@ -128,8 +129,10 @@ router.get(
 
     let revenueQuery = supabaseAdmin
       .from('revenue_data')
-      .select('standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date')
-      .eq('client_id', client.id);
+      .select('standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status')
+      .eq('client_id', client.id)
+      .not('standard_status', 'in', '("Cancelled","Pending","Unshipped")')
+      .limit(50000);
 
     let campaignQuery = supabaseAdmin
       .from('campaign_data')
@@ -202,7 +205,9 @@ router.get(
     let query = supabaseAdmin
       .from('revenue_data')
       .select('standard_city, standard_state, standard_revenue, standard_units, standard_sku')
-      .eq('client_id', client.id);
+      .eq('client_id', client.id)
+      .not('standard_status', 'in', '("Cancelled","Pending","Unshipped")')
+      .limit(50000);
 
     if (from) query = query.gte('order_date', from);
     if (to)   query = query.lte('order_date', to);
