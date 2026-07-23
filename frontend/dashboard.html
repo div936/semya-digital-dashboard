@@ -1105,6 +1105,7 @@
       background: #dc2626; color: #fff;
       font-size: 10px; font-weight: 800; margin-left: 6px;
     }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
@@ -2357,25 +2358,92 @@ function authHeaders() {
 }
 
 // ─── API FETCH WRAPPER ────────────────────────────────────────────
-async function apiFetch(path) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: authHeaders(),
-    credentials: 'include',
-  });
+// ─── SERVER WAKE STATUS ───────────────────────────────────────────
+let _serverAwake  = false;  // becomes true after first successful response
+let _wakePromise  = null;   // shared ping promise so we only ping once
 
-  // Auto-handle expired session on any API call
-  if (res.status === 401) {
-    console.warn('[apiFetch] 401 received, attempting token refresh for:', path);
-    const freshToken = await getFreshToken();
-    if (!freshToken) return res; // getFreshToken already redirected
-    // Retry once with the fresh token
-    return fetch(`${API_BASE}${path}`, {
-      headers: { 'Authorization': `Bearer ${freshToken}`, 'Content-Type': 'application/json' },
-      credentials: 'include',
-    });
+function showWakeToast(show, elapsed) {
+  let el = document.getElementById('wakeToast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'wakeToast';
+    el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);' +
+      'background:#0f172a;color:#fff;padding:10px 20px;border-radius:99px;font-size:12px;' +
+      'font-weight:600;z-index:9999;display:flex;align-items:center;gap:8px;' +
+      'box-shadow:0 4px 20px rgba(0,0,0,.3);transition:opacity .3s;';
+    document.body.appendChild(el);
   }
-  if (!res.ok) throw new Error(`API ${res.status}: ${path}`);
-  return res.json();
+  if (show) {
+    el.style.opacity = '1';
+    el.style.display = 'flex';
+    el.innerHTML =
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="2.5" style="animation:spin 1s linear infinite"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>' +
+      'Waking up server' + (elapsed ? ' (' + elapsed + 's)…' : '…');
+  } else {
+    el.style.opacity = '0';
+    setTimeout(() => { if (el) el.style.display = 'none'; }, 300);
+  }
+}
+
+async function pingUntilAwake() {
+  if (_serverAwake) return;
+  if (_wakePromise) return _wakePromise;
+  _wakePromise = (async () => {
+    const start = Date.now();
+    showWakeToast(true, 0);
+    let attempt = 0;
+    while (!_serverAwake && attempt < 12) {
+      try {
+        const elapsed = Math.round((Date.now() - start) / 1000);
+        if (elapsed > 2) showWakeToast(true, elapsed);
+        const res = await fetch(API_BASE + '/health', { signal: AbortSignal.timeout(8000) });
+        if (res.ok) { _serverAwake = true; break; }
+      } catch(e) { /* still waking */ }
+      attempt++;
+      await new Promise(r => setTimeout(r, 5000));
+    }
+    showWakeToast(false);
+    _wakePromise = null;
+  })();
+  return _wakePromise;
+}
+
+async function apiFetch(path, opts) {
+  // If server not yet confirmed awake, ping first
+  if (!_serverAwake) await pingUntilAwake();
+
+  const controller = new AbortController();
+  const timeout    = setTimeout(() => controller.abort(), 30000); // 30s hard timeout
+
+  try {
+    const res = await fetch(API_BASE + path, {
+      ...opts,
+      headers: { ...authHeaders(), ...(opts?.headers || {}) },
+      credentials: 'include',
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    _serverAwake = true;
+
+    if (res.status === 401) {
+      console.warn('[apiFetch] 401 received, attempting token refresh for:', path);
+      const freshToken = await getFreshToken();
+      if (!freshToken) return null;
+      const retry = await fetch(API_BASE + path, {
+        ...opts,
+        headers: { 'Authorization': 'Bearer ' + freshToken, 'Content-Type': 'application/json', ...(opts?.headers || {}) },
+        credentials: 'include',
+      });
+      if (!retry.ok) throw new Error('API ' + retry.status + ': ' + path);
+      return retry.json();
+    }
+    if (!res.ok) throw new Error('API ' + res.status + ': ' + path);
+    return res.json();
+  } catch(e) {
+    clearTimeout(timeout);
+    if (e.name === 'AbortError') throw new Error('Request timed out — server may be waking up, please refresh in a moment.');
+    throw e;
+  }
 }
 
 // ─── FETCH BADGE HELPER ───────────────────────────────────────────
@@ -2979,6 +3047,8 @@ async function fetchAndRenderPS() {
     const resp = await apiFetch('/clients/' + clientSlug + '/platform-sales' + q);
     if (resp && resp.platforms && resp.platforms.length) { data = resp; isLive = true; }
   } catch(e) { console.warn('[PS]', e.message); }
+  // If primary endpoint returned empty (possible status filter mismatch), also try raw sku data
+  // This is handled in the fallback block below.
   if (!data) {
     // No live data — show empty state (no mock; real data comes from uploads)
     data = { platforms: [], grandTotal: 0, prevGrandTotal: 0,
@@ -3019,7 +3089,10 @@ async function fetchAndRenderPS() {
                  prevUnits: gu, prevOrders: go, weekly: weeklyArr, topProducts };
         isLive = true;
       }
-    } catch(e2) { console.warn('[PS fallback]', e2.message); }
+    } catch(e2) {
+      console.warn('[PS fallback]', e2.message);
+      setBadgePS('empty');
+    }
   }
   renderPS(data);
   tabCache['platform_sales'] = { data, timestamp: Date.now() };
@@ -4140,6 +4213,8 @@ function boot(user) {
   ciState.dateFrom  = from; ciState.dateTo  = to;
   geoState.dateFrom = from; geoState.dateTo = to;
   dtState.date = today;
+  // Kick off server wake-up ping immediately; apiFetch waits for it automatically
+  pingUntilAwake();
   showTab('platform_sales'); // Start on Platform Sales
 }
 
