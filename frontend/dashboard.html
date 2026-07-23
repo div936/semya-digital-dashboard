@@ -2514,15 +2514,44 @@ function initDates() {
   state.dateTo   = fmt(now);
 }
 
-// ─── BUILD SKU DROPDOWN ───────────────────────────────────────────
+// ─── BUILD SKU DROPDOWN (custom panel) ───────────────────────────
 function populateSkuDropdown(skus) {
-  const sel = document.getElementById('skuSelect');
-  sel.innerHTML = skus.map((s, i) =>
-    `<option value="${s.value}" ${i === 0 ? 'selected' : ''}>${s.label}</option>`
+  const list   = document.getElementById('skuCustomList');
+  const lbl    = document.getElementById('skuCustomLabel');
+  const hidden = document.getElementById('skuSelect');
+
+  // Preserve current selection
+  const currentVal = hidden ? hidden.value : '';
+
+  // Merge new SKUs into master list (avoid duplicates)
+  if (skus && skus.length) {
+    const existingVals = new Set(_skuOptions.map(s => s.value));
+    skus.forEach(s => { if (!existingVals.has(s.value)) _skuOptions.push(s); });
+  }
+
+  if (!list) return; // custom panel not in DOM yet
+
+  if (!_skuOptions.length) {
+    list.innerHTML = '<div class="sku-custom-option" style="color:#94a3b8;cursor:default;">No SKUs found</div>';
+    if (lbl) lbl.textContent = 'No SKUs loaded';
+    return;
+  }
+
+  // Prepend "All SKUs" option
+  const allOpts = [{ value: '', label: 'All SKUs' }, ..._skuOptions];
+  const selectVal = allOpts.some(o => o.value === currentVal) ? currentVal : '';
+
+  list.innerHTML = allOpts.map(s =>
+    '<div class="sku-custom-option' + (s.value === selectVal ? ' selected' : '') +
+    '" data-value="' + s.value + '" onclick="selectSkuOption(this)">' +
+    (s.label || s.value || 'All SKUs') + '</div>'
   ).join('');
-  state.sku = skus[0]?.value || '';
-  document.getElementById('cityBadge').textContent = state.sku;
-  document.getElementById('aiSubtitle').textContent = `Powered · ${state.sku}`;
+
+  const sel = allOpts.find(o => o.value === selectVal) || allOpts[0];
+  if (lbl)    lbl.textContent = sel.label || sel.value || 'All SKUs';
+  if (hidden) hidden.value    = sel.value;
+  if (state.sku === undefined || state.sku === null) state.sku = sel.value;
+  filterSkuOptions('');
 }
 
 // ─── RENDER KPI CARDS ─────────────────────────────────────────────
@@ -3696,10 +3725,9 @@ document.getElementById('dtDate').addEventListener('change', function() {
 // PHASE 8 — MAGIC LINK AUTH + PENDING REQUESTS
 // ═══════════════════════════════════════════════════════════════════
 
-// Override openModal to also load pending requests
-const _originalOpenModal = openModal;
+// openModal — opens ACL modal and loads pending requests for admins
 function openModal() {
-  _originalOpenModal();
+  document.getElementById('aclModal').classList.add('open');
   if (window.semyaUser?.role === 'admin') loadPendingRequests();
 }
 
@@ -4191,7 +4219,7 @@ async function handleUpload() {
 }
 
 // ─── MODAL + DRAWER ───────────────────────────────────────────────
-function openModal()  { document.getElementById('aclModal').classList.add('open'); }
+// openModal is defined/overridden in the ACL section above; closeModal here:
 function closeModal() { document.getElementById('aclModal').classList.remove('open'); }
 document.getElementById('aclModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
 function openDrawer()  { document.getElementById('uploadDrawer').classList.add('open'); }
@@ -4317,48 +4345,7 @@ function selectSkuOption(el) {
   fetchAndRender();
 }
 
-// Override populateSkuDropdown to fill the custom dropdown
-const _origPopulateSku = populateSkuDropdown;
-function populateSkuDropdown(skus) {
-  const list   = document.getElementById('skuCustomList');
-  const lbl    = document.getElementById('skuCustomLabel');
-  const hidden = document.getElementById('skuSelect');
-  if (!list) { _origPopulateSku(skus || []); return; }
-
-  // Preserve current selection if dropdown was already populated
-  const currentVal = hidden?.value || '';
-
-  // Merge new SKUs into master list (avoid duplicates)
-  if (skus && skus.length) {
-    const existingVals = new Set(_skuOptions.map(s => s.value));
-    skus.forEach(s => { if (!existingVals.has(s.value)) _skuOptions.push(s); });
-  }
-
-  if (!_skuOptions.length) {
-    list.innerHTML = '<div class="sku-custom-option" style="color:#94a3b8;cursor:default;">No SKUs found</div>';
-    if (lbl) lbl.textContent = 'No SKUs loaded';
-    return;
-  }
-
-  // Always prepend "All SKUs" option (value = '')
-  const allOpts = [{ value: '', label: 'All SKUs' }, ..._skuOptions];
-
-  // Decide which value to select: keep current, or default to '' (All)
-  const selectVal = (currentVal !== undefined && allOpts.some(o => o.value === currentVal))
-    ? currentVal : '';
-
-  list.innerHTML = allOpts.map(s => {
-    const isSel = s.value === selectVal;
-    return '<div class="sku-custom-option' + (isSel ? ' selected' : '') + '" data-value="' + s.value + '" onclick="selectSkuOption(this)">' + (s.label || s.value || 'All SKUs') + '</div>';
-  }).join('');
-
-  const selOption = allOpts.find(o => o.value === selectVal) || allOpts[0];
-  if (lbl)    lbl.textContent = selOption.label || selOption.value || 'All SKUs';
-  if (hidden) hidden.value    = selOption.value;
-  // Only update state.sku if it hasn't been set yet (first load)
-  if (!state.sku && state.sku !== selectVal) state.sku = selectVal;
-  filterSkuOptions('');
-}
+// populateSkuDropdown is now defined once in the main script block above
 
 // Close SKU dropdown on outside click
 document.addEventListener('click', function(e) {
@@ -4745,7 +4732,11 @@ async function loadPlatformSummary() {
         '</div>' +
         '<div style="font-size:11px;color:#64748b;margin-bottom:2px;">Revenue rows: <strong style="color:#1e293b;">' + rev + '</strong></div>' +
         '<div style="font-size:11px;color:#64748b;margin-bottom:12px;">Campaign rows: <strong style="color:#1e293b;">' + cam + '</strong></div>' +
-        '<button class="dm-delete-btn" onclick="confirmPlatformDelete('' + p + '','' + pm.label + '',' + (summary[p].revenue+summary[p].campaign) + ')">' +
+        '<button class="dm-delete-btn"' +
+          ' data-platform="' + p + '"' +
+          ' data-label="' + pm.label + '"' +
+          ' data-total="' + (summary[p].revenue+summary[p].campaign) + '"' +
+          ' onclick="confirmPlatformDelete(this)">' +
           '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg> Delete All ' + pm.label + ' Data' +
         '</button>' +
       '</div>';
@@ -4755,7 +4746,10 @@ async function loadPlatformSummary() {
   }
 }
 
-function confirmPlatformDelete(platform, label, totalRows) {
+function confirmPlatformDelete(el) {
+  const platform  = el.dataset.platform;
+  const label     = el.dataset.label;
+  const totalRows = parseInt(el.dataset.total) || 0;
   showDmConfirm(
     'Delete <strong>all ' + label + ' data</strong>?<br><br>' +
     'This will permanently remove <strong>' + totalRows.toLocaleString('en-IN') + ' rows</strong> ' +
@@ -4769,7 +4763,8 @@ function confirmPlatformDelete(platform, label, totalRows) {
       });
       closeDmConfirm();
       loadPlatformSummary();
-      tabCache = {};
+      tabCache['platform_sales'] = null;
+      tabCache['sku_performance'] = null;
     }
   );
 }
