@@ -1,20 +1,21 @@
 // routes/dataManagerRouter.js
 // ─────────────────────────────────────────────────────────────────
-// Admin-only data management endpoints:
+// Admin-only data management endpoints.
+// Mounted in app.js as: app.use('/clients', dataManagerRouter)
+//
 //   GET    /clients/:slug/uploads              → list all upload batches
-//   DELETE /clients/:slug/uploads/:uploadId    → delete one upload batch + its rows
-//   DELETE /clients/:slug/data/range           → delete rows in a date range (optional platform)
+//   DELETE /clients/:slug/uploads/:uploadId    → delete one upload + its rows
+//   DELETE /clients/:slug/data/range           → delete rows in a date range
 //   DELETE /clients/:slug/data/platform        → delete ALL rows for a platform
-//   GET    /clients/:slug/data/summary         → row counts per platform for confirmation UI
+//   GET    /clients/:slug/data/summary         → row counts per platform
 // ─────────────────────────────────────────────────────────────────
 import { Router } from 'express';
 import { rbacMiddleware } from '../middleware/rbac.js';
 import { supabaseAdmin }  from '../lib/supabase.js';
 
 const router = Router({ mergeParams: true });
-router.use('/:client_slug', rbacMiddleware);
 
-// Admin gate — applies to every route in this file
+// Admin gate middleware
 function adminOnly(req, res, next) {
   if (!req.semya?.isAdmin) {
     return res.status(403).json({ error: 'Admin access required.' });
@@ -22,13 +23,9 @@ function adminOnly(req, res, next) {
   return next();
 }
 
-// ─────────────────────────────────────────────────────────────────
-// GET /clients/:slug/uploads
-// Returns all upload batches for this client, newest first
-// ─────────────────────────────────────────────────────────────────
-router.get('/:client_slug/uploads', adminOnly, async (req, res) => {
+// ─── GET /clients/:client_slug/uploads ───────────────────────────
+router.get('/:client_slug/uploads', rbacMiddleware, adminOnly, async (req, res) => {
   const { client } = req.semya;
-
   const { data, error } = await supabaseAdmin
     .from('uploads')
     .select('id, platform, data_type, status, row_count, skipped_rows, error_message, created_at, original_filename')
@@ -37,50 +34,32 @@ router.get('/:client_slug/uploads', adminOnly, async (req, res) => {
     .limit(200);
 
   if (error) return res.status(500).json({ error: 'Failed to fetch upload history.' });
-  return res.json({ uploads: data });
+  return res.json({ uploads: data || [] });
 });
 
-// ─────────────────────────────────────────────────────────────────
-// GET /clients/:slug/data/summary
-// Row counts per platform so the UI can show "you are about to
-// delete N rows" before the user confirms
-// ─────────────────────────────────────────────────────────────────
-router.get('/:client_slug/data/summary', adminOnly, async (req, res) => {
+// ─── GET /clients/:client_slug/data/summary ──────────────────────
+router.get('/:client_slug/data/summary', rbacMiddleware, adminOnly, async (req, res) => {
   const { client } = req.semya;
 
-  const [{ data: rev }, { data: camp }] = await Promise.all([
-    supabaseAdmin
-      .from('revenue_data')
-      .select('platform, id')
-      .eq('client_id', client.id),
-    supabaseAdmin
-      .from('campaign_data')
-      .select('platform, id')
-      .eq('client_id', client.id),
+  const [{ data: rev, error: e1 }, { data: camp, error: e2 }] = await Promise.all([
+    supabaseAdmin.from('revenue_data').select('platform').eq('client_id', client.id),
+    supabaseAdmin.from('campaign_data').select('platform').eq('client_id', client.id),
   ]);
 
+  if (e1 || e2) return res.status(500).json({ error: 'Failed to fetch data summary.' });
+
   const summary = {};
-  (rev || []).forEach(r => {
-    if (!summary[r.platform]) summary[r.platform] = { revenue: 0, campaign: 0 };
-    summary[r.platform].revenue++;
-  });
-  (camp || []).forEach(c => {
-    if (!summary[c.platform]) summary[c.platform] = { revenue: 0, campaign: 0 };
-    summary[c.platform].campaign++;
-  });
+  (rev  || []).forEach(r => { if (!summary[r.platform]) summary[r.platform] = { revenue: 0, campaign: 0 }; summary[r.platform].revenue++; });
+  (camp || []).forEach(c => { if (!summary[c.platform]) summary[c.platform] = { revenue: 0, campaign: 0 }; summary[c.platform].campaign++; });
 
   return res.json({ summary });
 });
 
-// ─────────────────────────────────────────────────────────────────
-// DELETE /clients/:slug/uploads/:uploadId
-// Deletes one upload batch and all rows that belong to it
-// ─────────────────────────────────────────────────────────────────
-router.delete('/:client_slug/uploads/:uploadId', adminOnly, async (req, res) => {
+// ─── DELETE /clients/:client_slug/uploads/:uploadId ──────────────
+router.delete('/:client_slug/uploads/:uploadId', rbacMiddleware, adminOnly, async (req, res) => {
   const { client } = req.semya;
   const { uploadId } = req.params;
 
-  // Verify the upload belongs to this client
   const { data: upload, error: fetchErr } = await supabaseAdmin
     .from('uploads')
     .select('id, platform, data_type, row_count')
@@ -88,51 +67,33 @@ router.delete('/:client_slug/uploads/:uploadId', adminOnly, async (req, res) => 
     .eq('client_id', client.id)
     .single();
 
-  if (fetchErr || !upload) {
-    return res.status(404).json({ error: 'Upload not found.' });
-  }
+  if (fetchErr || !upload) return res.status(404).json({ error: 'Upload not found.' });
 
   const table = upload.data_type === 'revenue' ? 'revenue_data' : 'campaign_data';
 
-  // Delete data rows first, then the upload record
   const { error: rowErr } = await supabaseAdmin
-    .from(table)
-    .delete()
-    .eq('upload_id', uploadId)
-    .eq('client_id', client.id);
-
+    .from(table).delete().eq('upload_id', uploadId).eq('client_id', client.id);
   if (rowErr) return res.status(500).json({ error: 'Failed to delete data rows: ' + rowErr.message });
 
   const { error: upErr } = await supabaseAdmin
-    .from('uploads')
-    .delete()
-    .eq('id', uploadId)
-    .eq('client_id', client.id);
-
+    .from('uploads').delete().eq('id', uploadId).eq('client_id', client.id);
   if (upErr) return res.status(500).json({ error: 'Failed to delete upload record: ' + upErr.message });
 
   return res.json({ ok: true, deletedUploadId: uploadId, rowsDeleted: upload.row_count });
 });
 
-// ─────────────────────────────────────────────────────────────────
-// DELETE /clients/:slug/data/range
-// Body: { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD', platform?: string, dataType?: 'revenue'|'campaign'|'all' }
-// Deletes rows within a date range, optionally filtered by platform
-// ─────────────────────────────────────────────────────────────────
-router.delete('/:client_slug/data/range', adminOnly, async (req, res) => {
+// ─── DELETE /clients/:client_slug/data/range ─────────────────────
+router.delete('/:client_slug/data/range', rbacMiddleware, adminOnly, async (req, res) => {
   const { client } = req.semya;
   const { from, to, platform, dataType = 'all' } = req.body;
 
-  if (!from || !to) {
-    return res.status(400).json({ error: 'from and to dates are required.' });
-  }
+  if (!from || !to) return res.status(400).json({ error: 'from and to dates are required.' });
 
   let totalDeleted = 0;
   const errors = [];
 
   async function deleteFromTable(table, dateField) {
-    let q = supabaseAdmin.from(table).delete().eq('client_id', client.id);
-    q = q.gte(dateField, from).lte(dateField, to);
+    let q = supabaseAdmin.from(table).delete().eq('client_id', client.id).gte(dateField, from).lte(dateField, to);
     if (platform) q = q.eq('platform', platform.toLowerCase());
     const { error, count } = await q;
     if (error) errors.push(table + ': ' + error.message);
@@ -146,12 +107,8 @@ router.delete('/:client_slug/data/range', adminOnly, async (req, res) => {
   return res.json({ ok: true, rowsDeleted: totalDeleted, from, to, platform: platform || 'all' });
 });
 
-// ─────────────────────────────────────────────────────────────────
-// DELETE /clients/:slug/data/platform
-// Body: { platform: string, dataType?: 'revenue'|'campaign'|'all' }
-// Deletes ALL data for a specific platform (or all platforms if platform='all')
-// ─────────────────────────────────────────────────────────────────
-router.delete('/:client_slug/data/platform', adminOnly, async (req, res) => {
+// ─── DELETE /clients/:client_slug/data/platform ──────────────────
+router.delete('/:client_slug/data/platform', rbacMiddleware, adminOnly, async (req, res) => {
   const { client } = req.semya;
   const { platform, dataType = 'all' } = req.body;
 
