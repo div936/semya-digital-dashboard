@@ -2235,6 +2235,7 @@ const PLATFORM_META = {
 };
 
 // ─── STATE ────────────────────────────────────────────────────────
+let _skuOptions = []; // { value, label } — master SKU list for custom dropdown
 let state = {
   clientSlug:   null,
   token:        null,
@@ -4272,7 +4273,7 @@ document.addEventListener('click', function(e) {
 });
 
 // ── Custom SKU Dropdown ─────────────────────────────────────────
-let _skuOptions = []; // { value, label }
+// _skuOptions declared in main script block above
 
 function toggleSkuDropdown(e) {
   e.stopPropagation();
@@ -4656,7 +4657,12 @@ async function loadUploadHistory() {
           '<span style="color:#64748b;">' + type + '</span>' +
           '<span style="font-family:var(--font-mono);color:#0f172a;">' + rows + '</span>' +
           '<span style="color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (u.original_filename||'') + '">' + file + '</span>' +
-          '<button class="dm-delete-btn" onclick="confirmDeleteUpload('' + u.id + '','' + pm.label + '','' + u.data_type + '',' + (u.row_count||0) + ')">' +
+          '<button class="dm-delete-btn"' +
+            ' data-uid="' + u.id + '"' +
+            ' data-label="' + pm.label + '"' +
+            ' data-dtype="' + u.data_type + '"' +
+            ' data-rows="' + (u.row_count||0) + '"' +
+            ' onclick="confirmDeleteUpload(this)">' +
             '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg> Delete' +
           '</button>' +
         '</div>';
@@ -4666,7 +4672,11 @@ async function loadUploadHistory() {
   }
 }
 
-function confirmDeleteUpload(uploadId, platform, dataType, rowCount) {
+function confirmDeleteUpload(el) {
+  const uploadId = el.dataset.uid;
+  const platform = el.dataset.label;
+  const dataType = el.dataset.dtype;
+  const rowCount = parseInt(el.dataset.rows) || 0;
   showDmConfirm(
     'Delete this upload batch?<br><br>' +
     '<strong>Platform:</strong> ' + platform + '<br>' +
@@ -4677,7 +4687,8 @@ function confirmDeleteUpload(uploadId, platform, dataType, rowCount) {
       await apiFetch('/clients/' + clientSlug + '/uploads/' + uploadId, { method: 'DELETE' });
       closeDmConfirm();
       loadUploadHistory();
-      tabCache = {};
+      tabCache['platform_sales'] = null;
+      tabCache['sku_performance'] = null;
     }
   );
 }
