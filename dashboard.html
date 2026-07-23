@@ -2359,90 +2359,93 @@ function authHeaders() {
 }
 
 // ─── API FETCH WRAPPER ────────────────────────────────────────────
-// ─── SERVER WAKE STATUS ───────────────────────────────────────────
-let _serverAwake  = false;  // becomes true after first successful response
-let _wakePromise  = null;   // shared ping promise so we only ping once
+// ─── SERVER WAKE & apiFetch ───────────────────────────────────────
+// Simple reliable fetch wrapper — no blocking ping, shows toast only on slow responses
+let _wakeToastTimer = null;
 
-function showWakeToast(show, elapsed) {
+function showWakeToast(show, msg) {
   let el = document.getElementById('wakeToast');
-  if (!el) {
+  if (!el && show) {
     el = document.createElement('div');
     el.id = 'wakeToast';
-    el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);' +
-      'background:#0f172a;color:#fff;padding:10px 20px;border-radius:99px;font-size:12px;' +
-      'font-weight:600;z-index:9999;display:flex;align-items:center;gap:8px;' +
-      'box-shadow:0 4px 20px rgba(0,0,0,.3);transition:opacity .3s;';
+    el.style.cssText = [
+      'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);',
+      'background:#0f172a;color:#fff;padding:11px 20px;border-radius:99px;font-size:12px;',
+      'font-weight:600;z-index:99999;display:flex;align-items:center;gap:9px;',
+      'box-shadow:0 4px 20px rgba(0,0,0,.35);transition:opacity .3s;pointer-events:none;',
+    ].join('');
     document.body.appendChild(el);
   }
+  if (!el) return;
   if (show) {
     el.style.opacity = '1';
-    el.style.display = 'flex';
     el.innerHTML =
-      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="2.5" style="animation:spin 1s linear infinite"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>' +
-      'Waking up server' + (elapsed ? ' (' + elapsed + 's)…' : '…');
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.5"' +
+      ' style="flex-shrink:0;animation:spin 1s linear infinite">' +
+      '<path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83' +
+      'M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>' +
+      (msg || 'Connecting to server…');
   } else {
     el.style.opacity = '0';
-    setTimeout(() => { if (el) el.style.display = 'none'; }, 300);
   }
 }
 
-async function pingUntilAwake() {
-  if (_serverAwake) return;
-  if (_wakePromise) return _wakePromise;
-  _wakePromise = (async () => {
-    const start = Date.now();
-    showWakeToast(true, 0);
-    let attempt = 0;
-    while (!_serverAwake && attempt < 12) {
-      try {
-        const elapsed = Math.round((Date.now() - start) / 1000);
-        if (elapsed > 2) showWakeToast(true, elapsed);
-        const res = await fetch(API_BASE + '/health', { signal: AbortSignal.timeout(8000) });
-        if (res.ok) { _serverAwake = true; break; }
-      } catch(e) { /* still waking */ }
-      attempt++;
-      await new Promise(r => setTimeout(r, 5000));
-    }
-    showWakeToast(false);
-    _wakePromise = null;
-  })();
-  return _wakePromise;
+// Fire a background ping to wake Render's free-tier server
+// Does NOT block apiFetch — just warms the server up early
+function warmServer() {
+  fetch(API_BASE + '/health').catch(() => {});
+}
+
+function fetchWithTimeout(url, opts, ms) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), ms);
+    fetch(url, opts).then(r => { clearTimeout(timer); resolve(r); }, e => { clearTimeout(timer); reject(e); });
+  });
 }
 
 async function apiFetch(path, opts) {
-  // If server not yet confirmed awake, ping first
-  if (!_serverAwake) await pingUntilAwake();
+  const url     = API_BASE + path;
+  const headers = { ...authHeaders(), ...(opts?.headers || {}) };
 
-  const controller = new AbortController();
-  const timeout    = setTimeout(() => controller.abort(), 30000); // 30s hard timeout
+  // Show "connecting" toast after 3s if request is still pending
+  _wakeToastTimer = setTimeout(() => showWakeToast(true, 'Connecting to server…'), 3000);
+  let elapsed = 0;
+  const elapsedInterval = setInterval(() => {
+    elapsed += 1;
+    if (elapsed >= 4) showWakeToast(true, 'Server is waking up (' + elapsed + 's)…');
+  }, 1000);
 
   try {
-    const res = await fetch(API_BASE + path, {
-      ...opts,
-      headers: { ...authHeaders(), ...(opts?.headers || {}) },
-      credentials: 'include',
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    _serverAwake = true;
+    // First attempt — 35s timeout (covers Render cold start)
+    let res = await fetchWithTimeout(url, { ...opts, headers, credentials: 'include' }, 35000);
+
+    clearTimeout(_wakeToastTimer);
+    clearInterval(elapsedInterval);
+    showWakeToast(false);
 
     if (res.status === 401) {
-      console.warn('[apiFetch] 401 received, attempting token refresh for:', path);
       const freshToken = await getFreshToken();
       if (!freshToken) return null;
-      const retry = await fetch(API_BASE + path, {
+      res = await fetchWithTimeout(url, {
         ...opts,
         headers: { 'Authorization': 'Bearer ' + freshToken, 'Content-Type': 'application/json', ...(opts?.headers || {}) },
         credentials: 'include',
-      });
-      if (!retry.ok) throw new Error('API ' + retry.status + ': ' + path);
-      return retry.json();
+      }, 15000);
     }
+
     if (!res.ok) throw new Error('API ' + res.status + ': ' + path);
     return res.json();
+
   } catch(e) {
-    clearTimeout(timeout);
-    if (e.name === 'AbortError') throw new Error('Request timed out — server may be waking up, please refresh in a moment.');
+    clearTimeout(_wakeToastTimer);
+    clearInterval(elapsedInterval);
+
+    if (e.message === 'timeout') {
+      showWakeToast(true, 'Still connecting — try refreshing the page');
+      setTimeout(() => showWakeToast(false), 5000);
+      throw new Error('Server is taking too long to respond. Please refresh the page.');
+    }
+    showWakeToast(false);
     throw e;
   }
 }
@@ -4214,8 +4217,8 @@ function boot(user) {
   ciState.dateFrom  = from; ciState.dateTo  = to;
   geoState.dateFrom = from; geoState.dateTo = to;
   dtState.date = today;
-  // Kick off server wake-up ping immediately; apiFetch waits for it automatically
-  pingUntilAwake();
+  // Warm the server early (non-blocking background request)
+  warmServer();
   showTab('platform_sales'); // Start on Platform Sales
 }
 
