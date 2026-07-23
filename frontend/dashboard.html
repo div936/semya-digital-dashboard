@@ -2361,8 +2361,13 @@ function authHeaders() {
 
 // ─── API FETCH WRAPPER ────────────────────────────────────────────
 // ─── SERVER WAKE & apiFetch ───────────────────────────────────────
-// Simple reliable fetch wrapper — no blocking ping, shows toast only on slow responses
-let _wakeToastTimer = null;
+// Tracks whether the server has responded at least once this session.
+// The toast is only shown during initial cold-start, never on subsequent requests.
+let _serverResponded = false;   // true after first successful API response
+let _activeRequests  = 0;       // count of in-flight requests
+let _toastTimer      = null;    // single shared timer for the toast
+let _toastInterval   = null;    // single shared interval for elapsed counter
+let _toastElapsed    = 0;
 
 function showWakeToast(show, msg) {
   let el = document.getElementById('wakeToast');
@@ -2391,10 +2396,36 @@ function showWakeToast(show, msg) {
   }
 }
 
-// Fire a background ping to wake Render's free-tier server
-// Does NOT block apiFetch — just warms the server up early
+function _startToastCountdown() {
+  // Only show toast if server hasn't responded yet in this session
+  if (_serverResponded) return;
+  if (_toastTimer) return; // already counting down
+  _toastElapsed = 0;
+  _toastTimer = setTimeout(() => {
+    if (_serverResponded) return; // server responded while we were waiting
+    showWakeToast(true, 'Connecting to server…');
+    _toastInterval = setInterval(() => {
+      _toastElapsed++;
+      if (!_serverResponded) {
+        showWakeToast(true, 'Server is waking up (' + (4 + _toastElapsed) + 's)…');
+      } else {
+        _stopToast();
+      }
+    }, 1000);
+  }, 3000);
+}
+
+function _stopToast() {
+  clearTimeout(_toastTimer);  _toastTimer = null;
+  clearInterval(_toastInterval); _toastInterval = null;
+  showWakeToast(false);
+}
+
+// Fire a background ping to warm Render's free-tier server early
 function warmServer() {
-  fetch(API_BASE + '/health').catch(() => {});
+  fetch(API_BASE + '/health')
+    .then(r => { if (r.ok) { _serverResponded = true; _stopToast(); } })
+    .catch(() => {});
 }
 
 function fetchWithTimeout(url, opts, ms) {
@@ -2408,21 +2439,17 @@ async function apiFetch(path, opts) {
   const url     = API_BASE + path;
   const headers = { ...authHeaders(), ...(opts?.headers || {}) };
 
-  // Show "connecting" toast after 3s if request is still pending
-  _wakeToastTimer = setTimeout(() => showWakeToast(true, 'Connecting to server…'), 3000);
-  let elapsed = 0;
-  const elapsedInterval = setInterval(() => {
-    elapsed += 1;
-    if (elapsed >= 4) showWakeToast(true, 'Server is waking up (' + elapsed + 's)…');
-  }, 1000);
+  // Start shared toast countdown only if server hasn't responded yet
+  _activeRequests++;
+  if (!_serverResponded) _startToastCountdown();
 
   try {
-    // First attempt — 35s timeout (covers Render cold start)
     let res = await fetchWithTimeout(url, { ...opts, headers, credentials: 'include' }, 35000);
 
-    clearTimeout(_wakeToastTimer);
-    clearInterval(elapsedInterval);
-    showWakeToast(false);
+    // Mark server as alive — stops the toast for all future requests
+    _serverResponded = true;
+    _activeRequests--;
+    if (_activeRequests === 0) _stopToast();
 
     if (res.status === 401) {
       const freshToken = await getFreshToken();
@@ -2438,15 +2465,15 @@ async function apiFetch(path, opts) {
     return res.json();
 
   } catch(e) {
-    clearTimeout(_wakeToastTimer);
-    clearInterval(elapsedInterval);
+    _activeRequests--;
+    if (_activeRequests === 0) _stopToast();
 
     if (e.message === 'timeout') {
-      showWakeToast(true, 'Still connecting — try refreshing the page');
-      setTimeout(() => showWakeToast(false), 5000);
-      throw new Error('Server is taking too long to respond. Please refresh the page.');
+      showWakeToast(true, 'Server is taking too long — please refresh the page');
+      setTimeout(() => showWakeToast(false), 6000);
+      throw new Error('Server timeout. Please refresh the page.');
     }
-    showWakeToast(false);
+    // Don't show toast for non-timeout errors (404, 403, etc.)
     throw e;
   }
 }
