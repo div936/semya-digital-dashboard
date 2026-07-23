@@ -11,7 +11,8 @@ import authRouter     from './routes/authRouter.js';
 import targetsRouter  from './routes/targetsRouter.js';
 import insightsRouter from './routes/insightsRouter.js';
 import clientRouter   from './routes/clientRouter.js';
-import uploadRouter   from './routes/uploadRouter.js';
+import uploadRouter      from './routes/uploadRouter.js';
+import dataManagerRouter from './routes/dataManagerRouter.js';
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -36,6 +37,11 @@ app.use(cookieParser());
 //   /clients/:client_slug/ai-insights         (GET)
 //   /clients/:client_slug/admin/tab-permissions (PATCH) — admin only
 //   /clients/:client_slug/upload              (POST)  — admin only
+//   /clients/:client_slug/uploads             (GET)   — admin only: list upload history
+//   /clients/:client_slug/uploads/:id         (DELETE)— admin only: delete one upload batch
+//   /clients/:client_slug/data/range          (DELETE)— admin only: clear by date range
+//   /clients/:client_slug/data/platform       (DELETE)— admin only: clear by platform
+//   /clients/:client_slug/data/summary        (GET)   — admin only: row counts per platform
 //   /clients/:client_slug/targets             (GET)
 //   /clients/:client_slug/targets             (PUT)   — admin only
 //   /clients/:client_slug/ai-insights          (GET)
@@ -43,6 +49,7 @@ app.use(cookieParser());
 app.use('/auth',    authRouter);
 app.use('/clients', clientRouter);
 app.use('/clients', uploadRouter);
+app.use('/clients', dataManagerRouter);
 app.use('/clients', targetsRouter);
 app.use('/clients', insightsRouter);
 
