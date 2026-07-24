@@ -97,7 +97,6 @@ router.get(
       .from('revenue_data')
       .select('platform, order_date, standard_revenue, standard_units, standard_status')
       .eq('client_id', client.id)
-      .not('standard_status', 'in', '(Cancelled,Pending,Unshipped,Shipped - Returned to Seller,Shipped - Returning to Seller)')
       .limit(50000);
 
     if (from) query = query.gte('order_date', from);
@@ -131,7 +130,6 @@ router.get(
       .from('revenue_data')
       .select('standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status')
       .eq('client_id', client.id)
-      .not('standard_status', 'in', '(Cancelled,Pending,Unshipped,Shipped - Returned to Seller,Shipped - Returning to Seller)')
       .limit(50000);
 
     let campaignQuery = supabaseAdmin
@@ -156,8 +154,12 @@ router.get(
       return res.status(500).json({ error: 'Failed to fetch SKU data.' });
     }
 
+    // Filter cancelled/returned rows in JS for reliability
+    const filteredRevenue = (revenueRows || []).filter(r =>
+      !r.standard_status || !EXCLUDED_STATUSES.has(r.standard_status)
+    );
     return res.json({
-      revenue:   revenueRows,
+      revenue:   filteredRevenue,
       campaigns: campaignRows,
     });
   }
@@ -206,7 +208,6 @@ router.get(
       .from('revenue_data')
       .select('standard_city, standard_state, standard_revenue, standard_units, standard_sku')
       .eq('client_id', client.id)
-      .not('standard_status', 'in', '(Cancelled,Pending,Unshipped,Shipped - Returned to Seller,Shipped - Returning to Seller)')
       .limit(50000);
 
     if (from) query = query.gte('order_date', from);
@@ -216,7 +217,10 @@ router.get(
     const { data, error } = await query;
     if (error) return res.status(500).json({ error: 'Failed to fetch geographic data.' });
 
-    return res.json(data);
+    const filteredGeo = (data || []).filter(r =>
+      !r.standard_status || !EXCLUDED_STATUSES.has(r.standard_status)
+    );
+    return res.json(filteredGeo);
   }
 );
 
@@ -263,6 +267,8 @@ router.get(
 // ═══════════════════════════════════════════════════════════════════
 // HELPER — platform sales aggregator
 // ═══════════════════════════════════════════════════════════════════
+const EXCLUDED_STATUSES = new Set(['Cancelled','Pending','Unshipped','Shipped - Returned to Seller','Shipped - Returning to Seller']);
+
 function aggregatePlatformSales(rows) {
   const byPlatform = {};
   const byWeek     = {};
@@ -271,6 +277,9 @@ function aggregatePlatformSales(rows) {
   const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
   for (const row of rows) {
+    // Skip cancelled / returned / pending rows in JS (avoids SQL NULL edge cases)
+    if (row.standard_status && EXCLUDED_STATUSES.has(row.standard_status)) continue;
+
     const p   = row.platform;
     const rev = Number(row.standard_revenue ?? 0);
     const u   = Number(row.standard_units   ?? 0);
