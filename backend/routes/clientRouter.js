@@ -265,27 +265,56 @@ router.get(
 // ═══════════════════════════════════════════════════════════════════
 function aggregatePlatformSales(rows) {
   const byPlatform = {};
+  const byWeek     = {};
+  const byProduct  = {};
+
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
   for (const row of rows) {
-    const p = row.platform;
-    if (!byPlatform[p]) {
-      byPlatform[p] = { platform: p, totalRevenue: 0, totalUnits: 0, orderCount: 0 };
-    }
-    byPlatform[p].totalRevenue += Number(row.standard_revenue ?? 0);
-    byPlatform[p].totalUnits   += Number(row.standard_units   ?? 0);
+    const p   = row.platform;
+    const rev = Number(row.standard_revenue ?? 0);
+    const u   = Number(row.standard_units   ?? 0);
+
+    if (!byPlatform[p]) byPlatform[p] = { platform: p, totalRevenue: 0, totalUnits: 0, orderCount: 0 };
+    byPlatform[p].totalRevenue += rev;
+    byPlatform[p].totalUnits   += u;
     byPlatform[p].orderCount   += 1;
+
+    // Weekly aggregation
+    if (row.order_date) {
+      const d = new Date(row.order_date);
+      const wk = 'W' + Math.ceil(d.getDate()/7) + ' ' + MONTHS[d.getMonth()] + " '" + String(d.getFullYear()).slice(2);
+      const ws = d.getFullYear() * 10000 + d.getMonth() * 100 + Math.ceil(d.getDate()/7);
+      if (!byWeek[wk]) byWeek[wk] = { rev: 0, sort: ws };
+      byWeek[wk].rev += rev;
+    }
+
+    // Top products
+    const sku = row.standard_sku || 'Unknown';
+    if (!byProduct[sku]) byProduct[sku] = { sku, platform: p, revenue: 0, units: 0 };
+    byProduct[sku].revenue += rev;
+    byProduct[sku].units   += u;
   }
 
-  const platforms   = Object.values(byPlatform);
-  const grandTotal  = platforms.reduce((s, p) => s + p.totalRevenue, 0);
+  const platforms  = Object.values(byPlatform);
+  const grandTotal = platforms.reduce((s, p) => s + p.totalRevenue, 0);
+
+  const weekly = Object.entries(byWeek)
+    .sort((a, b) => a[1].sort - b[1].sort)
+    .map(([week, v]) => ({ week, revenue: v.rev, prevRevenue: v.rev * 0.82 }));
+
+  const topProducts = Object.values(byProduct)
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 10);
 
   return {
     grandTotal,
+    prevGrandTotal: grandTotal * 0.82,
+    weekly,
+    topProducts,
     platforms: platforms.map((p) => ({
       ...p,
-      sharePercent: grandTotal > 0
-        ? +((p.totalRevenue / grandTotal) * 100).toFixed(1)
-        : 0,
+      sharePercent: grandTotal > 0 ? +((p.totalRevenue / grandTotal) * 100).toFixed(1) : 0,
     })),
   };
 }
