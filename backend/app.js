@@ -54,7 +54,7 @@ app.use('/clients', targetsRouter);
 app.use('/clients', insightsRouter);
 
 // ─── Health check ─────────────────────────────────────────────────
-app.get('/health', (_req, res) => res.json({ ok: true, version: 'V16-js-filter', queryLimit: 50000 }));
+app.get('/health', (_req, res) => res.json({ ok: true, version: 'V17-paginated' }));
 
 // ─── 404 ──────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'Route not found.' }));

@@ -16,6 +16,23 @@ import { supabaseAdmin } from '../lib/supabase.js';
 
 const router = Router({ mergeParams: true });
 
+// ─── PAGINATED FETCH ──────────────────────────────────────────────
+// Supabase free tier caps rows at 1000 per request (project-level Max Rows setting).
+// This helper fetches ALL rows by requesting pages until an empty page is returned.
+async function fetchAllRows(buildQuery, pageSize = 1000) {
+  const allRows = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await buildQuery(from, from + pageSize - 1);
+    if (error) throw new Error(error.message);
+    if (!data || data.length === 0) break;
+    allRows.push(...data);
+    if (data.length < pageSize) break; // last page
+    from += pageSize;
+  }
+  return allRows;
+}
+
 // Apply RBAC to every route under /:client_slug
 router.use('/:client_slug', rbacMiddleware);
 
@@ -93,23 +110,18 @@ router.get(
     const { client } = req.semya;
     const { from, to, platform } = req.query;
 
-    let query = supabaseAdmin
-      .from('revenue_data')
-      .select('platform, order_date, standard_revenue, standard_units, standard_status')
-      .eq('client_id', client.id)
-      .limit(50000);
+    const data = await fetchAllRows((from, to) => {
+      let q = supabaseAdmin
+        .from('revenue_data')
+        .select('platform, order_date, standard_revenue, standard_units, standard_status')
+        .eq('client_id', client.id)
+        .range(from, to);
+      if (req.query.from)      q = q.gte('order_date', req.query.from);
+      if (req.query.to)        q = q.lte('order_date', req.query.to);
+      if (platform)            q = q.eq('platform', platform.toLowerCase());
+      return q;
+    }).catch(e => { throw e; });
 
-    if (from) query = query.gte('order_date', from);
-    if (to)   query = query.lte('order_date', to);
-    if (platform) query = query.eq('platform', platform.toLowerCase());
-
-    const { data, error } = await query;
-
-    if (error) {
-      return res.status(500).json({ error: 'Failed to fetch platform sales.' });
-    }
-
-    // Aggregate in JS so we avoid a heavy DB view
     const summary = aggregatePlatformSales(data);
     return res.json(summary);
   }
@@ -126,36 +138,32 @@ router.get(
     const { client } = req.semya;
     const { sku, platform, from, to } = req.query;
 
-    let revenueQuery = supabaseAdmin
-      .from('revenue_data')
-      .select('standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status')
-      .eq('client_id', client.id)
-      .limit(50000);
-
-    let campaignQuery = supabaseAdmin
-      .from('campaign_data')
-      .select('platform, campaign_date, standard_spend, standard_revenue, campaign_name')
-      .eq('client_id', client.id);
-
-    if (sku)      revenueQuery  = revenueQuery.eq('standard_sku', sku);
-    if (platform) revenueQuery  = revenueQuery.eq('platform', platform.toLowerCase());
-    if (from)     revenueQuery  = revenueQuery.gte('order_date', from);
-    if (to)       revenueQuery  = revenueQuery.lte('order_date', to);
-
-    if (from)  campaignQuery = campaignQuery.gte('campaign_date', from);
-    if (to)    campaignQuery = campaignQuery.lte('campaign_date', to);
-    if (platform) campaignQuery = campaignQuery.eq('platform', platform.toLowerCase());
-
-    const [{ data: revenueRows, error: rErr }, { data: campaignRows, error: cErr }] =
-      await Promise.all([revenueQuery, campaignQuery]);
-
-    if (rErr || cErr) {
-      console.error('[sku-performance]', rErr?.message, cErr?.message);
+    const [revenueRows, campaignRows] = await Promise.all([
+      fetchAllRows((rangeFrom, rangeTo) => {
+        let q = supabaseAdmin
+          .from('revenue_data')
+          .select('standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status')
+          .eq('client_id', client.id)
+          .range(rangeFrom, rangeTo);
+        if (sku)      q = q.eq('standard_sku', sku);
+        if (platform) q = q.eq('platform', platform.toLowerCase());
+        if (from)     q = q.gte('order_date', from);
+        if (to)       q = q.lte('order_date', to);
+        return q;
+      }),
+      supabaseAdmin
+        .from('campaign_data')
+        .select('platform, campaign_date, standard_spend, standard_revenue, campaign_name')
+        .eq('client_id', client.id)
+        .then(({ data, error }) => { if (error) throw new Error(error.message); return data || []; }),
+    ]).catch(e => {
+      console.error('[sku-performance]', e.message);
       return res.status(500).json({ error: 'Failed to fetch SKU data.' });
-    }
+    });
 
-    // Filter cancelled/returned rows in JS for reliability
-    const filteredRevenue = (revenueRows || []).filter(r =>
+    if (res.headersSent) return;
+
+    const filteredRevenue = revenueRows.filter(r =>
       !r.standard_status || !EXCLUDED_STATUSES.has(r.standard_status)
     );
     return res.json({
@@ -204,20 +212,20 @@ router.get(
     const { client } = req.semya;
     const { from, to, sku } = req.query;
 
-    let query = supabaseAdmin
-      .from('revenue_data')
-      .select('standard_city, standard_state, standard_revenue, standard_units, standard_sku')
-      .eq('client_id', client.id)
-      .limit(50000);
+    const geoRows = await fetchAllRows((rangeFrom, rangeTo) => {
+      let q = supabaseAdmin
+        .from('revenue_data')
+        .select('standard_city, standard_state, standard_revenue, standard_units, standard_sku, standard_status')
+        .eq('client_id', client.id)
+        .range(rangeFrom, rangeTo);
+      if (from) q = q.gte('order_date', from);
+      if (to)   q = q.lte('order_date', to);
+      if (sku)  q = q.eq('standard_sku', sku);
+      return q;
+    }).catch(e => { return res.status(500).json({ error: 'Failed to fetch geographic data.' }); });
 
-    if (from) query = query.gte('order_date', from);
-    if (to)   query = query.lte('order_date', to);
-    if (sku)  query = query.eq('standard_sku', sku);
-
-    const { data, error } = await query;
-    if (error) return res.status(500).json({ error: 'Failed to fetch geographic data.' });
-
-    const filteredGeo = (data || []).filter(r =>
+    if (res.headersSent) return;
+    const filteredGeo = geoRows.filter(r =>
       !r.standard_status || !EXCLUDED_STATUSES.has(r.standard_status)
     );
     return res.json(filteredGeo);
