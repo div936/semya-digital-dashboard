@@ -103,17 +103,30 @@ function parseFile(fileBuffer, originalName) {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// BULK INSERT — inserts in chunks to avoid Supabase payload limits
+// BULK INSERT — inserts in chunks to avoid Supabase payload limits.
+// Chunks are sent with bounded concurrency (not fully sequential) so
+// large files (10k+ rows) don't take so long that a hosting platform's
+// request/gateway timeout kills the connection before we respond.
 // ═══════════════════════════════════════════════════════════════════
-const CHUNK_SIZE = 500;
+const CHUNK_SIZE   = 500;
+const CONCURRENCY  = 5; // number of chunk inserts in flight at once
 
 async function bulkInsert(table, rows) {
-  let inserted = 0;
+  const chunks = [];
   for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
-    const chunk = rows.slice(i, i + CHUNK_SIZE);
-    const { error } = await supabaseAdmin.from(table).insert(chunk);
-    if (error) throw new Error(`Supabase insert error on ${table}: ${error.message}`);
-    inserted += chunk.length;
+    chunks.push(rows.slice(i, i + CHUNK_SIZE));
+  }
+
+  let inserted = 0;
+  for (let i = 0; i < chunks.length; i += CONCURRENCY) {
+    const batch = chunks.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(
+      batch.map((chunk) => supabaseAdmin.from(table).insert(chunk))
+    );
+    for (const { error } of results) {
+      if (error) throw new Error(`Supabase insert error on ${table}: ${error.message}`);
+    }
+    inserted += batch.reduce((sum, c) => sum + c.length, 0);
   }
   return inserted;
 }
