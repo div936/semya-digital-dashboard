@@ -28,13 +28,27 @@ router.get('/:client_slug/uploads', rbacMiddleware, adminOnly, async (req, res) 
   const { client } = req.semya;
   const { data, error } = await supabaseAdmin
     .from('uploads')
-    .select('id, platform, data_type, status, row_count, skipped_rows, error_message, created_at, original_filename')
+    .select('id, detected_platform, detected_data_type, status, row_count, skipped_rows, error_message, created_at, original_name')
     .eq('client_id', client.id)
     .order('created_at', { ascending: false })
     .limit(200);
 
   if (error) return res.status(500).json({ error: 'Failed to fetch upload history.' });
-  return res.json({ uploads: data || [] });
+
+  // Map DB column names to the field names the frontend expects
+  const uploads = (data || []).map(u => ({
+    id: u.id,
+    platform: u.detected_platform,
+    data_type: u.detected_data_type,
+    status: u.status,
+    row_count: u.row_count,
+    skipped_rows: u.skipped_rows,
+    error_message: u.error_message,
+    created_at: u.created_at,
+    original_filename: u.original_name,
+  }));
+
+  return res.json({ uploads });
 });
 
 // ─── GET /clients/:client_slug/data/summary ──────────────────────
@@ -62,14 +76,14 @@ router.delete('/:client_slug/uploads/:uploadId', rbacMiddleware, adminOnly, asyn
 
   const { data: upload, error: fetchErr } = await supabaseAdmin
     .from('uploads')
-    .select('id, platform, data_type, row_count')
+    .select('id, detected_platform, detected_data_type, row_count')
     .eq('id', uploadId)
     .eq('client_id', client.id)
     .single();
 
   if (fetchErr || !upload) return res.status(404).json({ error: 'Upload not found.' });
 
-  const table = upload.data_type === 'revenue' ? 'revenue_data' : 'campaign_data';
+  const table = upload.detected_data_type === 'revenue' ? 'revenue_data' : 'campaign_data';
 
   const { error: rowErr } = await supabaseAdmin
     .from(table).delete().eq('upload_id', uploadId).eq('client_id', client.id);
