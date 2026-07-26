@@ -374,8 +374,56 @@ export function backfillLocationByOrder(rows) {
 }
 
 
+// ═══════════════════════════════════════════════════════════════════
+// STATE NAME NORMALISATION
+//
+// Different platforms/files represent Indian states differently —
+// abbreviations ("MH", "TS"), inconsistent casing ("KARNATAKA",
+// "uttar pradesh"), or full names. Left unnormalised, this fragments
+// a single state into several rows in any breakdown table and breaks
+// zone (North/South/East/West) classification, which only recognises
+// one canonical spelling. This maps every common variant to one
+// canonical, human-readable name.
+// ═══════════════════════════════════════════════════════════════════
+const INDIA_STATE_MAP = {
+  // Abbreviations
+  AP: 'Andhra Pradesh', AR: 'Arunachal Pradesh', AS: 'Assam', BR: 'Bihar',
+  CG: 'Chhattisgarh', CT: 'Chhattisgarh', GA: 'Goa', GJ: 'Gujarat',
+  HR: 'Haryana', HP: 'Himachal Pradesh', JH: 'Jharkhand', KA: 'Karnataka',
+  KL: 'Kerala', MP: 'Madhya Pradesh', MH: 'Maharashtra', MN: 'Manipur',
+  ML: 'Meghalaya', MZ: 'Mizoram', NL: 'Nagaland', OD: 'Odisha', OR: 'Odisha',
+  PB: 'Punjab', RJ: 'Rajasthan', SK: 'Sikkim', TN: 'Tamil Nadu',
+  TS: 'Telangana', TG: 'Telangana', TR: 'Tripura', UP: 'Uttar Pradesh',
+  UK: 'Uttarakhand', UT: 'Uttarakhand', WB: 'West Bengal', DL: 'Delhi',
+  JK: 'Jammu and Kashmir', LA: 'Ladakh', PY: 'Puducherry', CH: 'Chandigarh',
+  AN: 'Andaman and Nicobar Islands', LD: 'Lakshadweep',
+  DN: 'Dadra and Nagar Haveli and Daman and Diu',
+  DD: 'Dadra and Nagar Haveli and Daman and Diu',
 
-// Takes one raw data row object (keys = column headers as-received)
+  // Full names (any casing) → canonical spelling
+  'ANDHRA PRADESH': 'Andhra Pradesh', 'ARUNACHAL PRADESH': 'Arunachal Pradesh',
+  ASSAM: 'Assam', BIHAR: 'Bihar', CHHATTISGARH: 'Chhattisgarh', GOA: 'Goa',
+  GUJARAT: 'Gujarat', HARYANA: 'Haryana', 'HIMACHAL PRADESH': 'Himachal Pradesh',
+  JHARKHAND: 'Jharkhand', KARNATAKA: 'Karnataka', KERALA: 'Kerala',
+  'MADHYA PRADESH': 'Madhya Pradesh', MAHARASHTRA: 'Maharashtra', MANIPUR: 'Manipur',
+  MEGHALAYA: 'Meghalaya', MIZORAM: 'Mizoram', NAGALAND: 'Nagaland', ODISHA: 'Odisha',
+  ORISSA: 'Odisha', PUNJAB: 'Punjab', RAJASTHAN: 'Rajasthan', SIKKIM: 'Sikkim',
+  'TAMIL NADU': 'Tamil Nadu', TAMILNADU: 'Tamil Nadu', TELANGANA: 'Telangana',
+  TRIPURA: 'Tripura', 'UTTAR PRADESH': 'Uttar Pradesh', UTTARAKHAND: 'Uttarakhand',
+  UTTARANCHAL: 'Uttarakhand', 'WEST BENGAL': 'West Bengal', DELHI: 'Delhi',
+  'NEW DELHI': 'Delhi', 'JAMMU AND KASHMIR': 'Jammu and Kashmir',
+  'JAMMU & KASHMIR': 'Jammu and Kashmir', LADAKH: 'Ladakh', PUDUCHERRY: 'Puducherry',
+  PONDICHERRY: 'Puducherry', CHANDIGARH: 'Chandigarh',
+};
+
+export function normaliseStateName(raw) {
+  if (!raw) return raw;
+  const key = String(raw).trim().toUpperCase();
+  return INDIA_STATE_MAP[key] || String(raw).trim();
+}
+
+
+
 // and a map (REVENUE_MAP or CAMPAIGN_MAP).
 //
 // Returns:
@@ -484,6 +532,10 @@ function coerceValue(targetField, raw) {
   if (dateFields.includes(targetField)) {
     const d = new Date(raw);
     return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
+  }
+
+  if (targetField === 'standard_state') {
+    return normaliseStateName(String(raw).trim());
   }
 
   return String(raw).trim();

@@ -14,7 +14,7 @@ import { Router } from 'express';
 import { rbacMiddleware, requireTab } from '../middleware/rbac.js';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { detectSuspiciousPatterns } from '../lib/fraudDetector.js';
-import { backfillLocationByOrder } from '../lib/columnMapper.js';
+import { backfillLocationByOrder, normaliseStateName } from '../lib/columnMapper.js';
 
 const router = Router({ mergeParams: true });
 
@@ -137,8 +137,8 @@ router.get(
         .select('platform, order_date, standard_revenue, standard_units, standard_status')
         .eq('client_id', client.id)
         .range(from, to);
-      if (req.query.from)      q = q.gte('order_date', req.query.from);
-      if (req.query.to)        q = q.lte('order_date', req.query.to);
+      if (req.query.from)      q = q.or(`order_date.gte.${req.query.from},order_date.is.null`);
+      if (req.query.to)        q = q.or(`order_date.lte.${req.query.to},order_date.is.null`);
       if (platform)            q = q.in('platform', expandPlatform(platform));
       return q;
     }).catch(e => { throw e; });
@@ -168,8 +168,8 @@ router.get(
           .range(rangeFrom, rangeTo);
         if (sku)      q = q.eq('standard_sku', sku);
         if (platform) q = q.in('platform', expandPlatform(platform));
-        if (from)     q = q.gte('order_date', from);
-        if (to)       q = q.lte('order_date', to);
+        if (from)     q = q.or(`order_date.gte.${from},order_date.is.null`);
+        if (to)       q = q.or(`order_date.lte.${to},order_date.is.null`);
         return q;
       }),
       (() => {
@@ -214,8 +214,8 @@ router.get(
       .eq('client_id', client.id)
       .order('campaign_date', { ascending: false });
 
-    if (from)     query = query.gte('campaign_date', from);
-    if (to)       query = query.lte('campaign_date', to);
+    if (from)     query = query.or(`campaign_date.gte.${from},campaign_date.is.null`);
+    if (to)       query = query.or(`campaign_date.lte.${to},campaign_date.is.null`);
     if (platform) query = query.in('platform', expandPlatform(platform));
 
     const { data, error } = await query;
@@ -242,14 +242,21 @@ router.get(
         .select('standard_city, standard_state, standard_revenue, standard_units, standard_sku, standard_status, platform, raw_extras')
         .eq('client_id', client.id)
         .range(rangeFrom, rangeTo);
-      if (from)     q = q.gte('order_date', from);
-      if (to)       q = q.lte('order_date', to);
+      if (from)     q = q.or(`order_date.gte.${from},order_date.is.null`);
+      if (to)       q = q.or(`order_date.lte.${to},order_date.is.null`);
       if (sku)      q = q.eq('standard_sku', sku);
       if (platform) q = q.in('platform', expandPlatform(platform));
       return q;
     }).catch(e => { return res.status(500).json({ error: 'Failed to fetch geographic data.' }); });
 
     if (res.headersSent) return;
+
+    // Normalise state spelling (existing data may have abbreviations or
+    // inconsistent casing from before this normalisation existed) — do
+    // this before the order-based backfill so sibling rows compare equal.
+    for (const r of geoRows) {
+      if (r.standard_state) r.standard_state = normaliseStateName(r.standard_state);
+    }
 
     // Backfill blank city/state from a sibling line-item row of the
     // same order (some exports only populate shipping details on one
@@ -287,14 +294,14 @@ router.get(
         .select('standard_sku, platform, standard_revenue, standard_units, standard_city, raw_extras, order_date')
         .eq('client_id', client.id)
         .eq(...(sku ? ['standard_sku', sku] : ['client_id', client.id]))
-        .gte('order_date', from || '2000-01-01')
-        .lte('order_date', to   || '2099-01-01'),
+        .or(`order_date.gte.${from || '2000-01-01'},order_date.is.null`)
+        .or(`order_date.lte.${to   || '2099-01-01'},order_date.is.null`),
       supabaseAdmin
         .from('campaign_data')
         .select('platform, standard_spend, standard_revenue, standard_clicks, standard_impressions, raw_extras, campaign_date')
         .eq('client_id', client.id)
-        .gte('campaign_date', from || '2000-01-01')
-        .lte('campaign_date', to   || '2099-01-01'),
+        .or(`campaign_date.gte.${from || '2000-01-01'},campaign_date.is.null`)
+        .or(`campaign_date.lte.${to   || '2099-01-01'},campaign_date.is.null`),
     ]);
 
     if (rErr || cErr) {
@@ -329,8 +336,8 @@ router.get(
         .select('platform, standard_status, standard_revenue, standard_sku, order_date, raw_extras')
         .eq('client_id', client.id)
         .range(rangeFrom, rangeTo);
-      if (from) q = q.gte('order_date', from);
-      if (to)   q = q.lte('order_date', to);
+      if (from) q = q.or(`order_date.gte.${from},order_date.is.null`);
+      if (to)   q = q.or(`order_date.lte.${to},order_date.is.null`);
       return q;
     }).catch((e) => { return res.status(500).json({ error: 'Failed to fetch data for pattern detection: ' + e.message }); });
 
