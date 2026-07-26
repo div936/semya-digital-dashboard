@@ -40,10 +40,12 @@ export const REVENUE_MAP = {
   'product id':                 'standard_sku',
   'product name':               'standard_sku',   // Blinkit fallback
   'product title':              'standard_sku',
+  'lineitem sku':               'standard_sku',   // Shopify order export
 
   // ── Revenue / Sales amount ────────────────────────────────────
   'item price':                 'standard_revenue',
   'item-price':                 'standard_revenue',
+  'lineitem price':             'standard_revenue',   // Shopify order export
   'net revenue':                'standard_revenue',
   'net sale value':             'standard_revenue',
   'sale amount':                'standard_revenue',
@@ -64,6 +66,7 @@ export const REVENUE_MAP = {
   // ── Units / Quantity ──────────────────────────────────────────
   'quantity':                   'standard_units',
   'quantity-purchased':         'standard_units',
+  'lineitem quantity':          'standard_units',   // Shopify order export
   'units':                      'standard_units',
   'units sold':                 'standard_units',
   'units ordered':              'standard_units',
@@ -109,6 +112,7 @@ export const REVENUE_MAP = {
   'ship-state':                 'standard_state',
   'buyer state':                'standard_state',
   'shipping state':             'standard_state',
+  'shipping province':          'standard_state',   // Shopify order export
   'delivery state':             'standard_state',
   'customer state':             'standard_state',
   'ship state/province region': 'standard_state',

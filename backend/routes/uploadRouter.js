@@ -16,10 +16,13 @@ import { ingestFile }     from '../ingestion/fileIngestion.js';
 
 const router = Router({ mergeParams: true });
 
-// ─── Multer — memory storage, 20MB cap ───────────────────────────
+// ─── Multer — memory storage, 60MB cap ───────────────────────────
+// Raised from 20MB after a 24.5MB Shopify-style export (Meta_File.csv,
+// ~176k rows) was rejected. 60MB gives headroom for continued growth;
+// see note in fileIngestion.js about large-file ingestion time.
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits:  { fileSize: 20 * 1024 * 1024 },
+  limits:  { fileSize: 60 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowed = [
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
@@ -46,7 +49,17 @@ router.post(
     }
     return next();
   },
-  upload.single('file'),        // expects form field named "file"
+  (req, res, next) => {
+    // Wrap multer so size/type errors get a specific, human-readable message
+    // instead of the generic "File too large".
+    upload.single('file')(req, res, (err) => {
+      if (!err) return next();
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: 'File too large — the maximum upload size is 60MB. Please split the file or contact support to raise this limit.' });
+      }
+      return res.status(400).json({ error: err.message || 'Upload failed.' });
+    });
+  },
   async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No file received. Send as multipart/form-data with field "file".' });
