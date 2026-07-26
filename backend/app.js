@@ -17,6 +17,17 @@ import dataManagerRouter from './routes/dataManagerRouter.js';
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
+// ─── Crash guards ───────────────────────────────────────────────
+// A single bad request (e.g. an oversized/malformed upload) should
+// never be able to take the entire server down for every other
+// client. Log and keep running rather than letting the process die.
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('[unhandledRejection]', err);
+});
+
 // ─── Middleware ───────────────────────────────────────────────────
 app.use(cors({
   origin:      process.env.ALLOWED_ORIGINS?.split(',') ?? '*',
@@ -54,7 +65,7 @@ app.use('/clients', targetsRouter);
 app.use('/clients', insightsRouter);
 
 // ─── Health check ─────────────────────────────────────────────────
-app.get('/health', (_req, res) => res.json({ ok: true, version: 'V23-large-upload-fix' }));
+app.get('/health', (_req, res) => res.json({ ok: true, version: 'V24-csv-memory-fix' }));
 
 // ─── 404 ──────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'Route not found.' }));

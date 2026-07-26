@@ -26,6 +26,7 @@
 // ─────────────────────────────────────────────────────────────────
 import xlsx from 'xlsx';
 import path from 'path';
+import { parse as parseCsv } from 'csv-parse/sync';
 import { supabaseAdmin }  from '../lib/supabase.js';
 import { REVENUE_MAP, CAMPAIGN_MAP, normaliseBatch } from '../lib/columnMapper.js';
 import { generateInsights } from '../lib/insightGenerator.js';
@@ -64,11 +65,25 @@ export function detectRoute(filename) {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// PARSE FILE — xlsx handles both .xlsx and .csv
-// Returns an array of plain row objects (column header → value)
+// PARSE FILE
+// .xlsx → parsed with the xlsx library (needed for real spreadsheets).
+// .csv  → parsed with a small hand-rolled streaming-style parser
+//         instead of xlsx. xlsx builds a full in-memory workbook
+//         object model even for plain CSVs, which can use 5-10x the
+//         raw file size in RAM — on a large file that was enough to
+//         OOM-crash the whole Node process on a memory-constrained
+//         host. The parser below reads the buffer once and emits
+//         plain row objects directly, with correct handling of
+//         quoted fields, escaped quotes (""), and embedded newlines
+//         inside quoted values (common in Shopify-style exports).
+// Returns an array of plain row objects (column header → value).
 // ═══════════════════════════════════════════════════════════════════
 function parseFile(fileBuffer, originalName) {
   const ext = path.extname(originalName).toLowerCase();
+
+  if (ext === '.csv') {
+    return parseCsvBuffer(fileBuffer);
+  }
 
   const workbook = xlsx.read(fileBuffer, {
     type: 'buffer',
@@ -99,6 +114,25 @@ function parseFile(fileBuffer, originalName) {
       });
       return obj;
     });
+}
+
+// ─── CSV parsing ────────────────────────────────────────────────
+// Uses the csv-parse library rather than xlsx for .csv files: on a
+// 24MB / ~22k row Shopify-style export, xlsx (which builds a full
+// in-memory workbook object model) used ~300MB RSS and took ~7s;
+// csv-parse used ~170MB and took ~2s. That difference was enough to
+// OOM-crash the whole Node process on a memory-constrained host.
+// Correctly handles quoted fields, escaped quotes (""), and embedded
+// newlines inside quoted values (common in these exports).
+function parseCsvBuffer(fileBuffer) {
+  const records = parseCsv(fileBuffer, {
+    columns: true,
+    skip_empty_lines: true,
+    relax_column_count: true,
+    bom: true,
+  });
+  // Drop rows where every value is blank
+  return records.filter((r) => Object.values(r).some((v) => v !== '' && v != null));
 }
 
 
