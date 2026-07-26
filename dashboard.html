@@ -1223,7 +1223,7 @@
             <div class="sku-pill" data-ps-platform="amazon">Amazon</div>
             <div class="sku-pill" data-ps-platform="flipkart">Flipkart</div>
             <div class="sku-pill" data-ps-platform="blinkit">Blinkit</div>
-            <div class="sku-pill" data-ps-platform="meta">Meta</div>
+            <div class="sku-pill" data-ps-platform="website">Website</div>
           </div>
           <span class="fetch-badge loading" id="psFetchBadge" style="margin-left:auto;">
             <span class="fetch-dot"></span><span id="psFetchText">Loading</span>
@@ -1337,7 +1337,7 @@
           <div class="sku-pill" data-platform="amazon">Amazon</div>
           <div class="sku-pill" data-platform="flipkart">Flipkart</div>
           <div class="sku-pill" data-platform="blinkit">Blinkit</div>
-          <div class="sku-pill" data-platform="meta">Meta</div>
+          <div class="sku-pill" data-platform="website">Website</div>
         </div>
         <div class="date-range-wrap">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -1476,7 +1476,7 @@
             <div class="sku-pill" data-ci-platform="amazon">Amazon</div>
             <div class="sku-pill" data-ci-platform="flipkart">Flipkart</div>
             <div class="sku-pill" data-ci-platform="blinkit">Blinkit</div>
-            <div class="sku-pill" data-ci-platform="meta">Meta</div>
+            <div class="sku-pill" data-ci-platform="website">Website</div>
           </div>
           <span class="fetch-badge loading" id="ciFetchBadge" style="margin-left:auto;">
             <span class="fetch-dot"></span><span id="ciFetchText">Loading</span>
@@ -1603,7 +1603,7 @@
             <div class="sku-pill" data-geo-platform="amazon">Amazon</div>
             <div class="sku-pill" data-geo-platform="flipkart">Flipkart</div>
             <div class="sku-pill" data-geo-platform="blinkit">Blinkit</div>
-            <div class="sku-pill" data-geo-platform="meta">Meta</div>
+            <div class="sku-pill" data-geo-platform="website">Website</div>
           </div>
           <span class="fetch-badge loading" id="geoFetchBadge" style="margin-left:auto;">
             <span class="fetch-dot"></span><span id="geoFetchText">Loading</span>
@@ -1988,11 +1988,12 @@
             <label class="target-input-label">Platform (optional)</label>
             <select id="dmRangePlatform" class="select-styled" style="width:100%;height:36px;font-size:12px;">
               <option value="">All platforms</option>
-              <option value="amazon">Amazon</option>
+              <option value="amazon">Amazon (Neat Amazon)</option>
+              <option value="acutas">Amazon (Acutas)</option>
               <option value="flipkart">Flipkart</option>
               <option value="blinkit">Blinkit</option>
-              <option value="meta">Meta</option>
-              <option value="google">Google</option>
+              <option value="meta">Website (Meta)</option>
+              <option value="google">Website (Google)</option>
             </select>
           </div>
           <div>
@@ -2226,12 +2227,24 @@ const TOKEN_KEY = 'semya_token';
 
 // ─── PLATFORM META ────────────────────────────────────────────────
 const PLATFORM_META = {
-  amazon:   { label: 'AMZ',  color: '#ff9900', pillClass: 'pill-amz' },
-  flipkart: { label: 'FK',   color: '#0077ff', pillClass: 'pill-fk'  },
-  blinkit:  { label: 'BK',   color: '#fbbf24', pillClass: 'pill-bk'  },
-  meta:     { label: 'META', color: '#1877f2', pillClass: 'pill-meta' },
-  google:   { label: 'GOOG', color: '#4285f4', pillClass: 'pill-goog' },
-  acutas:   { label: 'ACU',  color: '#0ea5e9', pillClass: 'pill-amz'  },
+  // Individual data sources — used for breakdown rows, tables, and pills
+  // that need to show exactly where a row of data came from.
+  amazon:   { label: 'Neat Amazon', color: '#ff9900', pillClass: 'pill-amz'  },
+  acutas:   { label: 'Acutas',      color: '#0ea5e9', pillClass: 'pill-amz'  },
+  flipkart: { label: 'Flipkart',    color: '#0077ff', pillClass: 'pill-fk'   },
+  blinkit:  { label: 'Blinkit',     color: '#fbbf24', pillClass: 'pill-bk'   },
+  meta:     { label: 'Meta',        color: '#1877f2', pillClass: 'pill-meta' },
+  google:   { label: 'Google',      color: '#4285f4', pillClass: 'pill-goog' },
+  // Group labels — used only for the top-level filter pills / badges, where
+  // "Amazon" = amazon + acutas combined, and "Website" = meta + google combined.
+  website:  { label: 'Website',     color: '#1877f2', pillClass: 'pill-meta' },
+};
+
+// Which individual platforms roll up into which top-level filter group.
+// Kept in sync with PLATFORM_GROUPS on the backend (clientRouter.js).
+const PLATFORM_GROUPS = {
+  amazon:  ['amazon', 'acutas'],
+  website: ['meta', 'google'],
 };
 
 // ─── STATE ────────────────────────────────────────────────────────
@@ -3118,6 +3131,7 @@ async function fetchAndRenderPS() {
     // Also try aggregating from SKU performance data if available
     try {
       const skuQ = new URLSearchParams();
+      if (psState.platform) skuQ.set('platform', psState.platform);
       if (psState.dateFrom) skuQ.set('from', psState.dateFrom);
       if (psState.dateTo)   skuQ.set('to',   psState.dateTo);
       const skuR = await apiFetch('/clients/' + clientSlug + '/sku-performance?' + skuQ.toString());
@@ -4614,11 +4628,12 @@ function saveAppearance() {
 // DATA MANAGER  (Admin only — Profile → Settings → Manage Data)
 // ════════════════════════════════════════════════════════════════
 const PLATFORM_DM_META = {
-  amazon:   { label: 'Amazon',   color: '#f59e0b', pillClass: 'pill-amz' },
-  flipkart: { label: 'Flipkart', color: '#0ea5e9', pillClass: 'pill-fk'  },
-  blinkit:  { label: 'Blinkit',  color: '#84cc16', pillClass: 'pill-bk'  },
-  meta:     { label: 'Meta',     color: '#6366f1', pillClass: 'pill-meta' },
-  google:   { label: 'Google',   color: '#ef4444', pillClass: 'pill-amz' },
+  amazon:   { label: 'Neat Amazon', color: '#f59e0b', pillClass: 'pill-amz' },
+  acutas:   { label: 'Acutas',      color: '#0ea5e9', pillClass: 'pill-amz' },
+  flipkart: { label: 'Flipkart',    color: '#0ea5e9', pillClass: 'pill-fk'  },
+  blinkit:  { label: 'Blinkit',     color: '#84cc16', pillClass: 'pill-bk'  },
+  meta:     { label: 'Meta',        color: '#6366f1', pillClass: 'pill-meta' },
+  google:   { label: 'Google',      color: '#ef4444', pillClass: 'pill-amz' },
 };
 let _dmPendingAction = null; // stores the confirmed action function
 
