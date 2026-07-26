@@ -1807,6 +1807,22 @@
         <div class="insight-card warn"><div class="insight-card-header"><span class="skel skel-delta"></span></div><div class="skel skel-insight" style="height:60px;width:100%;display:block;"></div></div>
         <div class="insight-card positive"><div class="insight-card-header"><span class="skel skel-delta"></span></div><div class="skel skel-insight" style="height:60px;width:100%;display:block;"></div></div>
       </div>
+
+      <div class="card card-sm" style="margin-top:16px;">
+        <div class="ai-tab-header">
+          <div>
+            <div class="ai-tab-title">&#9888; Cancellation Pattern Watch</div>
+            <div class="ai-tab-meta" id="fraudTabMeta">Loading…</div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:#94a3b8;padding:0 2px 10px;">
+          Flags buyer contacts (matched by phone, or by name + pincode where phone isn't available) with repeated cancellations, or multiple different names ordering from the same contact. Only covers platforms whose files include buyer details — Amazon/Acutas reports never do.
+        </div>
+        <div id="fraudPatternList">
+          <div class="skel skel-insight" style="height:40px;"></div>
+          <div class="skel skel-insight" style="height:40px;"></div>
+        </div>
+      </div>
     </div><!-- /tab-ai_insights -->
 
   </main>
@@ -3067,7 +3083,7 @@ function showTab(tabKey) {
   if (tabKey === 'sku_performance'      && !fresh) fetchAndRender();
   if (tabKey === 'geographic_analysis'  && !fresh) fetchAndRenderGEO();
   if (tabKey === 'daily_targets'        && !fresh) fetchAndRenderDT();
-  if (tabKey === 'ai_insights'          && !fresh) fetchAndRenderAI();
+  if (tabKey === 'ai_insights'          && !fresh) { fetchAndRenderAI(); fetchAndRenderFraud(); }
 }
 
 function updateSidebarForTab(tabKey) {
@@ -3149,8 +3165,9 @@ async function fetchAndRenderPS() {
           byPlat[plat].orderCount   += 1;
           gt += rev; gu += units; go += 1;
           const sku = r.standard_sku || 'Unknown';
-          if (!byProd[sku]) byProd[sku] = { sku, platform: plat, units: 0, revenue: 0 };
-          byProd[sku].revenue += rev; byProd[sku].units += units;
+          const prodKey = plat + '|' + sku;
+          if (!byProd[prodKey]) byProd[prodKey] = { sku, platform: plat, units: 0, revenue: 0 };
+          byProd[prodKey].revenue += rev; byProd[prodKey].units += units;
           if (r.order_date) {
             const d = new Date(r.order_date);
             const wk = 'W' + Math.ceil(d.getDate()/7) + ' ' + d.toLocaleString('default',{month:'short'}) + ' ' + d.getFullYear().toString().slice(2);
@@ -4073,6 +4090,77 @@ document.querySelectorAll('[data-ai-filter]').forEach(pill => {
     renderAICards(filtered);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// CANCELLATION / FRAUD PATTERN WATCH
+// ═══════════════════════════════════════════════════════════════════
+async function fetchAndRenderFraud() {
+  const { clientSlug } = state; if (!clientSlug) return;
+  const meta = document.getElementById('fraudTabMeta');
+  const list = document.getElementById('fraudPatternList');
+  if (meta) meta.textContent = 'Loading…';
+
+  try {
+    const resp = await apiFetch('/clients/' + clientSlug + '/fraud-patterns');
+    renderFraudPatterns(resp);
+  } catch (e) {
+    console.warn('[fraud]', e.message);
+    if (meta) meta.textContent = 'Unable to load right now.';
+    if (list) list.innerHTML = '';
+  }
+}
+
+function renderFraudPatterns(resp) {
+  const meta = document.getElementById('fraudTabMeta');
+  const list = document.getElementById('fraudPatternList');
+  if (!resp || !list) return;
+
+  const flagged = resp.flagged || [];
+  const multiName = flagged.filter(f => f.identities.length > 1);
+
+  if (meta) {
+    meta.textContent = flagged.length
+      ? flagged.length + ' flagged contact' + (flagged.length !== 1 ? 's' : '') +
+        (multiName.length ? ' · ' + multiName.length + ' involve multiple names on one contact' : '') +
+        (resp.skippedNoIdentity ? ' · ' + resp.skippedNoIdentity.toLocaleString('en-IN') + ' rows had no buyer details to check (e.g. Amazon/Acutas)' : '')
+      : 'No repeat-cancellation patterns found' +
+        (resp.skippedNoIdentity ? ' (' + resp.skippedNoIdentity.toLocaleString('en-IN') + ' rows had no buyer details to check, e.g. Amazon/Acutas)' : '');
+  }
+
+  if (!flagged.length) {
+    list.innerHTML = '<div style="text-align:center;padding:16px 0;color:#94a3b8;font-size:12px;">Nothing flagged right now.</div>';
+    return;
+  }
+
+  // Multi-name matches are the stronger signal — show those first,
+  // then highest revenue-at-risk. Cap the list so it stays scannable.
+  const sorted = [...flagged].sort((a, b) => {
+    const aMulti = a.identities.length > 1 ? 1 : 0;
+    const bMulti = b.identities.length > 1 ? 1 : 0;
+    return bMulti - aMulti || b.totalRevenueAtRisk - a.totalRevenueAtRisk;
+  }).slice(0, 20);
+
+  list.innerHTML = sorted.map((f) => {
+    const strong = f.identities.length > 1;
+    const pm = PLATFORM_META[f.platform] || { label: (f.platform || '').toUpperCase(), pillClass: 'pill-amz' };
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 4px;border-bottom:1px solid #eef2f7;">' +
+      '<div>' +
+        '<div style="font-size:12px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px;">' +
+          (strong ? '<span style="color:#dc2626;">&#9888;</span>' : '') +
+          f.identities.join(' / ') +
+          '<span class="platform-pill ' + pm.pillClass + '" style="font-size:9px;padding:2px 7px;">' + pm.label + '</span>' +
+        '</div>' +
+        '<div style="font-size:11px;color:#64748b;margin-top:2px;">' + f.reason + '</div>' +
+      '</div>' +
+      '<div style="text-align:right;flex-shrink:0;">' +
+        '<div style="font-size:13px;font-weight:700;color:' + (strong ? '#dc2626' : '#d97706') + ';">' + fmtRevenue(f.totalRevenueAtRisk) + '</div>' +
+        '<div style="font-size:10px;color:#94a3b8;">at risk · ' + f.cancelRate + '% cancel rate</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+
 
 async function regenerateInsights() {
   const { clientSlug } = state; if (!clientSlug) return;
