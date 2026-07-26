@@ -4330,8 +4330,11 @@ async function handleUpload() {
 
     // Refresh data after 2 seconds
     setTimeout(() => {
-      tabCache['platform_sales']  = null;
-      tabCache['sku_performance'] = null;
+      tabCache['platform_sales']      = null;
+      tabCache['sku_performance']     = null;
+      tabCache['campaign_insights']   = null;
+      tabCache['geographic_analysis'] = null;
+      tabCache['ai_insights']         = null;
       fetchAndRender();
       closeDrawer();
     }, 2000);
@@ -4804,8 +4807,11 @@ function confirmDeleteUpload(el) {
       await apiFetch('/clients/' + clientSlug + '/uploads/' + uploadId, { method: 'DELETE' });
       closeDmConfirm();
       loadUploadHistory();
-      tabCache['platform_sales'] = null;
-      tabCache['sku_performance'] = null;
+      tabCache['platform_sales']      = null;
+      tabCache['sku_performance']     = null;
+      tabCache['campaign_insights']   = null;
+      tabCache['geographic_analysis'] = null;
+      tabCache['ai_insights']         = null;
     }
   );
 }
@@ -4893,8 +4899,11 @@ function confirmPlatformDelete(el) {
       });
       closeDmConfirm();
       loadPlatformSummary();
-      tabCache['platform_sales'] = null;
-      tabCache['sku_performance'] = null;
+      tabCache['platform_sales']      = null;
+      tabCache['sku_performance']     = null;
+      tabCache['campaign_insights']   = null;
+      tabCache['geographic_analysis'] = null;
+      tabCache['ai_insights']         = null;
     }
   );
 }

@@ -65,7 +65,7 @@ app.use('/clients', targetsRouter);
 app.use('/clients', insightsRouter);
 
 // ─── Health check ─────────────────────────────────────────────────
-app.get('/health', (_req, res) => res.json({ ok: true, version: 'V25-smart-parsing-fraud-detection' }));
+app.get('/health', (_req, res) => res.json({ ok: true, version: 'V26-geo-backfill-cache-fix' }));
 
 // ─── 404 ──────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'Route not found.' }));

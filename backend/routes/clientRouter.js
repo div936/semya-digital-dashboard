@@ -14,6 +14,7 @@ import { Router } from 'express';
 import { rbacMiddleware, requireTab } from '../middleware/rbac.js';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { detectSuspiciousPatterns } from '../lib/fraudDetector.js';
+import { backfillLocationByOrder } from '../lib/columnMapper.js';
 
 const router = Router({ mergeParams: true });
 
@@ -238,7 +239,7 @@ router.get(
     const geoRows = await fetchAllRows((rangeFrom, rangeTo) => {
       let q = supabaseAdmin
         .from('revenue_data')
-        .select('standard_city, standard_state, standard_revenue, standard_units, standard_sku, standard_status, platform')
+        .select('standard_city, standard_state, standard_revenue, standard_units, standard_sku, standard_status, platform, raw_extras')
         .eq('client_id', client.id)
         .range(rangeFrom, rangeTo);
       if (from)     q = q.gte('order_date', from);
@@ -249,6 +250,15 @@ router.get(
     }).catch(e => { return res.status(500).json({ error: 'Failed to fetch geographic data.' }); });
 
     if (res.headersSent) return;
+
+    // Backfill blank city/state from a sibling line-item row of the
+    // same order (some exports only populate shipping details on one
+    // row per order). Then drop raw_extras — it's only needed here for
+    // that grouping and shouldn't leave the server (it can contain
+    // buyer name/phone/address for platforms that expose that).
+    backfillLocationByOrder(geoRows);
+    for (const r of geoRows) delete r.raw_extras;
+
     const filteredGeo = geoRows.filter(r =>
       !r.standard_status || !EXCLUDED_STATUSES.has(r.standard_status)
     );

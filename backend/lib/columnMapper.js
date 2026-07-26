@@ -326,8 +326,55 @@ export function extractIdentity(rawExtras) {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// NORMALISE ROW
+// ORDER ID  (for backfilling missing city/state within the same order)
 //
+// Some exports repeat an order's shipping details on every line item
+// row but leave them blank on later rows (or vice versa) — e.g. a
+// multi-item order where only the first row carries the city/state.
+// This lets us group rows by order and fill in a blank city/state
+// from a sibling row of the same order that does have it.
+// ═══════════════════════════════════════════════════════════════════
+const ORDER_ID_KEYS = [
+  'Order Id', 'Order ID', 'order id', 'Order Number', 'ORDER ITEM ID',
+  'amazon-order-id', 'merchant-order-id', 'Name', 'Id',
+];
+
+export function extractOrderId(rawExtras) {
+  if (!rawExtras) return null;
+  for (const k of ORDER_ID_KEYS) {
+    const v = rawExtras[k];
+    if (v !== undefined && v !== '' && v !== null) return String(v).trim();
+  }
+  return null;
+}
+
+// Groups rows by platform+orderId and fills in a blank standard_city /
+// standard_state from a sibling row of the same order that has one.
+// Mutates and returns the same array.
+export function backfillLocationByOrder(rows) {
+  const groups = new Map();
+  for (const r of rows) {
+    const orderId = extractOrderId(r.raw_extras);
+    if (!orderId) continue;
+    const key = r.platform + '|' + orderId;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const knownCity  = group.find((r) => r.standard_city)?.standard_city  || null;
+    const knownState = group.find((r) => r.standard_state)?.standard_state || null;
+    if (!knownCity && !knownState) continue;
+    for (const r of group) {
+      if (!r.standard_city  && knownCity)  r.standard_city  = knownCity;
+      if (!r.standard_state && knownState) r.standard_state = knownState;
+    }
+  }
+  return rows;
+}
+
+
+
 // Takes one raw data row object (keys = column headers as-received)
 // and a map (REVENUE_MAP or CAMPAIGN_MAP).
 //
