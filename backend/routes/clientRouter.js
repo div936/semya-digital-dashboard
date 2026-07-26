@@ -13,6 +13,7 @@
 import { Router } from 'express';
 import { rbacMiddleware, requireTab } from '../middleware/rbac.js';
 import { supabaseAdmin } from '../lib/supabase.js';
+import { detectSuspiciousPatterns } from '../lib/fraudDetector.js';
 
 const router = Router({ mergeParams: true });
 
@@ -296,6 +297,42 @@ router.get(
 
 
 // ═══════════════════════════════════════════════════════════════════
+// FRAUD / CANCELLATION-PATTERN DETECTION
+//
+// Flags buyer identities (matched by phone, or by name+pincode when
+// phone isn't available) with either: (a) multiple different names
+// ordering from the same contact details, or (b) an abnormally high
+// cancel/return rate. Only covers platforms whose export actually
+// includes buyer PII — Amazon/Acutas never do, so their rows are
+// counted in `skippedNoIdentity` rather than silently mis-flagged.
+// ═══════════════════════════════════════════════════════════════════
+router.get(
+  '/:client_slug/fraud-patterns',
+  requireTab('ai_insights'),
+  async (req, res) => {
+    const { client } = req.semya;
+    const { from, to } = req.query;
+
+    const rows = await fetchAllRows((rangeFrom, rangeTo) => {
+      let q = supabaseAdmin
+        .from('revenue_data')
+        .select('platform, standard_status, standard_revenue, standard_sku, order_date, raw_extras')
+        .eq('client_id', client.id)
+        .range(rangeFrom, rangeTo);
+      if (from) q = q.gte('order_date', from);
+      if (to)   q = q.lte('order_date', to);
+      return q;
+    }).catch((e) => { return res.status(500).json({ error: 'Failed to fetch data for pattern detection: ' + e.message }); });
+
+    if (res.headersSent) return;
+
+    const result = detectSuspiciousPatterns(rows);
+    return res.json(result);
+  }
+);
+
+
+// ═══════════════════════════════════════════════════════════════════
 // HELPER — platform sales aggregator
 // ═══════════════════════════════════════════════════════════════════
 const EXCLUDED_STATUSES = new Set(['Cancelled','Pending','Unshipped','Shipped - Returned to Seller','Shipped - Returning to Seller']);
@@ -329,11 +366,15 @@ function aggregatePlatformSales(rows) {
       byWeek[wk].rev += rev;
     }
 
-    // Top products
+    // Top products — keyed by platform+SKU, not SKU alone. Two
+    // different platforms can both have an unmapped/"Unknown" SKU;
+    // keying by SKU alone would silently merge their revenue into a
+    // single row attributed to whichever platform was seen first.
     const sku = row.standard_sku || 'Unknown';
-    if (!byProduct[sku]) byProduct[sku] = { sku, platform: p, revenue: 0, units: 0 };
-    byProduct[sku].revenue += rev;
-    byProduct[sku].units   += u;
+    const prodKey = p + '|' + sku;
+    if (!byProduct[prodKey]) byProduct[prodKey] = { sku, platform: p, revenue: 0, units: 0 };
+    byProduct[prodKey].revenue += rev;
+    byProduct[prodKey].units   += u;
   }
 
   const platforms  = Object.values(byPlatform);

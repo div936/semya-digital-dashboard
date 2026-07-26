@@ -82,7 +82,9 @@ router.post(
         dataType:     result.dataType,
         rowsIngested: result.rowCount,
         rowsSkipped:  result.skippedRows,
-        message:      `${result.rowCount} rows ingested into ${result.dataType} table for platform '${result.platform}'.`,
+        message:      result.routingCorrected
+          ? `${result.rowCount} rows ingested into ${result.dataType} table for platform '${result.platform}'. Note: the filename suggested '${result.filenameDataType}' data, but this file's columns matched '${result.dataType}' data instead — routed accordingly.`
+          : `${result.rowCount} rows ingested into ${result.dataType} table for platform '${result.platform}'.`,
       });
 
     } catch (err) {

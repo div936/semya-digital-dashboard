@@ -46,6 +46,7 @@ export const REVENUE_MAP = {
   'item price':                 'standard_revenue',
   'item-price':                 'standard_revenue',
   'lineitem price':             'standard_revenue',   // Shopify order export
+  'selling price per item':     'standard_revenue',   // Flipkart order export
   'net revenue':                'standard_revenue',
   'net sale value':             'standard_revenue',
   'sale amount':                'standard_revenue',
@@ -93,6 +94,7 @@ export const REVENUE_MAP = {
   'fulfillment date':           'order_date',
   'created date':               'order_date',
   'created at':                 'order_date',
+  'ordered on':                 'order_date',   // Flipkart order export
   'placed date':                'order_date',
   'invoice date':               'order_date',
 
@@ -120,6 +122,8 @@ export const REVENUE_MAP = {
 
   // ── Order status ──────────────────────────────────────────────
   'order status':               'standard_status',
+  'order state':                'standard_status',   // Flipkart order export
+  'financial status':           'standard_status',   // Shopify order export — paid/pending/refunded/voided
   'item status':                'standard_status',
   'fulfillment status':         'standard_status',
   'delivery status':            'standard_status',
@@ -148,6 +152,7 @@ export const CAMPAIGN_MAP = {
   'report date':                'campaign_date',
   'campaign date':              'campaign_date',
   'start date':                 'campaign_date',
+  'reporting starts':           'campaign_date',   // Meta ads export
   'day':                        'campaign_date',
 
   // ── Ad spend ──────────────────────────────────────────────────
@@ -161,6 +166,7 @@ export const CAMPAIGN_MAP = {
   'ad cost':                    'standard_spend',
   'billing amount':             'standard_spend',
   'total attributed spend':     'standard_spend',
+  'estimated budget consumed':  'standard_spend',   // Blinkit ads export
 
   // ── Campaign revenue ─────────────────────────────────────────
   'revenue':                    'standard_revenue',
@@ -172,13 +178,17 @@ export const CAMPAIGN_MAP = {
   'purchase value':             'standard_revenue',
   'purchase roas':              'standard_revenue',   // Meta uses this key
   'campaign revenue':           'standard_revenue',
+  'total revenue':              'standard_revenue',   // Flipkart ads export
   'conversion value':           'standard_revenue',
+  'conv. value':                'standard_revenue',   // Google Ads export
   'website purchases value':    'standard_revenue',
+  'direct sales':               'standard_revenue',   // Blinkit ads export
 
   // ── Impressions ───────────────────────────────────────────────
   'impressions':                'standard_impressions',
   'total impressions':          'standard_impressions',
   'ad impressions':             'standard_impressions',
+  'impr.':                      'standard_impressions',   // Google Ads export
 
   // ── Clicks ────────────────────────────────────────────────────
   'clicks':                     'standard_clicks',
@@ -199,6 +209,123 @@ export const CAMPAIGN_MAP = {
 
 
 // ═══════════════════════════════════════════════════════════════════
+// KEY RESOLUTION
+//
+// Normalises a raw column header and looks it up in a map. Tries an
+// exact match first; if that fails, strips a trailing parenthetical
+// (e.g. "(₹)", "(INR)", "(#)", "(return on ad spend)") and retries.
+// This lets one entry like '7 day total sales' also match
+// '7 Day Total Sales (₹)', 'Amount spent (INR)' match 'amount spent',
+// etc., without hardcoding every currency/unit suffix variant.
+// ═══════════════════════════════════════════════════════════════════
+export function normaliseHeaderKey(rawKey) {
+  return String(rawKey).toLowerCase().trim().replace(/\s+/g, ' ').replace(/-/g, ' ');
+}
+
+function resolveKey(map, rawKey) {
+  const normKey = normaliseHeaderKey(rawKey);
+  if (map[normKey]) return map[normKey];
+
+  const stripped = normKey.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  if (stripped !== normKey && map[stripped]) return map[stripped];
+
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DATA-TYPE CLASSIFICATION
+//
+// Filenames tell us the intended platform + data type, but a
+// mislabeled or misnamed file (wrong prefix, wrong extension, a
+// campaign export saved with a revenue-sounding name, etc.) can slip
+// through. This scores a header row against both REVENUE_MAP and
+// CAMPAIGN_MAP and returns whichever the columns actually look like,
+// so ingestion can flag — or self-correct — a mismatch instead of
+// silently ingesting a campaign report as revenue data or vice versa.
+// ═══════════════════════════════════════════════════════════════════
+export function scoreHeaderRow(headers) {
+  let revenueHits = 0, campaignHits = 0;
+  for (const h of headers) {
+    if (resolveKey(REVENUE_MAP, h))  revenueHits++;
+    if (resolveKey(CAMPAIGN_MAP, h)) campaignHits++;
+  }
+  return { revenueHits, campaignHits, total: revenueHits + campaignHits };
+}
+
+export function classifyDataType(headers) {
+  const { revenueHits, campaignHits } = scoreHeaderRow(headers);
+  // Revenue files always carry a SKU-like column; campaign files never do.
+  // That single signal is the most reliable tie-breaker we have.
+  const hasSkuLikeColumn = headers.some((h) => resolveKey(REVENUE_MAP, h) === 'standard_sku');
+
+  if (revenueHits === 0 && campaignHits === 0) return null; // can't tell — let filename decide
+  if (hasSkuLikeColumn && revenueHits >= campaignHits) return 'revenue';
+  if (campaignHits > revenueHits) return 'campaign';
+  if (revenueHits > campaignHits) return 'revenue';
+  return null; // genuine tie — let filename decide
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// IDENTITY FIELDS  (for cancellation / fraud-pattern detection)
+//
+// Buyer name, phone, and address aren't part of the standard revenue
+// schema, so they're never dropped — they already land in raw_extras
+// via normaliseRow's "unmapped column" path. This map just tells the
+// fraud-pattern detector which raw_extras keys, across the platforms
+// that expose this data at all, to look for. Amazon/Acutas reports
+// never include buyer PII (Amazon withholds it from sellers), so
+// there's intentionally no entry for those here.
+// ═══════════════════════════════════════════════════════════════════
+export const IDENTITY_KEYS = {
+  phone: [
+    'Phone', 'Billing Phone', 'Shipping Phone', 'Buyer Phone',
+    'Customer Phone', 'Mobile', 'Mobile Number', 'Contact Number',
+  ],
+  name: [
+    'Billing Name', 'Shipping Name', 'Buyer name', 'Ship to name',
+    'Customer Name', 'Name',
+  ],
+  address: [
+    'Billing Street', 'Shipping Street', 'Address Line 1', 'Billing Address1',
+    'Shipping Address1', 'Address',
+  ],
+  pincode: [
+    'Billing Zip', 'Shipping Zip', 'PIN Code', 'Postal Code', 'Zip', 'Pincode',
+  ],
+};
+
+// Pulls whatever identity signals are present in a row's raw_extras,
+// trying each known variant for that platform. Returns nulls for
+// anything not present (e.g. always null for Amazon/Acutas).
+export function extractIdentity(rawExtras) {
+  const pick = (keys, validate) => {
+    for (const k of keys) {
+      const v = rawExtras[k];
+      if (v === undefined || v === '' || v === null) continue;
+      const str = String(v).trim();
+      if (validate && !validate(str)) continue; // looks corrupted — try the next column
+      return str;
+    }
+    return null;
+  };
+
+  // Spreadsheet tools sometimes mangle long numeric strings (like phone
+  // numbers) into scientific notation before we ever see the file, e.g.
+  // "9.19913E+11" instead of "919913xxxxx" — precision is already lost
+  // at that point, so treat it as unusable and prefer another column
+  // (Billing/Shipping Phone) rather than a shorter, wrong set of digits.
+  const isUsablePhone = (v) => !/e\+/i.test(v) && v.replace(/\D/g, '').length >= 7;
+
+  return {
+    phone:   pick(IDENTITY_KEYS.phone, isUsablePhone),
+    name:    pick(IDENTITY_KEYS.name),
+    address: pick(IDENTITY_KEYS.address),
+    pincode: pick(IDENTITY_KEYS.pincode),
+  };
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
 // NORMALISE ROW
 //
 // Takes one raw data row object (keys = column headers as-received)
@@ -216,18 +343,17 @@ export function normaliseRow(rawRow, map) {
   const rawExtras = {};
 
   for (const [rawKey, rawValue] of Object.entries(rawRow)) {
-    // Normalise the column header: lowercase, collapse whitespace, trim
-    // Normalise: lowercase, trim, collapse whitespace, also try hyphen variant
-    const normKey = rawKey.toLowerCase().trim().replace(/\s+/g, ' ').replace(/-/g, ' ');
+    const target = resolveKey(map, rawKey);
 
-    if (map[normKey]) {
-      const target = map[normKey];
+    if (target) {
       // Don't overwrite if already set by a higher-priority column
       if (standardFields[target] === undefined) {
         standardFields[target] = coerceValue(target, rawValue);
       }
     } else {
       // Unmapped column — store in raw_extras for AI insight generator
+      // (this is also where buyer name/phone/address live — see
+      // extractIdentity() above)
       rawExtras[rawKey] = rawValue;
     }
   }
@@ -245,22 +371,32 @@ export function normaliseRow(rawRow, map) {
 // Returns:
 //   { rows: Array<normalised_record>, skipped: number }
 // ═══════════════════════════════════════════════════════════════════
-export function normaliseBatch(rawRows, map, { clientId, platform, uploadId } = {}) {
+export function normaliseBatch(rawRows, map, { clientId, platform, uploadId, defaultDate } = {}) {
   const rows = [];
   let skipped = 0;
+  const dateField = map === REVENUE_MAP ? 'order_date' : 'campaign_date';
 
   for (const rawRow of rawRows) {
     const { standardFields, rawExtras } = normaliseRow(rawRow, map);
 
-    // Skip rows with no identifiable revenue or SKU
+    // Some reports (e.g. Google Ads) have one date range for the whole
+    // file rather than a per-row date column — fall back to it here.
+    if (!standardFields[dateField] && defaultDate) {
+      standardFields[dateField] = defaultDate;
+    }
+
+    // Skip rows with no identifiable revenue or SKU at all (i.e. the
+    // columns genuinely weren't present/mapped — not just zero-valued,
+    // since a paused campaign can legitimately have ₹0 spend for a day
+    // and that's still a real data point, not something to drop).
     const isRevenueBatch = map === REVENUE_MAP;
     if (isRevenueBatch) {
-      if (!standardFields.standard_revenue && !standardFields.standard_units) {
+      if (standardFields.standard_revenue == null && standardFields.standard_units == null) {
         skipped++;
         continue;
       }
     } else {
-      if (!standardFields.standard_spend && !standardFields.standard_revenue) {
+      if (standardFields.standard_spend == null && standardFields.standard_revenue == null) {
         skipped++;
         continue;
       }
