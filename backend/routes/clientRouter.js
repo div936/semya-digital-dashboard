@@ -33,6 +33,25 @@ async function fetchAllRows(buildQuery, pageSize = 1000) {
   return allRows;
 }
 
+// ─── PLATFORM GROUPS ──────────────────────────────────────────────
+// Top-level filter pills group several raw data sources together:
+//   "Amazon"  = amazon (Neat Amazon file) + acutas (Acutas file)
+//   "Website" = meta (Meta file) + google (Google file)
+// Kept in sync with PLATFORM_GROUPS in frontend/dashboard.html.
+const PLATFORM_GROUPS = {
+  amazon:  ['amazon', 'acutas'],
+  website: ['meta', 'google'],
+};
+
+// Expands a platform filter value (which may be a group key like "amazon"
+// or "website", or a raw platform like "flipkart") into the list of raw
+// platform values it should match in the database.
+function expandPlatform(platform) {
+  if (!platform) return null;
+  const p = platform.toLowerCase();
+  return PLATFORM_GROUPS[p] || [p];
+}
+
 // Apply RBAC to every route under /:client_slug
 router.use('/:client_slug', rbacMiddleware);
 
@@ -118,7 +137,7 @@ router.get(
         .range(from, to);
       if (req.query.from)      q = q.gte('order_date', req.query.from);
       if (req.query.to)        q = q.lte('order_date', req.query.to);
-      if (platform)            q = q.eq('platform', platform.toLowerCase());
+      if (platform)            q = q.in('platform', expandPlatform(platform));
       return q;
     }).catch(e => { throw e; });
 
@@ -146,16 +165,19 @@ router.get(
           .eq('client_id', client.id)
           .range(rangeFrom, rangeTo);
         if (sku)      q = q.eq('standard_sku', sku);
-        if (platform) q = q.eq('platform', platform.toLowerCase());
+        if (platform) q = q.in('platform', expandPlatform(platform));
         if (from)     q = q.gte('order_date', from);
         if (to)       q = q.lte('order_date', to);
         return q;
       }),
-      supabaseAdmin
-        .from('campaign_data')
-        .select('platform, campaign_date, standard_spend, standard_revenue, campaign_name')
-        .eq('client_id', client.id)
-        .then(({ data, error }) => { if (error) throw new Error(error.message); return data || []; }),
+      (() => {
+        let cq = supabaseAdmin
+          .from('campaign_data')
+          .select('platform, campaign_date, standard_spend, standard_revenue, campaign_name')
+          .eq('client_id', client.id);
+        if (platform) cq = cq.in('platform', expandPlatform(platform));
+        return cq.then(({ data, error }) => { if (error) throw new Error(error.message); return data || []; });
+      })(),
     ]).catch(e => {
       console.error('[sku-performance]', e.message);
       return res.status(500).json({ error: 'Failed to fetch SKU data.' });
@@ -192,7 +214,7 @@ router.get(
 
     if (from)     query = query.gte('campaign_date', from);
     if (to)       query = query.lte('campaign_date', to);
-    if (platform) query = query.eq('platform', platform.toLowerCase());
+    if (platform) query = query.in('platform', expandPlatform(platform));
 
     const { data, error } = await query;
     if (error) return res.status(500).json({ error: 'Failed to fetch campaigns.' });
@@ -210,17 +232,18 @@ router.get(
   requireTab('geographic_analysis'),
   async (req, res) => {
     const { client } = req.semya;
-    const { from, to, sku } = req.query;
+    const { from, to, sku, platform } = req.query;
 
     const geoRows = await fetchAllRows((rangeFrom, rangeTo) => {
       let q = supabaseAdmin
         .from('revenue_data')
-        .select('standard_city, standard_state, standard_revenue, standard_units, standard_sku, standard_status')
+        .select('standard_city, standard_state, standard_revenue, standard_units, standard_sku, standard_status, platform')
         .eq('client_id', client.id)
         .range(rangeFrom, rangeTo);
-      if (from) q = q.gte('order_date', from);
-      if (to)   q = q.lte('order_date', to);
-      if (sku)  q = q.eq('standard_sku', sku);
+      if (from)     q = q.gte('order_date', from);
+      if (to)       q = q.lte('order_date', to);
+      if (sku)      q = q.eq('standard_sku', sku);
+      if (platform) q = q.in('platform', expandPlatform(platform));
       return q;
     }).catch(e => { return res.status(500).json({ error: 'Failed to fetch geographic data.' }); });
 
