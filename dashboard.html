@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- SEMYA FRONTEND BUILD: V37-client-administration -->
+<!-- SEMYA FRONTEND BUILD: V38-onclick-quote-fix -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -2040,6 +2040,19 @@
           <button class="btn btn-primary" onclick="inviteCaEmployee()">Invite</button>
         </div>
       </div>
+
+      <!-- Pending Access Requests — this is where new users actually
+           get approved and assigned to a client, which is a Client
+           Section concern, not an Access Control one. -->
+      <div id="pendingRequestsSection" style="margin-top:24px;border-top:1px solid var(--color-border);padding-top:18px;">
+        <div class="acl-section-label" style="display:flex;align-items:center;gap:6px;">
+          Pending Access Requests
+          <span class="pending-badge" id="pendingCount">0</span>
+        </div>
+        <div id="pendingRequestsList" style="min-height:40px;">
+          <p style="font-size:12px;color:#94a3b8;padding:12px 0;" id="pendingEmpty">No pending requests.</p>
+        </div>
+      </div>
     </div>
 
     <!-- ═══ APPEARANCE ═══ -->
@@ -2116,6 +2129,10 @@
 
       <div style="height:14px;"></div>
 
+      <div id="caAccessNoClientNotice" style="display:none;text-align:center;padding:32px 16px;color:#94a3b8;font-size:12px;">
+        Access Control doesn't apply to Semya Admins — they always have full access to every client by design. Select a specific client in Client Section to manage its tab permissions.
+      </div>
+
       <div class="acl-section-label">Dashboard Tabs</div>
       <div class="acl-rows">
         <div class="acl-row">
@@ -2173,17 +2190,6 @@
             <span class="acl-row-desc">Profit calculation and breakeven projections</span>
           </div>
           <label class="toggle"><input type="checkbox" data-tab="projections_insights"><span class="toggle-slider"></span></label>
-        </div>
-      </div>
-
-      <!-- Pending Access Requests — admin only, global (not per-client — these haven't been assigned to a client yet) -->
-      <div id="pendingRequestsSection" style="margin-top:4px;">
-        <div class="acl-section-label" style="display:flex;align-items:center;gap:6px;">
-          Pending Access Requests
-          <span class="pending-badge" id="pendingCount">0</span>
-        </div>
-        <div id="pendingRequestsList" style="min-height:40px;">
-          <p style="font-size:12px;color:#94a3b8;padding:12px 0;" id="pendingEmpty">No pending requests.</p>
         </div>
       </div>
 
@@ -2691,6 +2697,18 @@ function handleSessionExpiry() {
   setTimeout(() => {
     window.location.href = '/index.html';
   }, 300);
+}
+
+// Safely embeds a JS value into a double-quoted HTML event-handler
+// attribute, e.g. onclick="foo(" + jsAttr(id) + ")". Plain
+// JSON.stringify() produces double-quoted output, which silently
+// breaks a double-quoted HTML attribute open at the first embedded
+// quote (the browser just drops the malformed handler — no error,
+// button just does nothing). HTML-entity-escaping the quotes lets the
+// browser decode them back to real characters when it parses the
+// attribute, before the onclick string ever reaches the JS engine.
+function jsAttr(value) {
+  return JSON.stringify(value).replace(/"/g, '&quot;');
 }
 
 function authHeaders() {
@@ -4258,7 +4276,19 @@ function setCaTab(tab) {
     if (panel) panel.style.display = t === tab ? '' : 'none';
   });
   if (tab === 'appearance') prefillAppearanceTab();
-  if (tab === 'access' && caState.clientSlug) loadAccessControlForClient(caState.clientSlug);
+  if (tab === 'access') {
+    updateCaAccessHeader();
+    const rows = document.querySelector('#caPanel-access .acl-rows');
+    const notice = document.getElementById('caAccessNoClientNotice');
+    if (caState.clientId === '__admin__') {
+      if (rows) rows.style.display = 'none';
+      if (notice) notice.style.display = '';
+    } else {
+      if (rows) rows.style.display = '';
+      if (notice) notice.style.display = 'none';
+      if (caState.clientSlug) loadAccessControlForClient(caState.clientSlug);
+    }
+  }
 }
 
 function updateCaAccessHeader() {
@@ -4270,22 +4300,55 @@ function updateCaAccessHeader() {
 async function loadCaClients() {
   const list = document.getElementById('caClientList');
   if (!list) return;
+
+  const semyaCard =
+    '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1.5px solid ' + (caState.clientId === '__admin__' ? 'var(--theme-primary)' : '#fed7aa') + ';background:#fffbf5;border-radius:var(--radius-sm);margin-bottom:10px;">' +
+      '<div><div style="font-size:13px;font-weight:600;color:#1e293b;">&#11088; Semya (Admins)</div>' +
+      '<div style="font-size:11px;color:#94a3b8;">Full access to every client — Semya\'s own team</div></div>' +
+      '<button class="btn btn-ghost" style="font-size:11px;padding:6px 12px;" onclick="selectCaSemyaAdmins()">' + (caState.clientId === '__admin__' ? 'Selected' : 'Manage') + '</button>' +
+    '</div>';
+
   try {
     const resp = await apiFetch('/auth/admin/clients');
     const clients = resp?.clients || [];
-    if (!clients.length) {
-      list.innerHTML = '<div style="text-align:center;padding:16px 0;color:#94a3b8;font-size:12px;">No clients yet — add one below.</div>';
-      return;
-    }
-    list.innerHTML = clients.map(c => (
-      '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1.5px solid ' + (c.id === caState.clientId ? 'var(--theme-primary)' : 'var(--color-border)') + ';border-radius:var(--radius-sm);margin-bottom:6px;">' +
-        '<div><div style="font-size:13px;font-weight:600;color:#1e293b;">' + c.name + '</div>' +
-        '<div style="font-size:11px;color:#94a3b8;">' + c.employeeCount + ' employee' + (c.employeeCount !== 1 ? 's' : '') + '</div></div>' +
-        '<button class="btn btn-ghost" style="font-size:11px;padding:6px 12px;" onclick="selectCaClient(' + JSON.stringify(c.id) + ',' + JSON.stringify(c.slug) + ',' + JSON.stringify(c.name) + ')">' + (c.id === caState.clientId ? 'Selected' : 'Manage') + '</button>' +
-      '</div>'
-    )).join('');
+    const clientsHtml = !clients.length
+      ? '<div style="text-align:center;padding:16px 0;color:#94a3b8;font-size:12px;">No clients yet — add one below.</div>'
+      : clients.map(c => (
+          '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1.5px solid ' + (c.id === caState.clientId ? 'var(--theme-primary)' : 'var(--color-border)') + ';border-radius:var(--radius-sm);margin-bottom:6px;">' +
+            '<div><div style="font-size:13px;font-weight:600;color:#1e293b;">' + c.name + '</div>' +
+            '<div style="font-size:11px;color:#94a3b8;">' + c.employeeCount + ' employee' + (c.employeeCount !== 1 ? 's' : '') + '</div></div>' +
+            '<div style="display:flex;gap:6px;">' +
+              '<button class="btn btn-ghost" style="font-size:11px;padding:6px 12px;" onclick="selectCaClient(' + jsAttr(c.id) + ',' + jsAttr(c.slug) + ',' + jsAttr(c.name) + ')">' + (c.id === caState.clientId ? 'Selected' : 'Manage') + '</button>' +
+              '<button class="btn btn-ghost" style="font-size:11px;padding:6px 12px;color:#dc2626;" onclick="deleteCaClient(' + jsAttr(c.id) + ',' + jsAttr(c.name) + ')" title="Permanently delete this client and all its data">Delete</button>' +
+            '</div>' +
+          '</div>'
+        )).join('');
+    list.innerHTML = semyaCard + clientsHtml;
   } catch (e) {
-    list.innerHTML = '<div style="text-align:center;padding:16px 0;color:#94a3b8;font-size:12px;">Failed to load clients.</div>';
+    list.innerHTML = semyaCard + '<div style="text-align:center;padding:16px 0;color:#94a3b8;font-size:12px;">Failed to load clients.</div>';
+  }
+}
+
+function selectCaSemyaAdmins() {
+  caState.clientId = '__admin__'; caState.clientSlug = null; caState.clientName = 'Semya (Admins)';
+  document.getElementById('caEmployeeSection').style.display = '';
+  document.getElementById('caSelectedClientName').textContent = 'Semya (Admins)';
+  loadCaClients();
+  loadCaEmployees('__admin__');
+}
+
+async function deleteCaClient(id, name) {
+  if (!confirm('Permanently delete "' + name + '"?\n\nThis removes ALL of their data — revenue, campaigns, uploads, UTM tracking, everything — and deactivates every employee who had access. This cannot be undone.')) return;
+  try {
+    await apiFetch('/auth/admin/clients/' + id, { method: 'DELETE' });
+    if (caState.clientId === id) {
+      caState.clientId = null; caState.clientSlug = null; caState.clientName = null;
+      document.getElementById('caEmployeeSection').style.display = 'none';
+    }
+    loadCaClients();
+    loadClientSwitcher(); // remove it from the header dropdown too
+  } catch (e) {
+    alert('Failed to delete client: ' + e.message);
   }
 }
 
@@ -4337,9 +4400,9 @@ async function loadCaEmployees(clientId) {
         '</div>' +
         '<div style="display:flex;gap:6px;align-items:center;">' +
           '<label style="font-size:10px;color:#94a3b8;display:flex;align-items:center;gap:4px;cursor:pointer;">' +
-            '<input type="checkbox" ' + (e.is_lead ? 'checked' : '') + ' onchange="toggleCaEmployeeLead(' + JSON.stringify(e.id) + ',this.checked)" /> Lead' +
+            '<input type="checkbox" ' + (e.is_lead ? 'checked' : '') + ' onchange="toggleCaEmployeeLead(' + jsAttr(e.id) + ',this.checked)" /> Lead' +
           '</label>' +
-          '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;color:#dc2626;" onclick="removeCaEmployee(' + JSON.stringify(e.id) + ')">Remove</button>' +
+          '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;color:#dc2626;" onclick="removeCaEmployee(' + jsAttr(e.id) + ')">Remove</button>' +
         '</div>' +
       '</div>'
     )).join('');
@@ -4465,8 +4528,8 @@ async function loadPendingRequests() {
         '<div class="request-time" style="font-size:11px;color:#94a3b8;margin-top:2px;">Requested ' + ts + '</div></div>',
         '<div class="request-actions" style="display:flex;gap:8px;align-items:center;">',
         '<select class="client-assign-select" id="client-' + r.id + '" style="flex:1;min-width:0;padding:7px 10px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:12px;">' + clientOptStr + '</select>',
-        '<button class="btn btn-primary btn-approve" style="font-size:11px;padding:7px 14px;white-space:nowrap;" onclick="approveRequest(' + JSON.stringify(r.email) + ',' + JSON.stringify(r.id) + ')">Approve</button>',
-        '<button class="btn btn-ghost btn-reject" style="font-size:11px;padding:7px 14px;color:#dc2626;white-space:nowrap;" onclick="rejectRequest(' + JSON.stringify(r.email) + ',' + JSON.stringify(r.id) + ')">Reject</button>',
+        '<button class="btn btn-primary btn-approve" style="font-size:11px;padding:7px 14px;white-space:nowrap;" onclick="approveRequest(' + jsAttr(r.email) + ',' + jsAttr(r.id) + ')">Approve</button>',
+        '<button class="btn btn-ghost btn-reject" style="font-size:11px;padding:7px 14px;color:#dc2626;white-space:nowrap;" onclick="rejectRequest(' + jsAttr(r.email) + ',' + jsAttr(r.id) + ')">Reject</button>',
         '</div></div>'
       ].join('');
     }).join('');
@@ -5119,8 +5182,8 @@ async function loadUtmSavedLinks() {
           '<div style="font-size:10px;color:#94a3b8;margin-top:2px;">' + (l.campaign || '—') + ' · ' + (l.source || '—') + ' / ' + (l.medium || '—') + '</div>' +
         '</div>' +
         '<div style="display:flex;gap:6px;flex-shrink:0;">' +
-          '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;" onclick="navigator.clipboard.writeText(' + JSON.stringify(l.url) + ')">Copy</button>' +
-          '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;color:#dc2626;" onclick="deleteUtmLink(' + JSON.stringify(l.id) + ')">Delete</button>' +
+          '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;" onclick="navigator.clipboard.writeText(' + jsAttr(l.url) + ')">Copy</button>' +
+          '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;color:#dc2626;" onclick="deleteUtmLink(' + jsAttr(l.id) + ')">Delete</button>' +
         '</div>' +
       '</div>'
     )).join('');
@@ -5394,7 +5457,7 @@ async function loadSkuCosts() {
       '<tr><td style="font-family:var(--font-mono);font-weight:600;">' + c.sku + '</td>' +
       '<td style="font-family:var(--font-mono);">' + fmtRevenue(c.cost_price) + '</td>' +
       '<td>' + c.effective_from + '</td>' +
-      '<td><button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;color:#dc2626;" onclick="deleteSkuCost(' + JSON.stringify(c.id) + ')">Delete</button></td></tr>'
+      '<td><button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;color:#dc2626;" onclick="deleteSkuCost(' + jsAttr(c.id) + ')">Delete</button></td></tr>'
     )).join('');
   } catch (e) {
     tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:16px 0;">Failed to load.</td></tr>';
@@ -5446,7 +5509,7 @@ async function loadPlatformAssumptions() {
         '<input type="number" min="0" max="100" step="0.1" value="' + (a.commission_percent || 0) + '" id="assump_comm_' + platform + '" style="width:100%;padding:5px 8px;margin:2px 0 6px;border:1px solid var(--color-border);border-radius:6px;font-size:12px;" />' +
         '<label style="font-size:10px;color:#94a3b8;">Shipping ₹/order</label>' +
         '<input type="number" min="0" step="1" value="' + (a.shipping_cost_flat || 0) + '" id="assump_ship_' + platform + '" style="width:100%;padding:5px 8px;margin:2px 0 8px;border:1px solid var(--color-border);border-radius:6px;font-size:12px;" />' +
-        '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;width:100%;" onclick="savePlatformAssumption(' + JSON.stringify(platform) + ')">Save</button>' +
+        '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;width:100%;" onclick="savePlatformAssumption(' + jsAttr(platform) + ')">Save</button>' +
       '</div>';
     }).join('');
   } catch (e) {
@@ -5472,7 +5535,7 @@ async function savePlatformAssumption(platform) {
 
 
 // ─── BOOT ─────────────────────────────────────────────────────────
-const FRONTEND_BUILD = 'V37-client-administration'; // bump alongside backend health version
+const FRONTEND_BUILD = 'V38-onclick-quote-fix'; // bump alongside backend health version
 console.log('[Semya] Frontend build:', FRONTEND_BUILD);
 
 function boot(user) {
