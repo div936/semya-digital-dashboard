@@ -103,14 +103,16 @@ router.post('/approve', async (req, res) => {
     .from('users').select('role').eq('email', user.email).single();
   if (dbAdmin?.role !== 'admin') return res.status(403).json({ error: 'Admin only.' });
 
-  const { email, clientId } = req.body || {};
-  if (!email || !clientId) return res.status(400).json({ error: 'email and clientId required.' });
+  const { email, clientId, role } = req.body || {};
+  const isAdmin = role === 'admin';
+  if (!email) return res.status(400).json({ error: 'email is required.' });
+  if (!isAdmin && !clientId) return res.status(400).json({ error: 'clientId is required unless role is "admin".' });
 
   const cleanEmail = email.toLowerCase().trim();
 
   // 1. Update access_requests
   await supabaseAdmin.from('access_requests').update({
-    status: 'approved', client_id: clientId, reviewed_at: new Date().toISOString(),
+    status: 'approved', client_id: isAdmin ? null : clientId, reviewed_at: new Date().toISOString(),
   }).eq('email', cleanEmail);
 
   // 2. Create Supabase Auth user if they don't exist yet
@@ -126,10 +128,15 @@ router.post('/approve', async (req, res) => {
     authUserId = users.find(u => u.email === cleanEmail)?.id;
   }
 
-  // 3. Upsert into our users table
+  // 3. Upsert into our users table — admin approvals get role='admin'
+  //    and no client_id (client_id NULL means "can access every
+  //    client", per the same convention already used everywhere else
+  //    in this app, e.g. GET /auth/clients and rbacMiddleware).
   await supabaseAdmin.from('users').upsert({
     id: authUserId, email: cleanEmail,
-    role: 'client', client_id: clientId, is_active: true,
+    role: isAdmin ? 'admin' : 'client',
+    client_id: isAdmin ? null : clientId,
+    is_active: true,
     hashed_pw: 'MAGIC_LINK_AUTH',
   }, { onConflict: 'email' });
 
