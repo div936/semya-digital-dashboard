@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- SEMYA FRONTEND BUILD: V31-admin-approval-fix -->
+<!-- SEMYA FRONTEND BUILD: V32-modal-select-clip-fix -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -744,7 +744,7 @@
       transform: translateY(12px);
       transition: transform .22s;
     }
-    .modal-overlay.open .modal { transform: translateY(0); }
+    .modal-overlay.open .modal { transform: none; }
 
     .modal-header {
       display: flex; align-items: center; justify-content: space-between;
@@ -830,7 +830,7 @@
       box-shadow: -8px 0 32px rgba(0,0,0,.1);
       overflow-y: auto;
     }
-    .drawer-overlay.open .drawer { transform: translateX(0); }
+    .drawer-overlay.open .drawer { transform: none; }
 
     .drawer-header { display: flex; align-items: center; justify-content: space-between; }
     .drawer-title { font-size: 15px; font-weight: 700; color: #0f172a; }
@@ -5266,7 +5266,7 @@ async function savePlatformAssumption(platform) {
 
 
 // ─── BOOT ─────────────────────────────────────────────────────────
-const FRONTEND_BUILD = 'V31-admin-approval-fix'; // bump alongside backend health version
+const FRONTEND_BUILD = 'V32-modal-select-clip-fix'; // bump alongside backend health version
 console.log('[Semya] Frontend build:', FRONTEND_BUILD);
 
 function boot(user) {
