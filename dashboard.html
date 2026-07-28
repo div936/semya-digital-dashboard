@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- SEMYA FRONTEND BUILD: V30-tab-locks-chart-fix -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -5260,6 +5261,9 @@ async function savePlatformAssumption(platform) {
 
 
 // ─── BOOT ─────────────────────────────────────────────────────────
+const FRONTEND_BUILD = 'V30-tab-locks-chart-fix'; // bump alongside backend health version
+console.log('[Semya] Frontend build:', FRONTEND_BUILD);
+
 function boot(user) {
   state.token      = user && user.token ? user.token : getToken();
   state.clientSlug = (user && user.clientSlug) || (window.location.pathname.match(/\/clients\/([^/]+)/)||[])[1] || 'neat-everyday';
