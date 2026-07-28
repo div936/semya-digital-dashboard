@@ -1172,6 +1172,14 @@
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2a10 10 0 0 1 0 20"/><path d="M12 2a10 10 0 0 0 0 20"/><path d="M2 12h20"/></svg>
               Appearance
             </button>
+            <button class="avatar-dropdown-item" style="padding-left:28px;font-size:11px;" data-role="admin" onclick="closeAvatarMenu(); openUtmToolsModal();">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              UTM Campaign Tools
+            </button>
+            <button class="avatar-dropdown-item" style="padding-left:28px;font-size:11px;" data-role="admin" onclick="closeAvatarMenu(); openFinancialSettingsModal();">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              Financial Settings
+            </button>
             <button class="avatar-dropdown-item" style="padding-left:28px;font-size:11px;" data-role="admin" onclick="closeAvatarMenu(); openDataManager();">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
               Manage Data
@@ -1836,62 +1844,6 @@
 
       <div class="card">
         <div class="card-header">
-          <span class="card-title">UTM Link Builder</span>
-          <span class="card-badge">Campaign Tools</span>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px;">
-          <div>
-            <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">Base URL</label>
-            <input type="text" id="utmBaseUrl" placeholder="https://yourstore.com/products/..." style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
-          </div>
-          <div>
-            <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">utm_campaign</label>
-            <input type="text" id="utmCampaign" placeholder="diwali_sale_2026" style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
-          </div>
-          <div>
-            <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">utm_source</label>
-            <select id="utmSource" style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;">
-              <option value="">— select —</option>
-              <option value="meta">Meta</option><option value="google">Google</option>
-              <option value="linkedin">LinkedIn</option><option value="newsletter">Newsletter</option>
-              <option value="twitter">Twitter / X</option><option value="whatsapp">WhatsApp</option>
-            </select>
-          </div>
-          <div>
-            <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">utm_medium</label>
-            <select id="utmMedium" style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;">
-              <option value="">— select —</option>
-              <option value="cpc">cpc</option><option value="organic-social">organic-social</option>
-              <option value="email">email</option><option value="referral">referral</option>
-            </select>
-          </div>
-          <div>
-            <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">utm_term <span style="color:#cbd5e1;">optional</span></label>
-            <input type="text" id="utmTerm" style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
-          </div>
-          <div>
-            <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">utm_content <span style="color:#cbd5e1;">optional</span></label>
-            <input type="text" id="utmContent" style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
-          </div>
-        </div>
-        <div style="margin-top:14px;padding:12px;background:#f8fafc;border:1px solid var(--color-border);border-radius:var(--radius-sm);font-family:var(--font-mono);font-size:11px;color:#1e293b;word-break:break-all;" id="utmPreview">
-          Fill in the fields above to generate your URL…
-        </div>
-        <div style="display:flex;gap:8px;margin-top:12px;">
-          <button class="btn btn-ghost" onclick="copyUtmUrl()">Copy</button>
-          <button class="btn btn-primary" onclick="saveUtmLink()">💾 Save link</button>
-        </div>
-      </div>
-
-      <div class="card" style="margin-top:16px;">
-        <div class="card-header"><span class="card-title">Saved Links</span></div>
-        <div id="utmSavedLinksList" style="margin-top:6px;">
-          <div class="skel skel-row" style="height:32px;"></div>
-        </div>
-      </div>
-
-      <div class="card" style="margin-top:16px;">
-        <div class="card-header">
           <span class="card-title">Campaign Performance</span>
           <div style="display:flex;gap:6px;align-items:center;">
             <select id="utmStatsDays" onchange="fetchAndRenderUtmStats()" style="font-size:11px;padding:5px 8px;border:1px solid var(--color-border);border-radius:6px;">
@@ -1923,43 +1875,6 @@
         <div class="card-header"><span class="card-title">Multi-touch Attribution</span></div>
         <div style="font-size:11px;color:#94a3b8;padding:4px 2px 8px;">Orders where the customer clicked a UTM link but purchased later — the original campaign gets credit (30-day window).</div>
         <div id="utmAttributionList"><div class="skel skel-row" style="height:32px;"></div></div>
-      </div>
-
-      <div class="card" style="margin-top:16px;">
-        <div class="card-header">
-          <span class="card-title">Tracking Snippets</span>
-          <span class="card-badge" style="background:#fff7ed;color:#d97706;border-color:#fed7aa;">Admin only</span>
-        </div>
-        <p style="font-size:12px;color:#64748b;margin:6px 0 14px;">Install these once on the client's Shopify store to start collecting click and conversion data. Snippet A captures clicks; Snippet B (a Shopify Customer Event Pixel) records the actual conversion at checkout.</p>
-
-        <div style="margin-bottom:16px;">
-          <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:4px;">Snippet A — paste before &lt;/head&gt; in theme.liquid</div>
-          <div style="position:relative;">
-            <pre id="utmSnippetA" style="background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;font-size:10px;overflow-x:auto;max-height:160px;">Loading…</pre>
-            <button class="btn btn-ghost" style="position:absolute;top:8px;right:8px;font-size:10px;padding:4px 8px;" onclick="copySnippet('utmSnippetA')">Copy</button>
-          </div>
-        </div>
-
-        <div style="margin-bottom:16px;">
-          <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:4px;">Snippet B — Shopify Admin → Settings → Customer events → Add custom pixel</div>
-          <div style="position:relative;">
-            <pre id="utmSnippetB" style="background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;font-size:10px;overflow-x:auto;max-height:160px;">Loading…</pre>
-            <button class="btn btn-ghost" style="position:absolute;top:8px;right:8px;font-size:10px;padding:4px 8px;" onclick="copySnippet('utmSnippetB')">Copy</button>
-          </div>
-        </div>
-
-        <div style="border-top:1px solid var(--color-border);padding-top:14px;">
-          <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:4px;">GA4 mirror (optional)</div>
-          <p style="font-size:11px;color:#94a3b8;margin-bottom:8px;">Semya can't read data back out of Google Analytics — this just sends the same click events into your own GA4 property too, in parallel, so history is already there if you connect GA4 fully later.</p>
-          <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
-            <input type="text" id="ga4MeasurementId" placeholder="G-XXXXXXXXXX" style="flex:1;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
-            <button class="btn btn-primary" onclick="saveGa4Id()">Save</button>
-          </div>
-          <div id="utmSnippetCWrap" style="display:none;position:relative;">
-            <pre id="utmSnippetC" style="background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;font-size:10px;overflow-x:auto;max-height:160px;"></pre>
-            <button class="btn btn-ghost" style="position:absolute;top:8px;right:8px;font-size:10px;padding:4px 8px;" onclick="copySnippet('utmSnippetC')">Copy</button>
-          </div>
-        </div>
       </div>
 
     </div><!-- /tab-utm_analytics -->
@@ -2029,48 +1944,6 @@
         <div class="card">
           <div class="card-header"><span class="card-title">Recent Momentum Projection</span></div>
           <div id="projGrowthSummary" style="margin-top:8px;font-size:12px;color:#64748b;line-height:1.7;">Loading…</div>
-        </div>
-      </div>
-
-      <div class="card" style="margin-top:16px;">
-        <div class="card-header">
-          <span class="card-title">Settings — SKU Cost Price</span>
-          <span class="card-badge" style="background:#fff7ed;color:#d97706;border-color:#fed7aa;">Admin only</span>
-        </div>
-        <p style="font-size:12px;color:#64748b;margin:6px 0 12px;">Set a SKU's cost price starting from a date. If you change a price later, add a new entry with its own start date — past orders keep using whatever price was in effect on their own order date; nothing gets rewritten.</p>
-        <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:14px;">
-          <div>
-            <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">SKU</label>
-            <input type="text" id="skuCostSku" placeholder="e.g. NE-MOIST-200ML" style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
-          </div>
-          <div>
-            <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">Cost Price (₹)</label>
-            <input type="number" id="skuCostPrice" min="0" step="0.01" style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
-          </div>
-          <div>
-            <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">Effective From</label>
-            <input type="date" id="skuCostDate" style="width:100%;padding:7px 10px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
-          </div>
-          <button class="btn btn-primary" onclick="addSkuCost()">Add</button>
-        </div>
-        <div style="overflow-x:auto;">
-          <table>
-            <thead><tr><th>SKU</th><th>Cost Price</th><th>Effective From</th><th></th></tr></thead>
-            <tbody id="skuCostsTbody"><tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:16px 0;">Loading…</td></tr></tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="card" style="margin-top:16px;">
-        <div class="card-header">
-          <span class="card-title">Settings — Platform Cost Assumptions</span>
-          <span class="card-badge" style="background:#fff7ed;color:#d97706;border-color:#fed7aa;">Admin only</span>
-        </div>
-        <p style="font-size:12px;color:#64748b;margin:6px 0 12px;">Used as a fallback wherever an order's own file doesn't state a real shipping cost. Commission is always applied at this rate on realised revenue.</p>
-        <div id="platformAssumptionsGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
-          <div class="skel skel-row" style="height:70px;"></div>
-          <div class="skel skel-row" style="height:70px;"></div>
-          <div class="skel skel-row" style="height:70px;"></div>
         </div>
       </div>
 
@@ -2403,6 +2276,149 @@
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
         Save Appearance
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     UTM CAMPAIGN TOOLS MODAL  (Settings → UTM Campaign Tools)
+══════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="utmToolsModal">
+  <div class="modal" style="width:640px;max-height:90vh;overflow-y:auto;">
+    <div class="modal-header">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--theme-accent)" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        <span class="modal-title">UTM Campaign Tools</span>
+      </div>
+      <button class="modal-close" onclick="closeUtmToolsModal()">✕</button>
+    </div>
+
+    <div class="acl-section-label">Link Builder</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">Base URL</label>
+        <input type="text" id="utmBaseUrl" placeholder="https://yourstore.com/products/..." style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">utm_campaign</label>
+        <input type="text" id="utmCampaign" placeholder="diwali_sale_2026" style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">utm_source</label>
+        <select id="utmSource" style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;">
+          <option value="">— select —</option>
+          <option value="meta">Meta</option><option value="google">Google</option>
+          <option value="linkedin">LinkedIn</option><option value="newsletter">Newsletter</option>
+          <option value="twitter">Twitter / X</option><option value="whatsapp">WhatsApp</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">utm_medium</label>
+        <select id="utmMedium" style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;">
+          <option value="">— select —</option>
+          <option value="cpc">cpc</option><option value="organic-social">organic-social</option>
+          <option value="email">email</option><option value="referral">referral</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">utm_term <span style="color:#cbd5e1;">optional</span></label>
+        <input type="text" id="utmTerm" style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">utm_content <span style="color:#cbd5e1;">optional</span></label>
+        <input type="text" id="utmContent" style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
+      </div>
+    </div>
+    <div style="margin-top:14px;padding:12px;background:#f8fafc;border:1px solid var(--color-border);border-radius:var(--radius-sm);font-family:var(--font-mono);font-size:11px;color:#1e293b;word-break:break-all;" id="utmPreview">
+      Fill in the fields above to generate your URL…
+    </div>
+    <div style="display:flex;gap:8px;margin:12px 0 24px;">
+      <button class="btn btn-ghost" onclick="copyUtmUrl()">Copy</button>
+      <button class="btn btn-primary" onclick="saveUtmLink()">💾 Save link</button>
+    </div>
+
+    <div class="acl-section-label">Saved Links</div>
+    <div id="utmSavedLinksList" style="margin-top:8px;margin-bottom:24px;">
+      <div class="skel skel-row" style="height:32px;"></div>
+    </div>
+
+    <div class="acl-section-label">Tracking Snippets</div>
+    <p style="font-size:12px;color:#64748b;margin:8px 0 14px;">Install these once on the client's Shopify store to start collecting click and conversion data. Snippet A captures clicks; Snippet B (a Shopify Customer Event Pixel) records the actual conversion at checkout.</p>
+
+    <div style="margin-bottom:16px;">
+      <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:4px;">Snippet A — paste before &lt;/head&gt; in theme.liquid</div>
+      <div style="position:relative;">
+        <pre id="utmSnippetA" style="background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;font-size:10px;overflow-x:auto;max-height:160px;">Loading…</pre>
+        <button class="btn btn-ghost" style="position:absolute;top:8px;right:8px;font-size:10px;padding:4px 8px;" onclick="copySnippet('utmSnippetA')">Copy</button>
+      </div>
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:4px;">Snippet B — Shopify Admin → Settings → Customer events → Add custom pixel</div>
+      <div style="position:relative;">
+        <pre id="utmSnippetB" style="background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;font-size:10px;overflow-x:auto;max-height:160px;">Loading…</pre>
+        <button class="btn btn-ghost" style="position:absolute;top:8px;right:8px;font-size:10px;padding:4px 8px;" onclick="copySnippet('utmSnippetB')">Copy</button>
+      </div>
+    </div>
+
+    <div style="border-top:1px solid var(--color-border);padding-top:14px;">
+      <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:4px;">GA4 mirror (optional)</div>
+      <p style="font-size:11px;color:#94a3b8;margin-bottom:8px;">Semya can't read data back out of Google Analytics — this just sends the same click events into your own GA4 property too, in parallel, so history is already there if you connect GA4 fully later.</p>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+        <input type="text" id="ga4MeasurementId" placeholder="G-XXXXXXXXXX" style="flex:1;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
+        <button class="btn btn-primary" onclick="saveGa4Id()">Save</button>
+      </div>
+      <div id="utmSnippetCWrap" style="display:none;position:relative;">
+        <pre id="utmSnippetC" style="background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;font-size:10px;overflow-x:auto;max-height:160px;"></pre>
+        <button class="btn btn-ghost" style="position:absolute;top:8px;right:8px;font-size:10px;padding:4px 8px;" onclick="copySnippet('utmSnippetC')">Copy</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     FINANCIAL SETTINGS MODAL  (Settings → Financial Settings)
+══════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="financialSettingsModal">
+  <div class="modal" style="width:640px;max-height:90vh;overflow-y:auto;">
+    <div class="modal-header">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--theme-accent)" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        <span class="modal-title">Financial Settings</span>
+      </div>
+      <button class="modal-close" onclick="closeFinancialSettingsModal()">✕</button>
+    </div>
+
+    <div class="acl-section-label">SKU Cost Price</div>
+    <p style="font-size:12px;color:#64748b;margin:8px 0 12px;">Set a SKU's cost price starting from a date. If you change a price later, add a new entry with its own start date — past orders keep using whatever price was in effect on their own order date; nothing gets rewritten.</p>
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:14px;">
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">SKU</label>
+        <input type="text" id="skuCostSku" placeholder="e.g. NE-MOIST-200ML" style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">Cost Price (₹)</label>
+        <input type="number" id="skuCostPrice" min="0" step="0.01" style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">Effective From</label>
+        <input type="date" id="skuCostDate" style="width:100%;padding:7px 10px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
+      </div>
+      <button class="btn btn-primary" onclick="addSkuCost()">Add</button>
+    </div>
+    <div style="overflow-x:auto;margin-bottom:24px;">
+      <table>
+        <thead><tr><th>SKU</th><th>Cost Price</th><th>Effective From</th><th></th></tr></thead>
+        <tbody id="skuCostsTbody"><tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:16px 0;">Loading…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="acl-section-label">Platform Cost Assumptions</div>
+    <p style="font-size:12px;color:#64748b;margin:8px 0 12px;">Used as a fallback wherever an order's own file doesn't state a real shipping cost. Commission is always applied at this rate on realised revenue.</p>
+    <div id="platformAssumptionsGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+      <div class="skel skel-row" style="height:70px;"></div>
+      <div class="skel skel-row" style="height:70px;"></div>
+      <div class="skel skel-row" style="height:70px;"></div>
     </div>
   </div>
 </div>
@@ -4946,11 +4962,9 @@ async function saveGa4Id() {
 }
 
 function fetchAndRenderUTM() {
-  loadUtmSavedLinks();
   fetchAndRenderUtmStats();
   fetchAndRenderUtmDetails();
   fetchAndRenderUtmAttribution();
-  loadUtmSnippets();
   tabCache['utm_analytics'] = { data: true, timestamp: Date.now() };
 }
 
@@ -4977,8 +4991,6 @@ async function fetchAndRenderProjections() {
     setBadgeProj('empty');
   }
   tabCache['projections_insights'] = { data: true, timestamp: Date.now() };
-  loadSkuCosts();
-  loadPlatformAssumptions();
 }
 
 function renderProjections(resp) {
@@ -5403,6 +5415,32 @@ function closeAppearancePanel() {
 }
 document.getElementById('appearanceModal')?.addEventListener('click', function(e) {
   if (e.target === e.currentTarget) closeAppearancePanel();
+});
+
+// ─── UTM Campaign Tools modal ───────────────────────────────────
+function openUtmToolsModal() {
+  document.getElementById('utmToolsModal')?.classList.add('open');
+  loadUtmSavedLinks();
+  loadUtmSnippets();
+}
+function closeUtmToolsModal() {
+  document.getElementById('utmToolsModal')?.classList.remove('open');
+}
+document.getElementById('utmToolsModal')?.addEventListener('click', function(e) {
+  if (e.target === e.currentTarget) closeUtmToolsModal();
+});
+
+// ─── Financial Settings modal ───────────────────────────────────
+function openFinancialSettingsModal() {
+  document.getElementById('financialSettingsModal')?.classList.add('open');
+  loadSkuCosts();
+  loadPlatformAssumptions();
+}
+function closeFinancialSettingsModal() {
+  document.getElementById('financialSettingsModal')?.classList.remove('open');
+}
+document.getElementById('financialSettingsModal')?.addEventListener('click', function(e) {
+  if (e.target === e.currentTarget) closeFinancialSettingsModal();
 });
 
 function renderThemeSwatches() {
