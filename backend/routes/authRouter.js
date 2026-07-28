@@ -146,14 +146,22 @@ router.post('/approve', async (req, res) => {
     options: { redirectTo: `${FRONTEND_URL}/dashboard.html` },
   });
 
-  // Get client info for response
-  const { data: client } = await supabaseAdmin
-    .from('clients').select('slug, name').eq('id', clientId).single();
+  // Get client info for response (not applicable for a Semya Admin
+  // approval — there's no single client to look up, and querying
+  // .eq('id', undefined) here is exactly what was silently breaking
+  // "Approve" whenever the admin path was chosen).
+  let client = null;
+  if (!isAdmin) {
+    const { data } = await supabaseAdmin
+      .from('clients').select('slug, name').eq('id', clientId).single();
+    client = data;
+  }
 
-  console.log(`[auth] Approved ${cleanEmail} for client ${client?.slug}`);
+  console.log(`[auth] Approved ${cleanEmail} as ${isAdmin ? 'Semya Admin' : 'client user for ' + client?.slug}`);
 
   return res.json({
     ok: true, email: cleanEmail,
+    role: isAdmin ? 'admin' : 'client',
     clientName: client?.name, clientSlug: client?.slug,
     magicLink: linkData?.properties?.action_link || null,
   });

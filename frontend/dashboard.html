@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- SEMYA FRONTEND BUILD: V33-modal-scroll-fix -->
+<!-- SEMYA FRONTEND BUILD: V35-modal-scrollbar-radius-fix -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -737,6 +737,7 @@
       background: #fff;
       border: 1px solid var(--color-border);
       border-radius: var(--radius-xl);
+      clip-path: inset(0 round var(--radius-xl)); /* forces the scrollbar to clip to the rounded corners too — border-radius alone doesn't reliably do this */
       padding: 28px;
       width: 440px;
       max-width: 95vw;
@@ -5268,7 +5269,7 @@ async function savePlatformAssumption(platform) {
 
 
 // ─── BOOT ─────────────────────────────────────────────────────────
-const FRONTEND_BUILD = 'V33-modal-scroll-fix'; // bump alongside backend health version
+const FRONTEND_BUILD = 'V35-modal-scrollbar-radius-fix'; // bump alongside backend health version
 console.log('[Semya] Frontend build:', FRONTEND_BUILD);
 
 function boot(user) {
