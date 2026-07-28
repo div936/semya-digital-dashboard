@@ -75,7 +75,7 @@ app.use('/clients', insightsRouter);
 app.use('/clients', projectionsRouter);
 
 // ─── Health check ─────────────────────────────────────────────────
-app.get('/health', (_req, res) => res.json({ ok: true, version: 'V36-express4-async-fix' }));
+app.get('/health', (_req, res) => res.json({ ok: true, version: 'V37-client-administration' }));
 
 // ─── 404 ──────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'Route not found.' }));

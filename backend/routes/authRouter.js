@@ -30,6 +30,63 @@ function asyncHandler(fn) {
   };
 }
 
+// Resolves the caller's Supabase auth user + our own admin flag from a
+// Bearer token. Returns null (and has already sent a 401/403 response)
+// if the caller isn't a valid, active admin — callers should check for
+// that and return immediately.
+async function requireAdmin(req, res) {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  if (!token) { res.status(401).json({ error: 'Not authenticated.' }); return null; }
+  const { data: { user }, error } = await supabaseAuth.auth.getUser(token);
+  if (error || !user) { res.status(401).json({ error: 'Invalid or expired session.' }); return null; }
+  const { data: dbUser } = await supabaseAdmin.from('users').select('role, is_active').eq('email', user.email).single();
+  if (!dbUser?.is_active || dbUser.role !== 'admin') { res.status(403).json({ error: 'Admin only.' }); return null; }
+  return user;
+}
+
+// Creates (or updates) a Supabase Auth user + our users row, and sends
+// a magic sign-in link. Shared by /approve (turning a pending access
+// request into a real user) and /admin/invite-employee (an admin
+// proactively adding someone without a prior request) — same
+// underlying operation either way, just triggered differently.
+async function createOrInviteUser({ email, role, clientId, isLead = false }) {
+  const cleanEmail = email.toLowerCase().trim();
+
+  let authUserId = null;
+  try {
+    const { data: newAuthUser } = await supabaseAuth.auth.admin.createUser({
+      email: cleanEmail, email_confirm: true,
+    });
+    authUserId = newAuthUser?.user?.id;
+  } catch (e) {
+    const { data: { users } } = await supabaseAuth.auth.admin.listUsers();
+    authUserId = users.find(u => u.email === cleanEmail)?.id;
+  }
+
+  const { error: upsertErr } = await supabaseAdmin.from('users').upsert({
+    id: authUserId, email: cleanEmail,
+    role: role === 'admin' ? 'admin' : 'client',
+    client_id: role === 'admin' ? null : clientId,
+    is_lead: role === 'admin' ? false : !!isLead,
+    is_active: true,
+    hashed_pw: 'MAGIC_LINK_AUTH',
+  }, { onConflict: 'email' });
+  if (upsertErr) throw new Error('Failed to create/update user record: ' + upsertErr.message);
+
+  let magicLink = null;
+  try {
+    const { data: linkData } = await supabaseAuth.auth.admin.generateLink({
+      type: 'magiclink', email: cleanEmail,
+      options: { redirectTo: `${FRONTEND_URL}/dashboard.html` },
+    });
+    magicLink = linkData?.properties?.action_link || null;
+  } catch (e) {
+    console.warn('[createOrInviteUser] generateLink failed (user was still created):', e.message);
+  }
+
+  return { email: cleanEmail, magicLink };
+}
+
 
 // ── POST /auth/check-access ───────────────────────────────────────
 // Returns: { status: 'approved' | 'pending' | 'new' }
@@ -108,16 +165,9 @@ router.get('/requests', asyncHandler(async (req, res) => {
 
 
 // ── POST /auth/approve  — admin approves + assigns to client ──────
-// Body: { email, clientId }
-router.post('/approve', async (req, res) => {
- try {
-  const token = (req.headers.authorization || '').replace('Bearer ', '');
-  const { data: { user }, error } = await supabaseAuth.auth.getUser(token);
-  if (error || !user) return res.status(401).json({ error: 'Invalid token.' });
-
-  const { data: dbAdmin } = await supabaseAdmin
-    .from('users').select('role').eq('email', user.email).single();
-  if (dbAdmin?.role !== 'admin') return res.status(403).json({ error: 'Admin only.' });
+// Body: { email, clientId, role }
+router.post('/approve', asyncHandler(async (req, res) => {
+  const admin = await requireAdmin(req, res); if (!admin) return;
 
   const { email, clientId, role } = req.body || {};
   const isAdmin = role === 'admin';
@@ -126,64 +176,17 @@ router.post('/approve', async (req, res) => {
 
   const cleanEmail = email.toLowerCase().trim();
 
-  // 1. Update access_requests
+  // Update the originating access_requests row
   const { error: reqUpdateErr } = await supabaseAdmin.from('access_requests').update({
     status: 'approved', client_id: isAdmin ? null : clientId, reviewed_at: new Date().toISOString(),
   }).eq('email', cleanEmail);
   if (reqUpdateErr) console.warn('[auth/approve] access_requests update warning:', reqUpdateErr.message);
 
-  // 2. Create Supabase Auth user if they don't exist yet
-  let authUserId = null;
-  try {
-    const { data: newAuthUser } = await supabaseAuth.auth.admin.createUser({
-      email: cleanEmail, email_confirm: true,
-    });
-    authUserId = newAuthUser?.user?.id;
-  } catch (e) {
-    // User may already exist in Auth — look them up
-    const { data: { users } } = await supabaseAuth.auth.admin.listUsers();
-    authUserId = users.find(u => u.email === cleanEmail)?.id;
-  }
+  const result = await createOrInviteUser({ email: cleanEmail, role: isAdmin ? 'admin' : 'client', clientId });
 
-  // 3. Upsert into our users table — admin approvals get role='admin'
-  //    and no client_id (client_id NULL means "can access every
-  //    client", per the same convention already used everywhere else
-  //    in this app, e.g. GET /auth/clients and rbacMiddleware).
-  const { error: upsertErr } = await supabaseAdmin.from('users').upsert({
-    id: authUserId, email: cleanEmail,
-    role: isAdmin ? 'admin' : 'client',
-    client_id: isAdmin ? null : clientId,
-    is_active: true,
-    hashed_pw: 'MAGIC_LINK_AUTH',
-  }, { onConflict: 'email' });
-  if (upsertErr) {
-    console.error('[auth/approve] users upsert failed:', upsertErr.message);
-    return res.status(500).json({ error: 'Failed to create/update user record: ' + upsertErr.message });
-  }
-
-  // 4. Send approved user a magic sign-in link — wrapped separately:
-  //    this can fail independently (e.g. email/SMTP not configured on
-  //    the Supabase project) without that meaning the approval itself
-  //    failed. The user record above is already saved either way.
-  let magicLink = null;
-  try {
-    const { data: linkData } = await supabaseAuth.auth.admin.generateLink({
-      type: 'magiclink', email: cleanEmail,
-      options: { redirectTo: `${FRONTEND_URL}/dashboard.html` },
-    });
-    magicLink = linkData?.properties?.action_link || null;
-  } catch (e) {
-    console.warn('[auth/approve] generateLink failed (user was still approved):', e.message);
-  }
-
-  // Get client info for response (not applicable for a Semya Admin
-  // approval — there's no single client to look up, and querying
-  // .eq('id', undefined) here is exactly what was silently breaking
-  // "Approve" whenever the admin path was chosen).
   let client = null;
   if (!isAdmin) {
-    const { data } = await supabaseAdmin
-      .from('clients').select('slug, name').eq('id', clientId).single();
+    const { data } = await supabaseAdmin.from('clients').select('slug, name').eq('id', clientId).single();
     client = data;
   }
 
@@ -193,17 +196,9 @@ router.post('/approve', async (req, res) => {
     ok: true, email: cleanEmail,
     role: isAdmin ? 'admin' : 'client',
     clientName: client?.name, clientSlug: client?.slug,
-    magicLink,
+    magicLink: result.magicLink,
   });
- } catch (err) {
-  // With Express 4, a throw anywhere above that isn't caught means the
-  // request hangs forever with no response — this outer catch is what
-  // guarantees the frontend always gets *something* back instead of a
-  // silent, indefinite hang on "Approving...".
-  console.error('[auth/approve] Unexpected error:', err);
-  return res.status(500).json({ error: 'Approval failed unexpectedly: ' + err.message });
- }
-});
+}));
 
 
 // ── POST /auth/reject ─────────────────────────────────────────────
@@ -291,6 +286,122 @@ router.post('/logout', asyncHandler(async (req, res) => {
   if (token) {
     try { await supabaseAuth.auth.admin.signOut(token); } catch(e) {}
   }
+  return res.json({ ok: true });
+}));
+
+
+// ═══════════════════════════════════════════════════════════════════
+// CLIENT ADMINISTRATION  (Settings → Client Administration → Client Section)
+// ═══════════════════════════════════════════════════════════════════
+
+// ── POST /auth/admin/clients — create a new client ─────────────────
+// Body: { name }
+router.post('/admin/clients', asyncHandler(async (req, res) => {
+  const admin = await requireAdmin(req, res); if (!admin) return;
+
+  const name = (req.body?.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'name is required.' });
+
+  // Slugify, then de-duplicate against existing slugs
+  let baseSlug = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'client';
+  let slug = baseSlug, n = 1;
+  while (true) {
+    const { data: existing } = await supabaseAdmin.from('clients').select('id').eq('slug', slug).maybeSingle();
+    if (!existing) break;
+    n += 1; slug = `${baseSlug}-${n}`;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('clients')
+    .insert({ slug, name, theme: { primary: '#2563eb', deep: '#1e3a8a', accent: '#3b82f6' } })
+    .select('id, slug, name')
+    .single();
+
+  if (error) return res.status(500).json({ error: 'Failed to create client: ' + error.message });
+  return res.json({ ok: true, client: data });
+}));
+
+
+// ── GET /auth/admin/clients — list all clients + employee counts ───
+router.get('/admin/clients', asyncHandler(async (req, res) => {
+  const admin = await requireAdmin(req, res); if (!admin) return;
+
+  const { data: clients, error } = await supabaseAdmin
+    .from('clients').select('id, slug, name').order('name');
+  if (error) return res.status(500).json({ error: 'Failed to load clients.' });
+
+  const { data: users } = await supabaseAdmin
+    .from('users').select('client_id').eq('is_active', true).not('client_id', 'is', null);
+
+  const counts = {};
+  for (const u of users || []) counts[u.client_id] = (counts[u.client_id] || 0) + 1;
+
+  return res.json({
+    clients: (clients || []).map(c => ({ ...c, employeeCount: counts[c.id] || 0 })),
+  });
+}));
+
+
+// ── GET /auth/admin/employees?clientId=X — list employees for a client
+router.get('/admin/employees', asyncHandler(async (req, res) => {
+  const admin = await requireAdmin(req, res); if (!admin) return;
+
+  const clientId = req.query.clientId;
+  if (!clientId) return res.status(400).json({ error: 'clientId is required.' });
+
+  const { data, error } = await supabaseAdmin
+    .from('users')
+    .select('id, email, role, is_lead, is_active, created_at')
+    .eq('client_id', clientId)
+    .order('created_at');
+
+  if (error) return res.status(500).json({ error: 'Failed to load employees.' });
+  return res.json({ employees: data || [] });
+}));
+
+
+// ── POST /auth/admin/invite-employee — directly add someone to a client
+// Body: { email, clientId, isLead }
+// Unlike /approve, this doesn't require a prior access_request — an
+// admin can proactively add an employee for a client they're setting up.
+router.post('/admin/invite-employee', asyncHandler(async (req, res) => {
+  const admin = await requireAdmin(req, res); if (!admin) return;
+
+  const { email, clientId, isLead } = req.body || {};
+  if (!email || !clientId) return res.status(400).json({ error: 'email and clientId are required.' });
+
+  const { data: client } = await supabaseAdmin.from('clients').select('id, name').eq('id', clientId).single();
+  if (!client) return res.status(404).json({ error: 'Client not found.' });
+
+  const result = await createOrInviteUser({ email, role: 'client', clientId, isLead });
+  return res.json({ ok: true, ...result, clientName: client.name });
+}));
+
+
+// ── PATCH /auth/admin/employee/:userId — update lead/active status ──
+// Body: { isLead?, isActive? }
+router.patch('/admin/employee/:userId', asyncHandler(async (req, res) => {
+  const admin = await requireAdmin(req, res); if (!admin) return;
+
+  const updates = {};
+  if (typeof req.body?.isLead === 'boolean')   updates.is_lead   = req.body.isLead;
+  if (typeof req.body?.isActive === 'boolean') updates.is_active = req.body.isActive;
+  if (!Object.keys(updates).length) return res.status(400).json({ error: 'Nothing to update.' });
+
+  const { error } = await supabaseAdmin.from('users').update(updates).eq('id', req.params.userId);
+  if (error) return res.status(500).json({ error: 'Failed to update employee: ' + error.message });
+  return res.json({ ok: true });
+}));
+
+
+// ── DELETE /auth/admin/employee/:userId — remove a client's access ──
+// Soft-remove (is_active: false) rather than a hard delete, matching
+// the is_active convention already used everywhere else in this app.
+router.delete('/admin/employee/:userId', asyncHandler(async (req, res) => {
+  const admin = await requireAdmin(req, res); if (!admin) return;
+
+  const { error } = await supabaseAdmin.from('users').update({ is_active: false }).eq('id', req.params.userId);
+  if (error) return res.status(500).json({ error: 'Failed to remove employee: ' + error.message });
   return res.json({ ok: true });
 }));
 
