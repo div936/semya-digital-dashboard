@@ -15,10 +15,25 @@ const ADMIN_EMAIL  = process.env.ADMIN_EMAIL  || 'admin@semyadigital.com';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://div936.github.io/semya-digital-dashboard';
 const RENDER_URL   = process.env.RENDER_URL   || 'https://semya-api.onrender.com';
 
+// Express 4 does NOT automatically catch errors thrown/rejected inside
+// an async route handler — an uncaught one just hangs the request
+// forever with no response ever sent, which is exactly what "Approve
+// is clickable but does nothing" turned out to be. This wraps every
+// handler in this file so that can't happen again, here or in any
+// future endpoint added to this router.
+function asyncHandler(fn) {
+  return (req, res, next) => {
+    Promise.resolve(fn(req, res, next)).catch((err) => {
+      console.error('[authRouter] Unhandled error:', err);
+      if (!res.headersSent) res.status(500).json({ error: 'Unexpected server error: ' + err.message });
+    });
+  };
+}
+
 
 // ── POST /auth/check-access ───────────────────────────────────────
 // Returns: { status: 'approved' | 'pending' | 'new' }
-router.post('/check-access', async (req, res) => {
+router.post('/check-access', asyncHandler(async (req, res) => {
   const { email } = req.body || {};
   if (!email) return res.status(400).json({ error: 'Email required.' });
 
@@ -29,12 +44,12 @@ router.post('/check-access', async (req, res) => {
     .single();
 
   return res.json({ status: data?.status || 'new' });
-});
+}));
 
 
 // ── POST /auth/request-access ────────────────────────────────────
 // New user: create pending request + notify admin by email
-router.post('/request-access', async (req, res) => {
+router.post('/request-access', asyncHandler(async (req, res) => {
   const { email } = req.body || {};
   if (!email) return res.status(400).json({ error: 'Email required.' });
   const cleanEmail = email.toLowerCase().trim();
@@ -68,11 +83,11 @@ router.post('/request-access', async (req, res) => {
   }
 
   return res.json({ ok: true });
-});
+}));
 
 
 // ── GET /auth/requests  — admin: list all requests ────────────────
-router.get('/requests', async (req, res) => {
+router.get('/requests', asyncHandler(async (req, res) => {
   const token = (req.headers.authorization || '').replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'Auth required.' });
 
@@ -89,12 +104,13 @@ router.get('/requests', async (req, res) => {
     .order('requested_at', { ascending: false });
 
   return res.json(data || []);
-});
+}));
 
 
 // ── POST /auth/approve  — admin approves + assigns to client ──────
 // Body: { email, clientId }
 router.post('/approve', async (req, res) => {
+ try {
   const token = (req.headers.authorization || '').replace('Bearer ', '');
   const { data: { user }, error } = await supabaseAuth.auth.getUser(token);
   if (error || !user) return res.status(401).json({ error: 'Invalid token.' });
@@ -111,9 +127,10 @@ router.post('/approve', async (req, res) => {
   const cleanEmail = email.toLowerCase().trim();
 
   // 1. Update access_requests
-  await supabaseAdmin.from('access_requests').update({
+  const { error: reqUpdateErr } = await supabaseAdmin.from('access_requests').update({
     status: 'approved', client_id: isAdmin ? null : clientId, reviewed_at: new Date().toISOString(),
   }).eq('email', cleanEmail);
+  if (reqUpdateErr) console.warn('[auth/approve] access_requests update warning:', reqUpdateErr.message);
 
   // 2. Create Supabase Auth user if they don't exist yet
   let authUserId = null;
@@ -132,19 +149,32 @@ router.post('/approve', async (req, res) => {
   //    and no client_id (client_id NULL means "can access every
   //    client", per the same convention already used everywhere else
   //    in this app, e.g. GET /auth/clients and rbacMiddleware).
-  await supabaseAdmin.from('users').upsert({
+  const { error: upsertErr } = await supabaseAdmin.from('users').upsert({
     id: authUserId, email: cleanEmail,
     role: isAdmin ? 'admin' : 'client',
     client_id: isAdmin ? null : clientId,
     is_active: true,
     hashed_pw: 'MAGIC_LINK_AUTH',
   }, { onConflict: 'email' });
+  if (upsertErr) {
+    console.error('[auth/approve] users upsert failed:', upsertErr.message);
+    return res.status(500).json({ error: 'Failed to create/update user record: ' + upsertErr.message });
+  }
 
-  // 4. Send approved user a magic sign-in link
-  const { data: linkData } = await supabaseAuth.auth.admin.generateLink({
-    type: 'magiclink', email: cleanEmail,
-    options: { redirectTo: `${FRONTEND_URL}/dashboard.html` },
-  });
+  // 4. Send approved user a magic sign-in link — wrapped separately:
+  //    this can fail independently (e.g. email/SMTP not configured on
+  //    the Supabase project) without that meaning the approval itself
+  //    failed. The user record above is already saved either way.
+  let magicLink = null;
+  try {
+    const { data: linkData } = await supabaseAuth.auth.admin.generateLink({
+      type: 'magiclink', email: cleanEmail,
+      options: { redirectTo: `${FRONTEND_URL}/dashboard.html` },
+    });
+    magicLink = linkData?.properties?.action_link || null;
+  } catch (e) {
+    console.warn('[auth/approve] generateLink failed (user was still approved):', e.message);
+  }
 
   // Get client info for response (not applicable for a Semya Admin
   // approval — there's no single client to look up, and querying
@@ -163,13 +193,21 @@ router.post('/approve', async (req, res) => {
     ok: true, email: cleanEmail,
     role: isAdmin ? 'admin' : 'client',
     clientName: client?.name, clientSlug: client?.slug,
-    magicLink: linkData?.properties?.action_link || null,
+    magicLink,
   });
+ } catch (err) {
+  // With Express 4, a throw anywhere above that isn't caught means the
+  // request hangs forever with no response — this outer catch is what
+  // guarantees the frontend always gets *something* back instead of a
+  // silent, indefinite hang on "Approving...".
+  console.error('[auth/approve] Unexpected error:', err);
+  return res.status(500).json({ error: 'Approval failed unexpectedly: ' + err.message });
+ }
 });
 
 
 // ── POST /auth/reject ─────────────────────────────────────────────
-router.post('/reject', async (req, res) => {
+router.post('/reject', asyncHandler(async (req, res) => {
   const token = (req.headers.authorization || '').replace('Bearer ', '');
   const { data: { user }, error } = await supabaseAuth.auth.getUser(token);
   if (error || !user) return res.status(401).json({ error: 'Invalid token.' });
@@ -186,11 +224,11 @@ router.post('/reject', async (req, res) => {
   }).eq('email', email.toLowerCase().trim());
 
   return res.json({ ok: true });
-});
+}));
 
 
 // ── GET /auth/me ──────────────────────────────────────────────────
-router.get('/me', async (req, res) => {
+router.get('/me', asyncHandler(async (req, res) => {
   const token = (req.headers.authorization || '').replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'Not authenticated.' });
 
@@ -213,13 +251,13 @@ router.get('/me', async (req, res) => {
     userId: user.id, email: user.email,
     role: dbUser.role, clientId: dbUser.client_id, clientSlug,
   });
-});
+}));
 
 
 // ── GET /auth/clients ──────────────────────────────────────────────
 // Lists the clients this user can switch to: all clients for an admin
 // (client_id IS NULL), or just their own single client otherwise.
-router.get('/clients', async (req, res) => {
+router.get('/clients', asyncHandler(async (req, res) => {
   const token = (req.headers.authorization || '').replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'Not authenticated.' });
 
@@ -244,17 +282,17 @@ router.get('/clients', async (req, res) => {
   }
 
   return res.json({ clients: [] });
-});
+}));
 
 
 // ── POST /auth/logout ─────────────────────────────────────────────
-router.post('/logout', async (req, res) => {
+router.post('/logout', asyncHandler(async (req, res) => {
   const token = (req.headers.authorization || '').replace('Bearer ', '');
   if (token) {
     try { await supabaseAuth.auth.admin.signOut(token); } catch(e) {}
   }
   return res.json({ ok: true });
-});
+}));
 
 
 export default router;
