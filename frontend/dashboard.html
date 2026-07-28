@@ -3183,7 +3183,7 @@ async function renderSidebarSummary(scopes) {
     const showHeader = scopes.length > 1; // only label sub-blocks when showing a grouped pair
     const header = showHeader ? '<div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px;">' + (m ? m.label : scope) + '</div>' : '';
     if (!s) {
-      return '<div class="ai-insight neutral">' + header + '<p>Loading…</p></div>';
+      return '<div class="ai-insight neutral">' + header + '<p>No analysis available yet for this view — check back after the next data upload, or ask an admin to regenerate insights.</p></div>';
     }
     const pointersHtml = (s.pointers && s.pointers.length)
       ? '<ul style="margin:6px 0 0;padding-left:16px;font-size:11px;color:#64748b;line-height:1.6;">' +
@@ -3413,6 +3413,16 @@ function showTab(tabKey) {
   if (panel) panel.classList.add('active');
   updateSidebarForTab(tabKey);
   activeTab = tabKey;
+
+  // Restricted-access check — permissions[tabKey].enabled is always
+  // true for admins (they can preview everything); for a client-role
+  // user it reflects whatever the admin actually toggled for them.
+  const perm = state.tabPermissions?.[tabKey];
+  if (perm && perm.enabled === false) {
+    renderLockedPanel(tabKey, panel);
+    return;
+  }
+
   const cached = tabCache[tabKey];
   const fresh  = cached && (Date.now() - cached.timestamp < CACHE_TTL);
   if (tabKey === 'platform_sales'      && !fresh) fetchAndRenderPS();
@@ -3423,6 +3433,53 @@ function showTab(tabKey) {
   if (tabKey === 'ai_insights'          && !fresh) { fetchAndRenderAI(); fetchAndRenderFraud(); }
   if (tabKey === 'utm_analytics'        && !fresh) fetchAndRenderUTM();
   if (tabKey === 'projections_insights' && !fresh) fetchAndRenderProjections();
+}
+
+// ─── Tab permissions / access lock ─────────────────────────────
+async function loadTabPermissions() {
+  const { clientSlug } = state; if (!clientSlug) return;
+  try {
+    const cfg = await apiFetch('/clients/' + clientSlug + '/dashboard-config');
+    state.tabPermissions = cfg?.tabs || null;
+    applyLockBadgesToNav();
+    // If we already landed on a tab before this resolved (unlikely,
+    // but boot() calls this before showTab), re-check the current one.
+    if (activeTab) showTab(activeTab);
+  } catch (e) {
+    console.warn('[tab-permissions]', e.message);
+  }
+}
+
+// Small lock icon next to any nav tab that's off — for a client user
+// this is the tab they can't open; for an admin it's a quick visual
+// reminder of what's currently hidden from the client, even though
+// admins can still click through to preview it.
+function applyLockBadgesToNav() {
+  if (!state.tabPermissions) return;
+  document.querySelectorAll('.nav-tab[data-tab]').forEach(navEl => {
+    const tabKey = navEl.dataset.tab;
+    const perm = state.tabPermissions[tabKey];
+    const isRestricted = perm && (window.semyaUser?.role === 'admin' ? perm.clientEnabled === false : perm.enabled === false);
+    navEl.querySelector('.nav-tab-lock')?.remove();
+    if (isRestricted) {
+      const lock = document.createElement('span');
+      lock.className = 'nav-tab-lock';
+      lock.title = window.semyaUser?.role === 'admin' ? 'Hidden from client' : 'Restricted';
+      lock.style.cssText = 'margin-left:5px;font-size:10px;opacity:.6;';
+      lock.textContent = '🔒';
+      navEl.appendChild(lock);
+    }
+  });
+}
+
+function renderLockedPanel(tabKey, panel) {
+  if (!panel) return;
+  const labels = { platform_sales: 'Platform Sales', sku_performance: 'SKU Performance', campaign_insights: 'Campaign Insights', geographic_analysis: 'Geographic Analysis', ai_insights: 'AI Insights', daily_targets: 'Daily Targets', utm_analytics: 'UTM Analytics', projections_insights: 'Projections Insights' };
+  panel.innerHTML = '<div class="card" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:64px 24px;text-align:center;">' +
+    '<div style="font-size:36px;margin-bottom:14px;">🔒</div>' +
+    '<div style="font-size:15px;font-weight:700;color:#1e293b;margin-bottom:6px;">' + (labels[tabKey] || tabKey) + ' isn\'t available</div>' +
+    '<div style="font-size:12px;color:#94a3b8;max-width:320px;line-height:1.6;">This section hasn\'t been enabled for your account yet. Reach out to your account admin if you think you should have access.</div>' +
+  '</div>';
 }
 
 function updateSidebarForTab(tabKey) {
@@ -4558,13 +4615,19 @@ async function regenerateInsights() {
 // ─── SHARED CHART HELPER ──────────────────────────────────────────
 function renderOrUpdateChart(canvasId, stateKey, config) {
   const canvas = document.getElementById(canvasId); if (!canvas) return;
+  // Always destroy and recreate rather than trying to patch an
+  // existing instance in place. A partial "just update the numbers"
+  // path silently ignores backgroundColor, chart type, and dataset
+  // count/shape changes — exactly the kind of stale-state bug that's
+  // invisible until a chart's config actually changes shape (e.g.
+  // being converted from a bar to a doughnut, or gaining more
+  // datasets), at which point it renders with leftover styling from
+  // whatever it used to be instead of the new config.
   if (state[stateKey]) {
-    state[stateKey].data.labels = config.data.labels;
-    config.data.datasets.forEach((ds, i) => { if (state[stateKey].data.datasets[i]) state[stateKey].data.datasets[i].data = ds.data; });
-    state[stateKey].update();
-  } else {
-    state[stateKey] = new Chart(canvas, config);
+    state[stateKey].destroy();
+    state[stateKey] = null;
   }
+  state[stateKey] = new Chart(canvas, config);
 }
 
 function lineChartOptions(prefix, suffix, decimals) {
@@ -4730,14 +4793,20 @@ async function loadClientSwitcher() {
   try {
     const resp = await apiFetch('/auth/clients');
     const clients = resp?.clients || [];
-    if (!clients.length) return;
-    sw.innerHTML = clients.map(c =>
-      '<option value="' + c.slug + '"' + (c.slug === state.clientSlug ? ' selected' : '') + '>' + c.name + '</option>'
-    ).join('');
-    // Only admins with more than one client to choose from need to see this
-    sw.style.display = clients.length > 1 ? '' : 'none';
+    if (clients.length) {
+      sw.innerHTML = clients.map(c =>
+        '<option value="' + c.slug + '"' + (c.slug === state.clientSlug ? ' selected' : '') + '>' + c.name + '</option>'
+      ).join('');
+    } else {
+      // Fetch succeeded but returned nothing usable — still show
+      // something rather than leaving the switcher blank.
+      sw.innerHTML = '<option value="' + state.clientSlug + '" selected>' + (document.querySelector('.logo-text')?.textContent || state.clientSlug) + '</option>';
+    }
   } catch (e) {
     console.warn('[client-switcher] failed to load client list:', e.message);
+    // Fall back to showing just the current client rather than an
+    // empty/hidden control — the switcher should never just vanish.
+    sw.innerHTML = '<option value="' + state.clientSlug + '" selected>' + (document.querySelector('.logo-text')?.textContent || state.clientSlug) + '</option>';
   }
 }
 
@@ -5212,6 +5281,7 @@ function boot(user) {
   // Warm the server early (non-blocking background request)
   warmServer();
   loadClientSwitcher();
+  loadTabPermissions();
   showTab('platform_sales'); // Start on Platform Sales
 }
 
