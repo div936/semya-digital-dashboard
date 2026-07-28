@@ -13,6 +13,8 @@ import insightsRouter from './routes/insightsRouter.js';
 import clientRouter   from './routes/clientRouter.js';
 import uploadRouter      from './routes/uploadRouter.js';
 import dataManagerRouter from './routes/dataManagerRouter.js';
+import utmRouter         from './routes/utmRouter.js';
+import projectionsRouter from './routes/projectionsRouter.js';
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -58,14 +60,22 @@ app.use(cookieParser());
 //   /clients/:client_slug/ai-insights          (GET)
 //   /clients/:client_slug/ai-insights/generate (POST)  — admin only
 app.use('/auth',    authRouter);
+// utmRouter is mounted BEFORE clientRouter: it has two intentionally
+// public, unauthenticated endpoints (click/conversion tracking pings
+// from anonymous storefront visitors) that must be matched before
+// clientRouter's router.use('/:client_slug', rbacMiddleware) — which
+// matches by path PREFIX, not exact route — has a chance to intercept
+// and 401 them first.
+app.use('/clients', utmRouter);
 app.use('/clients', clientRouter);
 app.use('/clients', uploadRouter);
 app.use('/clients', dataManagerRouter);
 app.use('/clients', targetsRouter);
 app.use('/clients', insightsRouter);
+app.use('/clients', projectionsRouter);
 
 // ─── Health check ─────────────────────────────────────────────────
-app.get('/health', (_req, res) => res.json({ ok: true, version: 'V27-null-date-fix-state-normalize' }));
+app.get('/health', (_req, res) => res.json({ ok: true, version: 'V28-final-deploy-utm-projections' }));
 
 // ─── 404 ──────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'Route not found.' }));

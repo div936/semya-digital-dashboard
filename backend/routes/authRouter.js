@@ -201,6 +201,37 @@ router.get('/me', async (req, res) => {
 });
 
 
+// ── GET /auth/clients ──────────────────────────────────────────────
+// Lists the clients this user can switch to: all clients for an admin
+// (client_id IS NULL), or just their own single client otherwise.
+router.get('/clients', async (req, res) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authenticated.' });
+
+  const { data: { user }, error } = await supabaseAuth.auth.getUser(token);
+  if (error || !user) return res.status(401).json({ error: 'Invalid or expired session.' });
+
+  const { data: dbUser } = await supabaseAdmin
+    .from('users').select('role, client_id, is_active').eq('email', user.email).single();
+  if (!dbUser || !dbUser.is_active) return res.status(403).json({ error: 'Account not active.' });
+
+  if (dbUser.role === 'admin' && !dbUser.client_id) {
+    const { data: clients, error: cErr } = await supabaseAdmin
+      .from('clients').select('id, slug, name').order('name');
+    if (cErr) return res.status(500).json({ error: 'Failed to load client list.' });
+    return res.json({ clients: clients || [] });
+  }
+
+  if (dbUser.client_id) {
+    const { data: client } = await supabaseAdmin
+      .from('clients').select('id, slug, name').eq('id', dbUser.client_id).single();
+    return res.json({ clients: client ? [client] : [] });
+  }
+
+  return res.json({ clients: [] });
+});
+
+
 // ── POST /auth/logout ─────────────────────────────────────────────
 router.post('/logout', async (req, res) => {
   const token = (req.headers.authorization || '').replace('Bearer ', '');

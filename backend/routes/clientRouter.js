@@ -84,6 +84,32 @@ router.get('/:client_slug/dashboard-config', (req, res) => {
 
 
 // ═══════════════════════════════════════════════════════════════════
+// ADMIN — RENAME CLIENT
+// Body: { name: string }
+// ═══════════════════════════════════════════════════════════════════
+router.patch('/:client_slug/admin/rename', async (req, res) => {
+  if (!req.semya.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required.' });
+  }
+  const { name } = req.body;
+  if (typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ error: 'name (non-empty string) is required.' });
+  }
+
+  const { client } = req.semya;
+  const { data, error } = await supabaseAdmin
+    .from('clients')
+    .update({ name: name.trim() })
+    .eq('id', client.id)
+    .select('slug, name')
+    .single();
+
+  if (error) return res.status(500).json({ error: 'Failed to rename client.' });
+  return res.json({ ok: true, client: data });
+});
+
+
+// ═══════════════════════════════════════════════════════════════════
 // ADMIN — UPDATE TAB PERMISSIONS
 // Body: { tab_key: string, is_enabled: boolean }
 // ═══════════════════════════════════════════════════════════════════
@@ -356,7 +382,10 @@ const EXCLUDED_STATUSES = new Set(['Cancelled','Pending','Unshipped','Shipped - 
 
 function aggregatePlatformSales(rows) {
   const byPlatform = {};
+  const byDay      = {};
   const byWeek     = {};
+  const byMonth    = {};
+  const byYear     = {};
   const byProduct  = {};
 
   const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -374,13 +403,30 @@ function aggregatePlatformSales(rows) {
     byPlatform[p].totalUnits   += u;
     byPlatform[p].orderCount   += 1;
 
-    // Weekly aggregation
+    // Time-bucketed aggregation — day, week, month, year all computed
+    // in the same pass so the frontend can switch granularity instantly
+    // without a re-fetch.
     if (row.order_date) {
       const d = new Date(row.order_date);
-      const wk = 'W' + Math.ceil(d.getDate()/7) + ' ' + MONTHS[d.getMonth()] + " '" + String(d.getFullYear()).slice(2);
-      const ws = d.getFullYear() * 10000 + d.getMonth() * 100 + Math.ceil(d.getDate()/7);
+      const yr = d.getFullYear(), mo = d.getMonth();
+
+      const dkey = row.order_date; // already YYYY-MM-DD
+      if (!byDay[dkey]) byDay[dkey] = { rev: 0, sort: dkey };
+      byDay[dkey].rev += rev;
+
+      const wk = 'W' + Math.ceil(d.getDate()/7) + ' ' + MONTHS[mo] + " '" + String(yr).slice(2);
+      const ws = yr * 10000 + mo * 100 + Math.ceil(d.getDate()/7);
       if (!byWeek[wk]) byWeek[wk] = { rev: 0, sort: ws };
       byWeek[wk].rev += rev;
+
+      const mkey = MONTHS[mo] + " '" + String(yr).slice(2);
+      const ms = yr * 100 + mo;
+      if (!byMonth[mkey]) byMonth[mkey] = { rev: 0, sort: ms };
+      byMonth[mkey].rev += rev;
+
+      const ykey = String(yr);
+      if (!byYear[ykey]) byYear[ykey] = { rev: 0, sort: yr };
+      byYear[ykey].rev += rev;
     }
 
     // Top products — keyed by platform+SKU, not SKU alone. Two
@@ -397,9 +443,16 @@ function aggregatePlatformSales(rows) {
   const platforms  = Object.values(byPlatform);
   const grandTotal = platforms.reduce((s, p) => s + p.totalRevenue, 0);
 
-  const weekly = Object.entries(byWeek)
+  const bucketToArr = (bucket, labelKey) => Object.entries(bucket)
+    .sort((a, b) => (a[1].sort > b[1].sort ? 1 : a[1].sort < b[1].sort ? -1 : 0))
+    .map(([label, v]) => ({ [labelKey]: label, revenue: v.rev }));
+
+  const daily   = bucketToArr(byDay,   'day').map(d => ({ ...d, week: d.day }));
+  const weekly  = Object.entries(byWeek)
     .sort((a, b) => a[1].sort - b[1].sort)
     .map(([week, v]) => ({ week, revenue: v.rev, prevRevenue: v.rev * 0.82 }));
+  const monthly = bucketToArr(byMonth, 'month').map(d => ({ ...d, week: d.month }));
+  const yearly  = bucketToArr(byYear,  'year').map(d => ({ ...d, week: d.year }));
 
   const topProducts = Object.values(byProduct)
     .sort((a, b) => b.revenue - a.revenue)
@@ -409,6 +462,9 @@ function aggregatePlatformSales(rows) {
     grandTotal,
     prevGrandTotal: grandTotal * 0.82,
     weekly,
+    daily,
+    monthly,
+    yearly,
     topProducts,
     platforms: platforms.map((p) => ({
       ...p,

@@ -110,8 +110,207 @@ export async function generateInsights({ clientId, uploadId = null, platform = n
 }
 
 
+const RAW_PLATFORMS = ['amazon', 'acutas', 'flipkart', 'blinkit', 'meta', 'google'];
+
 // ═══════════════════════════════════════════════════════════════════
-// BUILD DATA SUMMARY
+// generateNarrativeSummaries
+//
+// Builds the sidebar "smart suggestion" content: one short narrative
+// passage + a few bullet pointers per scope ('all' plus each raw
+// platform). All scopes are generated from a SINGLE Claude call (one
+// combined prompt, one JSON response) rather than one call per scope —
+// this is what keeps platform-filter switching instant and free on
+// the frontend: it only ever reads whatever this last wrote to
+// ai_narrative_summaries, never triggers a live call itself.
+// ═══════════════════════════════════════════════════════════════════
+export async function generateNarrativeSummaries({ clientId }) {
+  console.log(`[narrative] Generating for client=${clientId}`);
+
+  const since = new Date();
+  since.setDate(since.getDate() - 30);
+  const sinceStr = since.toISOString().split('T')[0];
+
+  const [{ data: revRows }, { data: campRows }] = await Promise.all([
+    supabaseAdmin
+      .from('revenue_data')
+      .select('platform, standard_sku, standard_revenue, standard_units, standard_city, standard_status, order_date')
+      .eq('client_id', clientId)
+      .or(`order_date.gte.${sinceStr},order_date.is.null`)
+      .limit(5000),
+    supabaseAdmin
+      .from('campaign_data')
+      .select('platform, campaign_name, standard_spend, standard_revenue, standard_clicks, standard_impressions, standard_orders, campaign_date')
+      .eq('client_id', clientId)
+      .or(`campaign_date.gte.${sinceStr},campaign_date.is.null`)
+      .limit(2000),
+  ]);
+
+  const scopes = ['all', ...RAW_PLATFORMS];
+  const scopeSummaries = {};
+  for (const scope of scopes) {
+    scopeSummaries[scope] = buildScopeSummary(
+      scope === 'all' ? (revRows || [])  : (revRows  || []).filter(r => r.platform === scope),
+      scope === 'all' ? (campRows || []) : (campRows || []).filter(c => c.platform === scope),
+    );
+  }
+
+  // Only ask Claude about scopes that actually have data — no point
+  // spending tokens (or making up a paragraph) for a platform that's
+  // never been uploaded.
+  const scopesWithData = scopes.filter(s => scopeSummaries[s].hasData);
+
+  let parsed = {};
+  if (scopesWithData.length) {
+    const prompt = buildNarrativePrompt(scopesWithData, scopeSummaries);
+    try {
+      const message = await anthropic.messages.create({
+        model:      MODEL,
+        max_tokens: 2200,
+        messages:   [{ role: 'user', content: prompt }],
+      });
+      const raw = message.content[0]?.text || '';
+      parsed = parseNarrativeResponse(raw);
+    } catch (err) {
+      console.error('[narrative] Anthropic API error:', err.message);
+      // Don't throw — fall through and write "not enough data" rows for
+      // everything rather than leaving the sidebar stuck on skeletons.
+    }
+  }
+
+  const rows = scopes.map(scope => {
+    const s = parsed[scope];
+    if (s && typeof s.narrative === 'string') {
+      return {
+        client_id:  clientId,
+        scope,
+        narrative:  s.narrative,
+        pointers:   Array.isArray(s.pointers) ? s.pointers.slice(0, 5) : [],
+        confidence: typeof s.confidence === 'number' ? Math.min(100, Math.max(0, s.confidence)) : null,
+        has_data:   true,
+        model:      MODEL,
+      };
+    }
+    return {
+      client_id: clientId,
+      scope,
+      narrative: scopeSummaries[scope].hasData
+        ? 'Analysis is temporarily unavailable for this view — try regenerating shortly.'
+        : 'Not enough data yet for this view. Upload a revenue or campaign file for this platform to see insights here.',
+      pointers:  [],
+      confidence: null,
+      has_data:  scopeSummaries[scope].hasData,
+      model:     MODEL,
+    };
+  });
+
+  const { error } = await supabaseAdmin
+    .from('ai_narrative_summaries')
+    .upsert(rows, { onConflict: 'client_id,scope' });
+
+  if (error) {
+    console.error('[narrative] Upsert error:', error.message);
+    throw new Error('Failed to store narrative summaries: ' + error.message);
+  }
+
+  console.log(`[narrative] ✓ Wrote ${rows.length} scope summaries (${scopesWithData.length} analysed live)`);
+  return { scopes: rows.length, analysed: scopesWithData.length };
+}
+
+// Lightweight per-scope aggregate — enough for the narrative prompt,
+// not as detailed as buildDataSummary() (that one still powers the
+// card-based /ai-insights tab separately).
+function buildScopeSummary(revRows, campRows) {
+  if (!revRows.length && !campRows.length) return { hasData: false };
+
+  let totalRev = 0, totalUnits = 0;
+  const bySku = {};
+  const byCity = {};
+  let cancelled = 0;
+
+  for (const r of revRows) {
+    const rev = Number(r.standard_revenue) || 0;
+    const units = Number(r.standard_units) || 0;
+    totalRev += rev; totalUnits += units;
+    const sku = r.standard_sku || 'Unknown';
+    bySku[sku] = bySku[sku] || { revenue: 0, units: 0 };
+    bySku[sku].revenue += rev; bySku[sku].units += units;
+    if (r.standard_city) byCity[r.standard_city] = (byCity[r.standard_city] || 0) + rev;
+    if (r.standard_status && /cancel|return|refund|void/i.test(r.standard_status)) cancelled++;
+  }
+
+  let totalSpend = 0, totalCampRev = 0, totalClicks = 0, totalImpr = 0;
+  const campaignNames = new Set();
+  for (const c of campRows) {
+    totalSpend += Number(c.standard_spend) || 0;
+    totalCampRev += Number(c.standard_revenue) || 0;
+    totalClicks += Number(c.standard_clicks) || 0;
+    totalImpr += Number(c.standard_impressions) || 0;
+    if (c.campaign_name) campaignNames.add(c.campaign_name);
+  }
+
+  const topSkus = Object.entries(bySku).sort((a, b) => b[1].revenue - a[1].revenue).slice(0, 3)
+    .map(([sku, d]) => ({ sku, ...d }));
+  const topCities = Object.entries(byCity).sort((a, b) => b[1] - a[1]).slice(0, 3)
+    .map(([city, revenue]) => ({ city, revenue }));
+
+  return {
+    hasData: true,
+    totalRev, totalUnits, orderCount: revRows.length, cancelled,
+    topSkus, topCities,
+    totalSpend, totalCampRev,
+    roas: totalSpend > 0 ? +(totalCampRev / totalSpend).toFixed(2) : 0,
+    ctr: totalImpr > 0 ? +((totalClicks / totalImpr) * 100).toFixed(2) : 0,
+    campaignCount: campaignNames.size,
+  };
+}
+
+function buildNarrativePrompt(scopesWithData, scopeSummaries) {
+  const blocks = scopesWithData.map(scope => {
+    const s = scopeSummaries[scope];
+    const skuLines = s.topSkus.map(x => `${x.sku} (₹${fmt(x.revenue)}, ${x.units} units)`).join('; ') || 'none';
+    const cityLines = s.topCities.map(x => `${x.city} (₹${fmt(x.revenue)})`).join('; ') || 'none';
+    return `SCOPE "${scope}":
+  Revenue: ₹${fmt(s.totalRev)} | Units: ${s.totalUnits} | Orders: ${s.orderCount} | Cancelled/returned: ${s.cancelled}
+  Top SKUs: ${skuLines}
+  Top cities: ${cityLines}
+  Ad spend: ₹${fmt(s.totalSpend)} | Campaign revenue: ₹${fmt(s.totalCampRev)} | RoAS: ${s.roas}x | CTR: ${s.ctr}% | Active campaigns: ${s.campaignCount}`;
+  }).join('\n\n');
+
+  return `You are a senior e-commerce performance analyst for an Indian D2C brand. For EACH scope below, write a short smart-suggestion summary a business owner can read in a few seconds.
+
+${blocks}
+
+INSTRUCTIONS:
+For each scope listed above, respond with:
+- "narrative": a 2-3 sentence passage summarising overall performance in plain language — call out what's working, what's not, and one concrete forward-looking suggestion (e.g. which product to push harder, where to shift ad spend). If campaign data exists for that scope, comment on ad performance (RoAS/CTR) specifically, not just revenue.
+- "pointers": 3-4 short bullet-point strings (each under 15 words) — the key numbers/facts a reader would want to scan quickly.
+- "confidence": 0-100, how confident you are in this read given the data volume available.
+
+"all" should synthesise across every platform, not just repeat one platform's numbers.
+
+Respond ONLY with a valid JSON object, no preamble, no markdown, no backticks. Shape:
+{
+  "all":     { "narrative": "...", "pointers": ["...", "..."], "confidence": 85 },
+  "amazon":  { "narrative": "...", "pointers": ["...", "..."], "confidence": 80 }
+  // ... one key per scope listed above, exactly matching the scope names given
+}`;
+}
+
+function parseNarrativeResponse(raw) {
+  try {
+    const cleaned = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
+    const obj = JSON.parse(cleaned);
+    if (typeof obj !== 'object' || obj === null) return {};
+    return obj;
+  } catch (err) {
+    console.error('[narrative] Failed to parse AI response:', err.message);
+    console.error('[narrative] Raw response:', raw.slice(0, 500));
+    return {};
+  }
+}
+
+
+
 // Pulls aggregated numbers from Supabase to feed into the prompt.
 // ═══════════════════════════════════════════════════════════════════
 async function buildDataSummary(clientId, platformFilter) {

@@ -15,6 +15,8 @@ export const ALL_TABS = [
   'geographic_analysis',
   'ai_insights',
   'daily_targets',
+  'utm_analytics',
+  'projections_insights',
 ];
 
 function extractToken(req) {
@@ -59,7 +61,7 @@ export async function rbacMiddleware(req, res, next) {
     const requestedSlug = req.params.client_slug;
     const { data: client, error: clientError } = await supabaseAdmin
       .from('clients')
-      .select('id, slug, name, logo_url, theme, is_active')
+      .select('id, slug, name, logo_url, theme, is_active, ga4_measurement_id')
       .eq('slug', requestedSlug)
       .single();
 

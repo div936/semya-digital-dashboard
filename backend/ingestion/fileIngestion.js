@@ -39,7 +39,7 @@ import path from 'path';
 import { parse as parseCsv } from 'csv-parse/sync';
 import { supabaseAdmin }  from '../lib/supabase.js';
 import { REVENUE_MAP, CAMPAIGN_MAP, normaliseBatch, classifyDataType, scoreHeaderRow } from '../lib/columnMapper.js';
-import { generateInsights } from '../lib/insightGenerator.js';
+import { generateInsights, generateNarrativeSummaries } from '../lib/insightGenerator.js';
 
 // ═══════════════════════════════════════════════════════════════════
 // PREFIX → ROUTING TABLE
@@ -372,6 +372,9 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
     // 7. Fire-and-forget insight generation (non-blocking)
     generateInsights({ clientId, uploadId, platform }).catch(err =>
       console.error('[ingestion] Insight generation failed (non-fatal):', err.message)
+    );
+    generateNarrativeSummaries({ clientId }).catch(err =>
+      console.error('[ingestion] Narrative summary generation failed (non-fatal):', err.message)
     );
 
     return {

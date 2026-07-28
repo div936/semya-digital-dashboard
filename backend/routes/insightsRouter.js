@@ -14,9 +14,62 @@
 import { Router }          from 'express';
 import { rbacMiddleware, requireTab } from '../middleware/rbac.js';
 import { supabaseAdmin }   from '../lib/supabase.js';
-import { generateInsights } from '../lib/insightGenerator.js';
+import { generateInsights, generateNarrativeSummaries } from '../lib/insightGenerator.js';
 
 const router = Router({ mergeParams: true });
+
+const VALID_SCOPES = new Set(['all', 'amazon', 'acutas', 'flipkart', 'blinkit', 'meta', 'google']);
+
+// ─── GET /clients/:client_slug/ai-summary ─────────────────────────
+// The sidebar "smart suggestion" widget. Always a plain read of the
+// last-generated cache — never triggers a live Claude call, so
+// switching the platform filter is instant and free.
+// Query params: ?scope=all|amazon|acutas|flipkart|blinkit|meta|google
+router.get(
+  '/:client_slug/ai-summary',
+  rbacMiddleware,
+  async (req, res) => {
+    const { client } = req.semya;
+    const scope = VALID_SCOPES.has(req.query.scope) ? req.query.scope : 'all';
+
+    const { data, error } = await supabaseAdmin
+      .from('ai_narrative_summaries')
+      .select('scope, narrative, pointers, confidence, has_data, generated_at')
+      .eq('client_id', client.id)
+      .eq('scope', scope)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[ai-summary GET]', error.message);
+      return res.status(500).json({ error: 'Failed to fetch summary.' });
+    }
+
+    return res.json({
+      scope,
+      summary: data || null, // null = never generated yet for this client at all
+    });
+  }
+);
+
+
+// ─── POST /clients/:client_slug/ai-summary/regenerate ─────────────
+router.post(
+  '/:client_slug/ai-summary/regenerate',
+  rbacMiddleware,
+  async (req, res) => {
+    if (!req.semya.isAdmin) {
+      return res.status(403).json({ error: 'Admin access required to regenerate summaries.' });
+    }
+    const { client } = req.semya;
+    try {
+      const result = await generateNarrativeSummaries({ clientId: client.id });
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error('[ai-summary regenerate]', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+);
 
 
 // ─── GET /clients/:client_slug/ai-insights ────────────────────────
