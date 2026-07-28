@@ -343,18 +343,21 @@ router.get('/admin/clients', asyncHandler(async (req, res) => {
 
 
 // ── GET /auth/admin/employees?clientId=X — list employees for a client
+// clientId can also be the sentinel "__admin__" to list Semya's own
+// admin team (role='admin', not scoped to any single client) rather
+// than a specific client's employees.
 router.get('/admin/employees', asyncHandler(async (req, res) => {
   const admin = await requireAdmin(req, res); if (!admin) return;
 
   const clientId = req.query.clientId;
   if (!clientId) return res.status(400).json({ error: 'clientId is required.' });
 
-  const { data, error } = await supabaseAdmin
-    .from('users')
-    .select('id, email, role, is_lead, is_active, created_at')
-    .eq('client_id', clientId)
-    .order('created_at');
+  let query = supabaseAdmin.from('users').select('id, email, role, is_lead, is_active, created_at');
+  query = clientId === '__admin__'
+    ? query.eq('role', 'admin').is('client_id', null)
+    : query.eq('client_id', clientId);
 
+  const { data, error } = await query.order('created_at');
   if (error) return res.status(500).json({ error: 'Failed to load employees.' });
   return res.json({ employees: data || [] });
 }));
@@ -362,6 +365,8 @@ router.get('/admin/employees', asyncHandler(async (req, res) => {
 
 // ── POST /auth/admin/invite-employee — directly add someone to a client
 // Body: { email, clientId, isLead }
+// clientId "__admin__" invites them as a Semya admin (all clients)
+// instead of a single-client employee.
 // Unlike /approve, this doesn't require a prior access_request — an
 // admin can proactively add an employee for a client they're setting up.
 router.post('/admin/invite-employee', asyncHandler(async (req, res) => {
@@ -370,11 +375,51 @@ router.post('/admin/invite-employee', asyncHandler(async (req, res) => {
   const { email, clientId, isLead } = req.body || {};
   if (!email || !clientId) return res.status(400).json({ error: 'email and clientId are required.' });
 
+  if (clientId === '__admin__') {
+    const result = await createOrInviteUser({ email, role: 'admin' });
+    return res.json({ ok: true, ...result, clientName: 'Semya (Admins)' });
+  }
+
   const { data: client } = await supabaseAdmin.from('clients').select('id, name').eq('id', clientId).single();
   if (!client) return res.status(404).json({ error: 'Client not found.' });
 
   const result = await createOrInviteUser({ email, role: 'client', clientId, isLead });
   return res.json({ ok: true, ...result, clientName: client.name });
+}));
+
+
+// ── DELETE /auth/admin/clients/:clientId — permanently delete a client
+// Cascades automatically (via ON DELETE CASCADE) for: revenue_data,
+// campaign_data, uploads, tab_permissions, UTM tracking data, SKU
+// costs, platform assumptions.
+//
+// Two tables do NOT cascade and need explicit handling first:
+//   - users.client_id only does ON DELETE SET NULL, which would leave
+//     that client's employee accounts dangling (role still 'client',
+//     but no client to see) rather than actually removing their
+//     access — so those are deactivated first instead.
+//   - access_requests.client_id has no ON DELETE behavior configured
+//     at all, which means Postgres defaults to blocking the delete
+//     entirely with a foreign key violation if any request ever
+//     referenced this client — so that column is cleared first.
+//
+// This cannot be undone; the frontend must get explicit confirmation
+// before calling this.
+router.delete('/admin/clients/:clientId', asyncHandler(async (req, res) => {
+  const admin = await requireAdmin(req, res); if (!admin) return;
+  const clientId = req.params.clientId;
+
+  const { data: client } = await supabaseAdmin.from('clients').select('id, name').eq('id', clientId).single();
+  if (!client) return res.status(404).json({ error: 'Client not found.' });
+
+  await supabaseAdmin.from('users').update({ is_active: false }).eq('client_id', clientId);
+  await supabaseAdmin.from('access_requests').update({ client_id: null }).eq('client_id', clientId);
+
+  const { error } = await supabaseAdmin.from('clients').delete().eq('id', clientId);
+  if (error) return res.status(500).json({ error: 'Failed to delete client: ' + error.message });
+
+  console.log(`[auth] Deleted client "${client.name}" (${client.id}) and all associated data.`);
+  return res.json({ ok: true, deletedClientName: client.name });
 }));
 
 
