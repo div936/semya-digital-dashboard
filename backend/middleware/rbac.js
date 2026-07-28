@@ -61,11 +61,21 @@ export async function rbacMiddleware(req, res, next) {
     const requestedSlug = req.params.client_slug;
     const { data: client, error: clientError } = await supabaseAdmin
       .from('clients')
-      .select('id, slug, name, logo_url, theme, is_active, ga4_measurement_id')
+      .select('id, slug, name, logo_url, theme, is_active')
       .eq('slug', requestedSlug)
       .single();
 
     if (clientError || !client) {
+      // PGRST116 = "no rows returned by .single()" — a genuinely missing
+      // client. Anything else is a real query error (e.g. a column that
+      // doesn't exist yet because a migration hasn't been run) and
+      // should not be silently reported as "client not found" — that
+      // makes a schema problem look like a data problem and wastes
+      // time debugging the wrong thing.
+      if (clientError && clientError.code !== 'PGRST116') {
+        console.error('[rbac] Client lookup failed (not a missing-client case):', clientError.message);
+        return res.status(500).json({ error: 'Failed to look up client: ' + clientError.message });
+      }
       return res.status(404).json({ error: `Client '${requestedSlug}' not found.` });
     }
 

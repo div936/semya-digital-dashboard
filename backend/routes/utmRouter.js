@@ -320,11 +320,24 @@ router.get(
     const apiBase = process.env.PUBLIC_API_BASE || `${req.protocol}://${req.get('host')}`;
     const slug = client.slug;
 
+    // Fetched separately from rbacMiddleware's client lookup, isolated
+    // on purpose: if the utm_schema.sql migration (which adds this
+    // column) hasn't been run yet on this deployment, only the GA4
+    // mirror degrades to "not set" — it doesn't take down every other
+    // route that goes through rbacMiddleware.
+    let ga4MeasurementId = null;
+    try {
+      const { data } = await supabaseAdmin.from('clients').select('ga4_measurement_id').eq('id', client.id).single();
+      ga4MeasurementId = data?.ga4_measurement_id || null;
+    } catch (e) {
+      console.warn('[utm/snippets] ga4_measurement_id column unavailable (migration not run?):', e.message);
+    }
+
     const snippetA = buildSnippetA(apiBase, slug);
     const snippetB = buildSnippetB(apiBase, slug);
-    const snippetC = client.ga4_measurement_id ? buildSnippetC(client.ga4_measurement_id) : null;
+    const snippetC = ga4MeasurementId ? buildSnippetC(ga4MeasurementId) : null;
 
-    return res.json({ snippetA, snippetB, snippetC, ga4MeasurementId: client.ga4_measurement_id || null });
+    return res.json({ snippetA, snippetB, snippetC, ga4MeasurementId });
   }
 );
 
