@@ -1139,10 +1139,8 @@
       <span class="tag-admin">Admin</span>
 
       <!-- Client Switcher -->
-      <select class="select-styled" title="Switch client">
+      <select class="select-styled" id="clientSwitcher" title="Switch client">
         <option value="neat-everyday" selected>Neat Everyday</option>
-        <option value="client-b">Client B — Redacted</option>
-        <option value="client-c">Client C — Redacted</option>
       </select>
 
       <!-- Data Upload -->
@@ -1198,6 +1196,8 @@
     <div class="nav-tab" data-tab="geographic_analysis" onclick="showTab('geographic_analysis')"><span class="dot"></span>Geographic Analysis</div>
     <div class="nav-tab" data-tab="ai_insights"       onclick="showTab('ai_insights')"><span class="dot"></span>AI Insights</div>
     <div class="nav-tab" data-tab="daily_targets"     onclick="showTab('daily_targets')"><span class="dot"></span>Daily Targets</div>
+    <div class="nav-tab" data-tab="utm_analytics"     onclick="showTab('utm_analytics')"><span class="dot"></span>UTM Analytics</div>
+    <div class="nav-tab" data-tab="projections_insights" onclick="showTab('projections_insights')"><span class="dot"></span>Projections Insights</div>
   </nav>
 
 <!-- ══════════════════════════════════════════════════════════════════
@@ -1273,7 +1273,11 @@
         <div class="card">
           <div class="card-header">
             <span class="card-title">Revenue Over Time</span>
-            <span class="card-badge">Daily</span>
+            <div style="display:flex;gap:4px;align-items:center;">
+              <button class="trend-period-btn active" data-period="day"   onclick="setPsTrendPeriod('day')">Daily</button>
+              <button class="trend-period-btn"        data-period="month" onclick="setPsTrendPeriod('month')">Monthly</button>
+              <button class="trend-period-btn"        data-period="year"  onclick="setPsTrendPeriod('year')">Yearly</button>
+            </div>
           </div>
           <div class="chart-wrap" style="height:220px;">
             <canvas id="psRevenueChart"></canvas>
@@ -1825,6 +1829,253 @@
       </div>
     </div><!-- /tab-ai_insights -->
 
+    <!-- ══════════════════════════════════════════════════════════════
+         UTM ANALYTICS TAB
+    ══════════════════════════════════════════════════════════════ -->
+    <div class="tab-panel" id="tab-utm_analytics">
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">UTM Link Builder</span>
+          <span class="card-badge">Campaign Tools</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px;">
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">Base URL</label>
+            <input type="text" id="utmBaseUrl" placeholder="https://yourstore.com/products/..." style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">utm_campaign</label>
+            <input type="text" id="utmCampaign" placeholder="diwali_sale_2026" style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">utm_source</label>
+            <select id="utmSource" style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;">
+              <option value="">— select —</option>
+              <option value="meta">Meta</option><option value="google">Google</option>
+              <option value="linkedin">LinkedIn</option><option value="newsletter">Newsletter</option>
+              <option value="twitter">Twitter / X</option><option value="whatsapp">WhatsApp</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">utm_medium</label>
+            <select id="utmMedium" style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;">
+              <option value="">— select —</option>
+              <option value="cpc">cpc</option><option value="organic-social">organic-social</option>
+              <option value="email">email</option><option value="referral">referral</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">utm_term <span style="color:#cbd5e1;">optional</span></label>
+            <input type="text" id="utmTerm" style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">utm_content <span style="color:#cbd5e1;">optional</span></label>
+            <input type="text" id="utmContent" style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
+          </div>
+        </div>
+        <div style="margin-top:14px;padding:12px;background:#f8fafc;border:1px solid var(--color-border);border-radius:var(--radius-sm);font-family:var(--font-mono);font-size:11px;color:#1e293b;word-break:break-all;" id="utmPreview">
+          Fill in the fields above to generate your URL…
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px;">
+          <button class="btn btn-ghost" onclick="copyUtmUrl()">Copy</button>
+          <button class="btn btn-primary" onclick="saveUtmLink()">💾 Save link</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <div class="card-header"><span class="card-title">Saved Links</span></div>
+        <div id="utmSavedLinksList" style="margin-top:6px;">
+          <div class="skel skel-row" style="height:32px;"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <div class="card-header">
+          <span class="card-title">Campaign Performance</span>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <select id="utmStatsDays" onchange="fetchAndRenderUtmStats()" style="font-size:11px;padding:5px 8px;border:1px solid var(--color-border);border-radius:6px;">
+              <option value="30">Last 30 days</option><option value="60">Last 60 days</option>
+              <option value="90">Last 90 days</option><option value="0">All time</option>
+            </select>
+          </div>
+        </div>
+        <div style="overflow-x:auto;margin-top:8px;">
+          <table>
+            <thead><tr><th>Campaign</th><th>Source</th><th>Medium</th><th>Clicks</th><th>Conversions</th><th>Revenue</th></tr></thead>
+            <tbody id="utmStatsTbody"><tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:20px 0;">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <div class="card-header"><span class="card-title">Campaign Details — Product Breakdown</span></div>
+        <div style="font-size:11px;color:#94a3b8;padding:4px 2px 8px;">Products are inferred from campaign naming conventions by matching against your uploaded SKUs — best-effort, not exact.</div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead><tr><th>Campaign</th><th>Product (inferred)</th><th>Source</th><th>Clicks</th><th>Conv.</th><th>Revenue</th></tr></thead>
+            <tbody id="utmDetailsTbody"><tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:20px 0;">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <div class="card-header"><span class="card-title">Multi-touch Attribution</span></div>
+        <div style="font-size:11px;color:#94a3b8;padding:4px 2px 8px;">Orders where the customer clicked a UTM link but purchased later — the original campaign gets credit (30-day window).</div>
+        <div id="utmAttributionList"><div class="skel skel-row" style="height:32px;"></div></div>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <div class="card-header">
+          <span class="card-title">Tracking Snippets</span>
+          <span class="card-badge" style="background:#fff7ed;color:#d97706;border-color:#fed7aa;">Admin only</span>
+        </div>
+        <p style="font-size:12px;color:#64748b;margin:6px 0 14px;">Install these once on the client's Shopify store to start collecting click and conversion data. Snippet A captures clicks; Snippet B (a Shopify Customer Event Pixel) records the actual conversion at checkout.</p>
+
+        <div style="margin-bottom:16px;">
+          <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:4px;">Snippet A — paste before &lt;/head&gt; in theme.liquid</div>
+          <div style="position:relative;">
+            <pre id="utmSnippetA" style="background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;font-size:10px;overflow-x:auto;max-height:160px;">Loading…</pre>
+            <button class="btn btn-ghost" style="position:absolute;top:8px;right:8px;font-size:10px;padding:4px 8px;" onclick="copySnippet('utmSnippetA')">Copy</button>
+          </div>
+        </div>
+
+        <div style="margin-bottom:16px;">
+          <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:4px;">Snippet B — Shopify Admin → Settings → Customer events → Add custom pixel</div>
+          <div style="position:relative;">
+            <pre id="utmSnippetB" style="background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;font-size:10px;overflow-x:auto;max-height:160px;">Loading…</pre>
+            <button class="btn btn-ghost" style="position:absolute;top:8px;right:8px;font-size:10px;padding:4px 8px;" onclick="copySnippet('utmSnippetB')">Copy</button>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid var(--color-border);padding-top:14px;">
+          <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:4px;">GA4 mirror (optional)</div>
+          <p style="font-size:11px;color:#94a3b8;margin-bottom:8px;">Semya can't read data back out of Google Analytics — this just sends the same click events into your own GA4 property too, in parallel, so history is already there if you connect GA4 fully later.</p>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+            <input type="text" id="ga4MeasurementId" placeholder="G-XXXXXXXXXX" style="flex:1;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
+            <button class="btn btn-primary" onclick="saveGa4Id()">Save</button>
+          </div>
+          <div id="utmSnippetCWrap" style="display:none;position:relative;">
+            <pre id="utmSnippetC" style="background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;font-size:10px;overflow-x:auto;max-height:160px;"></pre>
+            <button class="btn btn-ghost" style="position:absolute;top:8px;right:8px;font-size:10px;padding:4px 8px;" onclick="copySnippet('utmSnippetC')">Copy</button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /tab-utm_analytics -->
+
+    <!-- ══════════════════════════════════════════════════════════════
+         PROJECTIONS INSIGHTS TAB
+    ══════════════════════════════════════════════════════════════ -->
+    <div class="tab-panel" id="tab-projections_insights">
+
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-header">
+          <span class="card-title">PROJECTIONS INSIGHTS</span>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <select id="projBucket" onchange="fetchAndRenderProjections()" style="font-size:11px;padding:5px 8px;border:1px solid var(--color-border);border-radius:6px;">
+              <option value="week" selected>Weekly</option>
+              <option value="month">Monthly</option>
+              <option value="day">Daily</option>
+            </select>
+            <span class="fetch-badge" id="projFetchBadge"><span id="projFetchText">Loading…</span></span>
+          </div>
+        </div>
+        <div id="projUnpricedNote" style="display:none;margin-top:8px;padding:10px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:var(--radius-sm);font-size:12px;color:#92400e;"></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px;">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Net Profit</span></div>
+          <div style="font-size:24px;font-weight:800;margin-top:6px;" id="projKpiProfit">—</div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:4px;" id="projKpiProfitSub">for selected period</div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Lost to Returns</span></div>
+          <div style="font-size:24px;font-weight:800;margin-top:6px;color:#dc2626;" id="projKpiReturnLoss">—</div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:4px;">COGS + shipping sunk on cancelled orders</div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Ad Spend</span></div>
+          <div style="font-size:24px;font-weight:800;margin-top:6px;" id="projKpiAdSpend">—</div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:4px;" id="projKpiAdSpendSub">—</div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Status</span></div>
+          <div style="font-size:18px;font-weight:800;margin-top:6px;" id="projKpiStatus">—</div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:4px;" id="projKpiStatusSub">—</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Cumulative Profit — Actual + Projected</span>
+        </div>
+        <div style="display:flex;gap:16px;margin:6px 0 4px;font-size:11px;">
+          <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:2px;background:#0284c7;display:inline-block;"></span>Actual</span>
+          <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:2px;background:#94a3b8;display:inline-block;"></span>Steady trend (all history)</span>
+          <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:2px;background:#059669;display:inline-block;"></span>Recent momentum (revenue growth + margin trend)</span>
+        </div>
+        <div class="chart-wrap" style="height:260px;">
+          <canvas id="projChart"></canvas>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Steady Trend Projection</span></div>
+          <div id="projLinearSummary" style="margin-top:8px;font-size:12px;color:#64748b;line-height:1.7;">Loading…</div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Recent Momentum Projection</span></div>
+          <div id="projGrowthSummary" style="margin-top:8px;font-size:12px;color:#64748b;line-height:1.7;">Loading…</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <div class="card-header">
+          <span class="card-title">Settings — SKU Cost Price</span>
+          <span class="card-badge" style="background:#fff7ed;color:#d97706;border-color:#fed7aa;">Admin only</span>
+        </div>
+        <p style="font-size:12px;color:#64748b;margin:6px 0 12px;">Set a SKU's cost price starting from a date. If you change a price later, add a new entry with its own start date — past orders keep using whatever price was in effect on their own order date; nothing gets rewritten.</p>
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:14px;">
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">SKU</label>
+            <input type="text" id="skuCostSku" placeholder="e.g. NE-MOIST-200ML" style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">Cost Price (₹)</label>
+            <input type="number" id="skuCostPrice" min="0" step="0.01" style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">Effective From</label>
+            <input type="date" id="skuCostDate" style="width:100%;padding:7px 10px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
+          </div>
+          <button class="btn btn-primary" onclick="addSkuCost()">Add</button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead><tr><th>SKU</th><th>Cost Price</th><th>Effective From</th><th></th></tr></thead>
+            <tbody id="skuCostsTbody"><tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:16px 0;">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <div class="card-header">
+          <span class="card-title">Settings — Platform Cost Assumptions</span>
+          <span class="card-badge" style="background:#fff7ed;color:#d97706;border-color:#fed7aa;">Admin only</span>
+        </div>
+        <p style="font-size:12px;color:#64748b;margin:6px 0 12px;">Used as a fallback wherever an order's own file doesn't state a real shipping cost. Commission is always applied at this rate on realised revenue.</p>
+        <div id="platformAssumptionsGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+          <div class="skel skel-row" style="height:70px;"></div>
+          <div class="skel skel-row" style="height:70px;"></div>
+          <div class="skel skel-row" style="height:70px;"></div>
+        </div>
+      </div>
+
+    </div><!-- /tab-projections_insights -->
+
   </main>
 
 <!-- ══════════════════════════════════════════════════════════════════
@@ -1932,6 +2183,20 @@
           <span class="acl-row-desc">Target vs achieved performance tracking</span>
         </div>
         <label class="toggle"><input type="checkbox" data-tab="daily_targets"><span class="toggle-slider"></span></label>
+      </div>
+      <div class="acl-row">
+        <div class="acl-row-info">
+          <span class="acl-row-title">UTM Analytics</span>
+          <span class="acl-row-desc">Campaign link builder, click/conversion tracking, attribution</span>
+        </div>
+        <label class="toggle"><input type="checkbox" data-tab="utm_analytics"><span class="toggle-slider"></span></label>
+      </div>
+      <div class="acl-row">
+        <div class="acl-row-info">
+          <span class="acl-row-title">Projections Insights</span>
+          <span class="acl-row-desc">Profit calculation and breakeven projections</span>
+        </div>
+        <label class="toggle"><input type="checkbox" data-tab="projections_insights"><span class="toggle-slider"></span></label>
       </div>
     </div>
 
@@ -2852,16 +3117,72 @@ function renderCampaigns(campaigns) {
   }).join('');
 }
 
-// ─── RENDER AI INSIGHTS ───────────────────────────────────────────
-function renderInsights(insights, sku) {
+// ─── AI SIDEBAR — "smart suggestion" widget ───────────────────────
+// Always reads a cached, pre-generated summary (see backend
+// insightGenerator.js) — never makes a live Claude call itself, so
+// switching platform filters is instant and free.
+let _sidebarCache = {}; // scope -> summary object, cleared on upload/delete/client-switch
+
+async function fetchScopeSummary(scope) {
+  if (_sidebarCache[scope]) return _sidebarCache[scope];
+  const { clientSlug } = state; if (!clientSlug) return null;
+  try {
+    const resp = await apiFetch('/clients/' + clientSlug + '/ai-summary?scope=' + scope);
+    _sidebarCache[scope] = resp?.summary || null;
+    return _sidebarCache[scope];
+  } catch (e) {
+    console.warn('[sidebar-summary]', scope, e.message);
+    return null;
+  }
+}
+
+// Maps a tab's current platform-pill selection to one or two scopes.
+// Grouped filters (Amazon = amazon+acutas, Website = meta+google) show
+// both underlying platforms stacked, per-platform, rather than one
+// blended paragraph — so "Neat Amazon" and "Acutas" always stay visibly
+// distinct even when viewed under the combined "Amazon" filter.
+function getScopesForTab(tabKey) {
+  const rawFilter = tabKey === 'platform_sales'      ? psState.platform
+                   : tabKey === 'campaign_insights'  ? ciState.platform
+                   : tabKey === 'geographic_analysis'? geoState.platform
+                   : tabKey === 'sku_performance'     ? state.platform
+                   : '';
+  if (!rawFilter)          return ['all'];
+  if (rawFilter === 'amazon')  return ['amazon', 'acutas'];
+  if (rawFilter === 'website') return ['meta', 'google'];
+  return [rawFilter];
+}
+
+async function renderSidebarSummary(scopes) {
   const list = document.getElementById('aiInsightsList');
-  list.innerHTML = insights.map(ins => `
-    <div class="ai-insight ${ins.type}">
-      <div class="ai-insight-tag">${ins.tag}</div>
-      <p>${(ins.text || '').replace(/\{sku\}/g, sku)}</p>
-    </div>`).join('');
-  document.getElementById('aiSubtitle').textContent = `Powered · ${sku}`;
-  document.getElementById('aiConfidence').textContent = '91.4%';
+  const confEl = document.getElementById('aiConfidence');
+  if (!list) return;
+  list.innerHTML = '<div class="skel skel-insight"></div><div class="skel skel-insight"></div>';
+
+  const summaries = await Promise.all(scopes.map(fetchScopeSummary));
+
+  const blocks = scopes.map((scope, i) => {
+    const s = summaries[i];
+    const m = PLATFORM_META[scope];
+    const showHeader = scopes.length > 1; // only label sub-blocks when showing a grouped pair
+    const header = showHeader ? '<div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px;">' + (m ? m.label : scope) + '</div>' : '';
+    if (!s) {
+      return '<div class="ai-insight neutral">' + header + '<p>Loading…</p></div>';
+    }
+    const pointersHtml = (s.pointers && s.pointers.length)
+      ? '<ul style="margin:6px 0 0;padding-left:16px;font-size:11px;color:#64748b;line-height:1.6;">' +
+          s.pointers.map(p => '<li>' + p + '</li>').join('') + '</ul>'
+      : '';
+    const type = s.has_data === false ? 'neutral' : 'positive';
+    return '<div class="ai-insight ' + type + '">' + header + '<p>' + (s.narrative || '') + '</p>' + pointersHtml + '</div>';
+  });
+
+  list.innerHTML = blocks.join('');
+
+  // Show the (min) confidence across shown blocks, so a grouped view
+  // doesn't overstate certainty if one side has thinner data.
+  const confidences = summaries.filter(s => s && typeof s.confidence === 'number').map(s => s.confidence);
+  if (confEl) confEl.textContent = confidences.length ? Math.round(Math.min(...confidences)) + '%' : '—';
 }
 
 // ─── RENDER PLATFORM HEALTH ───────────────────────────────────────
@@ -3063,7 +3384,7 @@ document.querySelectorAll('.sku-pill').forEach(pill => {
 
 // ─── TAB STATE ────────────────────────────────────────────────────
 let activeTab  = 'platform_sales';
-const tabCache = {};
+let tabCache = {};
 const CACHE_TTL = 60000;
 
 // ─── SHOW TAB ─────────────────────────────────────────────────────
@@ -3084,18 +3405,21 @@ function showTab(tabKey) {
   if (tabKey === 'geographic_analysis'  && !fresh) fetchAndRenderGEO();
   if (tabKey === 'daily_targets'        && !fresh) fetchAndRenderDT();
   if (tabKey === 'ai_insights'          && !fresh) { fetchAndRenderAI(); fetchAndRenderFraud(); }
+  if (tabKey === 'utm_analytics'        && !fresh) fetchAndRenderUTM();
+  if (tabKey === 'projections_insights' && !fresh) fetchAndRenderProjections();
 }
 
 function updateSidebarForTab(tabKey) {
-  const labels = { platform_sales: 'Platform overview', sku_performance: 'SKU-level analysis', campaign_insights: 'Campaign analysis' };
+  const labels = { platform_sales: 'Platform overview', sku_performance: 'SKU-level analysis', campaign_insights: 'Campaign analysis', geographic_analysis: 'Geographic analysis', ai_insights: 'AI insights', daily_targets: 'Daily targets', utm_analytics: 'Campaign attribution', projections_insights: 'Profit projections' };
   const sub = document.getElementById('aiSubtitle');
   if (sub) sub.textContent = 'Powered · ' + (labels[tabKey] || tabKey);
+  renderSidebarSummary(getScopesForTab(tabKey));
 }
 
 // ═══════════════════════════════════════════════════════════════════
 // PLATFORM SALES
 // ═══════════════════════════════════════════════════════════════════
-const psState = { platform: '', dateFrom: '', dateTo: '' };
+const psState = { platform: '', dateFrom: '', dateTo: '', trendPeriod: 'day', _lastData: null };
 
 const MOCK_PS = {
   platforms: [
@@ -3153,7 +3477,7 @@ async function fetchAndRenderPS() {
       const skuR = await apiFetch('/clients/' + clientSlug + '/sku-performance?' + skuQ.toString());
       if (skuR && skuR.revenue && skuR.revenue.length) {
         // Aggregate by platform from raw revenue rows
-        const byPlat = {}, byProd = {}, byWeekAgg = {};
+        const byPlat = {}, byProd = {}, byDayAgg = {}, byWeekAgg = {}, byMonthAgg = {}, byYearAgg = {};
         let gt = 0, gu = 0, go = 0;
         skuR.revenue.forEach(r => {
           const rev = Number(r.standard_revenue) || 0;
@@ -3170,15 +3494,24 @@ async function fetchAndRenderPS() {
           byProd[prodKey].revenue += rev; byProd[prodKey].units += units;
           if (r.order_date) {
             const d = new Date(r.order_date);
+            byDayAgg[r.order_date] = (byDayAgg[r.order_date] || 0) + rev;
             const wk = 'W' + Math.ceil(d.getDate()/7) + ' ' + d.toLocaleString('default',{month:'short'}) + ' ' + d.getFullYear().toString().slice(2);
             byWeekAgg[wk] = (byWeekAgg[wk] || 0) + rev;
+            const mo = d.toLocaleString('default',{month:'short'}) + " '" + d.getFullYear().toString().slice(2);
+            byMonthAgg[mo] = (byMonthAgg[mo] || 0) + rev;
+            const yr = String(d.getFullYear());
+            byYearAgg[yr] = (byYearAgg[yr] || 0) + rev;
           }
         });
         const platforms = Object.values(byPlat).sort((a,b) => b.totalRevenue - a.totalRevenue);
         const topProducts = Object.values(byProd).sort((a,b) => b.revenue - a.revenue).slice(0,10);
-        const weeklyArr = Object.entries(byWeekAgg).map(([week, revenue]) => ({ week, revenue }));
+        const dailyArr   = Object.entries(byDayAgg).sort((a,b) => a[0].localeCompare(b[0])).map(([day, revenue]) => ({ day, revenue }));
+        const weeklyArr  = Object.entries(byWeekAgg).map(([week, revenue]) => ({ week, revenue }));
+        const monthlyArr = Object.entries(byMonthAgg).map(([month, revenue]) => ({ month, revenue }));
+        const yearlyArr  = Object.entries(byYearAgg).map(([year, revenue]) => ({ year, revenue }));
         data = { platforms, grandTotal: gt, prevGrandTotal: gt * 0.82,
-                 prevUnits: gu, prevOrders: go, weekly: weeklyArr, topProducts };
+                 prevUnits: gu, prevOrders: go, daily: dailyArr, weekly: weeklyArr,
+                 monthly: monthlyArr, yearly: yearlyArr, topProducts };
         isLive = true;
       }
     } catch(e2) {
@@ -3191,10 +3524,63 @@ async function fetchAndRenderPS() {
   setBadgePS(isLive ? 'live' : 'empty');
 }
 
+// Picks the right time-bucket from the platform-sales response and
+// (re)draws the Revenue Over Time chart — called on first load and
+// whenever the Daily/Monthly/Yearly toggle changes, with no re-fetch.
+function renderPsRevenueChart(data, period) {
+  const bucket = period === 'month' ? (data.monthly || [])
+               : period === 'year'  ? (data.yearly  || [])
+               : (data.daily || data.weekly || []); // fall back to weekly if a daily bucket isn't present (e.g. mock/fallback data)
+
+  const labels = bucket.map(b => {
+    if (period === 'day' && b.day) {
+      // "2026-07-16" -> "16 Jul"
+      const d = new Date(b.day);
+      return isNaN(d.getTime()) ? b.day : d.getDate() + ' ' + d.toLocaleString('default', { month: 'short' });
+    }
+    return b.month || b.year || b.week || '';
+  });
+  const values = bucket.map(b => +(b.revenue / 100000).toFixed(2));
+
+  // Daily data can have a lot of points — thin the dots out so it doesn't
+  // look cluttered, while month/year (few points) keep visible dots.
+  const dense = values.length > 25;
+
+  renderOrUpdateChart('psRevenueChart', '_psRevChart', {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Revenue',
+        data: values,
+        borderColor: '#0284c7',
+        backgroundColor: 'rgba(2,132,199,.07)',
+        pointBackgroundColor: '#0284c7',
+        pointRadius: dense ? 0 : 4,
+        pointHoverRadius: 6,
+        tension: 0.45,
+        cubicInterpolationMode: 'monotone', // smooth without overshooting past real values
+        fill: true,
+        borderWidth: 2,
+      }],
+    },
+    options: lineChartOptions('₹', 'L'),
+  });
+}
+
+function setPsTrendPeriod(period) {
+  psState.trendPeriod = period;
+  document.querySelectorAll('#tab-platform_sales .trend-period-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.period === period);
+  });
+  if (psState._lastData) renderPsRevenueChart(psState._lastData, period);
+}
+
 function renderPS(data) {
-  const { platforms, grandTotal, prevGrandTotal, prevUnits, prevOrders, weekly, topProducts } = data;
+  const { platforms, grandTotal, prevGrandTotal, prevUnits, prevOrders, topProducts } = data;
   const totalUnits  = platforms.reduce((s, p) => s + (p.totalUnits  || 0), 0);
   const totalOrders = platforms.reduce((s, p) => s + (p.orderCount  || 0), 0);
+  psState._lastData = data; // so the period toggle can re-render without a re-fetch
 
   document.getElementById('psKpiRevenue').innerHTML = fmtRevenue(grandTotal);
   document.getElementById('psKpiRevenueDelta').innerHTML = deltaHtml(pctDelta(grandTotal, prevGrandTotal));
@@ -3215,13 +3601,7 @@ function renderPS(data) {
     return '<div class="stat-bar-row"><div class="stat-bar-meta"><span class="stat-bar-name"><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></span><div class="stat-bar-vals"><span class="stat-bar-rev">' + fmtRevenue(p.totalRevenue) + '</span><span class="stat-bar-pct">' + pct + '%</span></div></div><div class="stat-bar-bg"><div class="stat-bar-fill" style="width:' + barW + '%;background:' + m.color + ';"></div></div></div>';
   }).join('');
 
-  const wLabels  = (weekly||[]).map(w => w.week);
-  const wRevenue = (weekly||[]).map(w => +(w.revenue/100000).toFixed(1));
-  renderOrUpdateChart('psRevenueChart', '_psRevChart', {
-    type: 'line',
-    data: { labels: wLabels, datasets: [{ label: 'Revenue', data: wRevenue, borderColor: '#0284c7', backgroundColor: 'rgba(2,132,199,.07)', pointBackgroundColor: '#0284c7', pointRadius: 5, pointHoverRadius: 7, tension: 0.4, fill: true, borderWidth: 2 }] },
-    options: lineChartOptions('₹', 'L'),
-  });
+  renderPsRevenueChart(data, psState.trendPeriod);
 
   const badgeEl = document.getElementById('psProductBadge');
   if (badgeEl) badgeEl.textContent = psState.platform ? (PLATFORM_META[psState.platform]?.label || psState.platform) : 'All platforms';
@@ -3240,6 +3620,7 @@ document.querySelectorAll('[data-ps-platform]').forEach(pill => {
     document.querySelectorAll('[data-ps-platform]').forEach(p => p.classList.remove('active'));
     pill.classList.add('active'); psState.platform = pill.dataset.psPlatform;
     tabCache['platform_sales'] = null; fetchAndRenderPS();
+    updateSidebarForTab('platform_sales');
   });
 });
 document.getElementById('psDateFrom').addEventListener('change', function() { psState.dateFrom = this.value; tabCache['platform_sales'] = null; fetchAndRenderPS(); });
@@ -3359,6 +3740,7 @@ document.querySelectorAll('[data-ci-platform]').forEach(pill => {
     document.querySelectorAll('[data-ci-platform]').forEach(p => p.classList.remove('active'));
     pill.classList.add('active'); ciState.platform = pill.dataset.ciPlatform;
     tabCache['campaign_insights'] = null; fetchAndRenderCI();
+    updateSidebarForTab('campaign_insights');
   });
 });
 document.getElementById('ciDateFrom').addEventListener('change', function() { ciState.dateFrom = this.value; tabCache['campaign_insights'] = null; fetchAndRenderCI(); });
@@ -3563,6 +3945,7 @@ document.querySelectorAll('[data-geo-platform]').forEach(pill => {
     document.querySelectorAll('[data-geo-platform]').forEach(p => p.classList.remove('active'));
     pill.classList.add('active'); geoState.platform = pill.dataset.geoPlatform;
     tabCache['geographic_analysis'] = null; fetchAndRenderGEO();
+    updateSidebarForTab('geographic_analysis');
   });
 });
 document.getElementById('geoDateFrom').addEventListener('change', function() { geoState.dateFrom = this.value; tabCache['geographic_analysis'] = null; fetchAndRenderGEO(); });
@@ -3731,54 +4114,11 @@ function renderDT(targets, achieved) {
       '<div style="font-size:11px;color:#cbd5e1;text-align:center;max-width:180px;line-height:1.5;">Set daily targets and upload platform data to see your attainment trend here.</div>' +
     '</div>';
   }
-
-  // Render admin target inputs (only shown to admins via data-role)
-  document.getElementById('dtTargetInputs').innerHTML = platforms.map(p => {
-    const m   = PLATFORM_META[p] || { label: p.toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
-    const tgt = targets[p]?.target || 0;
-    return '<div class="target-input-group"><label class="target-input-label">' + m.label + ' Daily Target</label><div class="target-input-wrap"><span class="target-input-prefix">&#8377;</span><input type="number" class="target-input" id="dtTarget_' + p + '" value="' + tgt + '" min="0" step="10000" /></div></div>';
-  }).join('');
 }
 
-// Save targets to backend
-async function saveTargets() {
-  const { clientSlug } = state; if (!clientSlug) return;
-  const btn    = document.getElementById('dtSaveBtn');
-  const status = document.getElementById('dtSaveStatus');
-  btn.disabled = true;
-  status.textContent = 'Saving…';
-  status.style.color = '#64748b';
-
-  // Read current input values
-  PLATFORMS_DT.forEach(p => {
-    const input = document.getElementById('dtTarget_' + p);
-    if (input) {
-      if (!dtState.targets[p]) dtState.targets[p] = {};
-      dtState.targets[p].target = Number(input.value) || 0;
-    }
-  });
-
-  const date = dtState.date || new Date().toISOString().split('T')[0];
-
-  try {
-    const res = await fetch(API_BASE + '/clients/' + clientSlug + '/targets', {
-      method: 'PUT',
-      headers: authHeaders(),
-      credentials: 'include',
-      body: JSON.stringify({ date, targets: dtState.targets }),
-    });
-    if (!res.ok) throw new Error('Server returned ' + res.status);
-    status.textContent = '✓ Saved';
-    status.style.color = '#059669';
-    tabCache['daily_targets'] = null;   // invalidate so next visit re-fetches
-    setTimeout(() => { status.textContent = ''; }, 3000);
-  } catch(e) {
-    status.textContent = 'Save failed: ' + e.message;
-    status.style.color = '#dc2626';
-  } finally {
-    btn.disabled = false;
-  }
-}
+// Note: target editing happens via the Daily Targets modal
+// (openDailyTargetsPanel / saveTargetsFromModal below), not inline on
+// this tab.
 
 document.getElementById('dtDate').addEventListener('change', function() {
   dtState.date = this.value; tabCache['daily_targets'] = null; fetchAndRenderDT();
@@ -4342,6 +4682,7 @@ async function handleUpload() {
       tabCache['campaign_insights']   = null;
       tabCache['geographic_analysis'] = null;
       tabCache['ai_insights']         = null;
+      _sidebarCache = {};
       fetchAndRender();
       closeDrawer();
     }, 2000);
@@ -4366,6 +4707,477 @@ function closeDrawer() { document.getElementById('uploadDrawer').classList.remov
 document.getElementById('uploadDrawer').addEventListener('click', e => { if (e.target === e.currentTarget) closeDrawer(); });
 
 
+// ─── CLIENT SWITCHER ────────────────────────────────────────────────
+async function loadClientSwitcher() {
+  const sw = document.getElementById('clientSwitcher');
+  if (!sw) return;
+  try {
+    const resp = await apiFetch('/auth/clients');
+    const clients = resp?.clients || [];
+    if (!clients.length) return;
+    sw.innerHTML = clients.map(c =>
+      '<option value="' + c.slug + '"' + (c.slug === state.clientSlug ? ' selected' : '') + '>' + c.name + '</option>'
+    ).join('');
+    // Only admins with more than one client to choose from need to see this
+    sw.style.display = clients.length > 1 ? '' : 'none';
+  } catch (e) {
+    console.warn('[client-switcher] failed to load client list:', e.message);
+  }
+}
+
+async function switchClient(newSlug) {
+  if (!newSlug || newSlug === state.clientSlug) return;
+  state.clientSlug = newSlug;
+  tabCache = {}; // every tab's data belongs to the previous client — drop it all
+  _sidebarCache = {};
+  try {
+    const cfg = await apiFetch('/clients/' + newSlug + '/dashboard-config');
+    if (cfg?.client?.name) {
+      const el = document.querySelector('.logo-text');
+      if (el) el.textContent = cfg.client.name;
+    }
+    if (cfg?.client?.theme) applyThemeColour(cfg.client.theme.primary, cfg.client.theme.deep, cfg.client.theme.accent);
+  } catch (e) {
+    console.warn('[client-switch] failed to load new client config:', e.message);
+  }
+  fetchAndRender();
+}
+
+document.getElementById('clientSwitcher')?.addEventListener('change', (e) => switchClient(e.target.value));
+
+// ═══════════════════════════════════════════════════════════════════
+// UTM ANALYTICS TAB
+// ═══════════════════════════════════════════════════════════════════
+function buildUtmUrl() {
+  const base = document.getElementById('utmBaseUrl')?.value.trim();
+  if (!base) return null;
+  const params = new URLSearchParams();
+  const src = document.getElementById('utmSource')?.value;
+  const med = document.getElementById('utmMedium')?.value;
+  const camp = document.getElementById('utmCampaign')?.value.trim();
+  const term = document.getElementById('utmTerm')?.value.trim();
+  const content = document.getElementById('utmContent')?.value.trim();
+  if (src)     params.set('utm_source', src);
+  if (med)     params.set('utm_medium', med);
+  if (camp)    params.set('utm_campaign', camp);
+  if (term)    params.set('utm_term', term);
+  if (content) params.set('utm_content', content);
+  if (![...params].length) return null;
+  const sep = base.includes('?') ? '&' : '?';
+  return base + sep + params.toString();
+}
+
+function updateUtmPreview() {
+  const preview = document.getElementById('utmPreview');
+  if (!preview) return;
+  const url = buildUtmUrl();
+  preview.textContent = url || 'Fill in the fields above to generate your URL…';
+}
+['utmBaseUrl','utmCampaign','utmSource','utmMedium','utmTerm','utmContent'].forEach(id => {
+  document.getElementById(id)?.addEventListener('input', updateUtmPreview);
+  document.getElementById(id)?.addEventListener('change', updateUtmPreview);
+});
+
+function copyUtmUrl() {
+  const url = buildUtmUrl();
+  if (!url) return;
+  navigator.clipboard?.writeText(url);
+}
+
+async function saveUtmLink() {
+  const url = buildUtmUrl();
+  if (!url) { alert('Fill in a base URL and at least one UTM field first.'); return; }
+  const { clientSlug } = state;
+  try {
+    await apiFetch('/clients/' + clientSlug + '/utm/links', {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url,
+        campaign: document.getElementById('utmCampaign')?.value.trim(),
+        source:   document.getElementById('utmSource')?.value,
+        medium:   document.getElementById('utmMedium')?.value,
+      }),
+    });
+    loadUtmSavedLinks();
+  } catch (e) {
+    alert('Failed to save link: ' + e.message);
+  }
+}
+
+async function loadUtmSavedLinks() {
+  const { clientSlug } = state; if (!clientSlug) return;
+  const list = document.getElementById('utmSavedLinksList');
+  try {
+    const resp = await apiFetch('/clients/' + clientSlug + '/utm/links');
+    const links = resp?.links || [];
+    if (!links.length) {
+      list.innerHTML = '<div style="text-align:center;padding:16px 0;color:#94a3b8;font-size:12px;">No saved links yet — build and save a URL above.</div>';
+      return;
+    }
+    list.innerHTML = links.map(l => (
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 4px;border-bottom:1px solid #eef2f7;">' +
+        '<div style="min-width:0;">' +
+          '<div style="font-size:11px;font-family:var(--font-mono);color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:480px;">' + l.url + '</div>' +
+          '<div style="font-size:10px;color:#94a3b8;margin-top:2px;">' + (l.campaign || '—') + ' · ' + (l.source || '—') + ' / ' + (l.medium || '—') + '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:6px;flex-shrink:0;">' +
+          '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;" onclick="navigator.clipboard.writeText(' + JSON.stringify(l.url) + ')">Copy</button>' +
+          '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;color:#dc2626;" onclick="deleteUtmLink(' + JSON.stringify(l.id) + ')">Delete</button>' +
+        '</div>' +
+      '</div>'
+    )).join('');
+  } catch (e) {
+    list.innerHTML = '<div style="text-align:center;padding:16px 0;color:#94a3b8;font-size:12px;">Failed to load saved links.</div>';
+  }
+}
+
+async function deleteUtmLink(id) {
+  const { clientSlug } = state;
+  try {
+    await apiFetch('/clients/' + clientSlug + '/utm/links/' + id, { method: 'DELETE' });
+    loadUtmSavedLinks();
+  } catch (e) { alert('Failed to delete: ' + e.message); }
+}
+
+async function fetchAndRenderUtmStats() {
+  const { clientSlug } = state; if (!clientSlug) return;
+  const days = document.getElementById('utmStatsDays')?.value || '30';
+  const tbody = document.getElementById('utmStatsTbody');
+  try {
+    const rows = await apiFetch('/clients/' + clientSlug + '/utm/stats?days=' + days);
+    if (!rows || !rows.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:20px 0;">No campaign clicks or conversions recorded yet for this period.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(r => (
+      '<tr><td style="font-weight:600;color:#1e293b;">' + (r.campaign || '—') + '</td>' +
+      '<td>' + (r.source || '—') + '</td><td>' + (r.medium || '—') + '</td>' +
+      '<td style="font-family:var(--font-mono);">' + (r.clicks || 0).toLocaleString('en-IN') + '</td>' +
+      '<td style="font-family:var(--font-mono);">' + (r.conversions || 0).toLocaleString('en-IN') + '</td>' +
+      '<td style="font-family:var(--font-mono);font-weight:700;color:var(--theme-primary);">' + fmtRevenue(r.revenue || 0) + '</td></tr>'
+    )).join('');
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:20px 0;">Failed to load — ' + e.message + '</td></tr>';
+  }
+}
+
+async function fetchAndRenderUtmDetails() {
+  const { clientSlug } = state; if (!clientSlug) return;
+  const tbody = document.getElementById('utmDetailsTbody');
+  try {
+    const rows = await apiFetch('/clients/' + clientSlug + '/utm/campaign-details?days=30');
+    if (!rows || !rows.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:20px 0;">No campaign data yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(r => (
+      '<tr><td style="font-weight:600;color:#1e293b;">' + (r.campaign || '—') + '</td>' +
+      '<td>' + (r.product || '<span style="color:#cbd5e1;">Not identified</span>') + '</td>' +
+      '<td>' + (r.source || '—') + '</td>' +
+      '<td style="font-family:var(--font-mono);">' + (r.clicks || 0).toLocaleString('en-IN') + '</td>' +
+      '<td style="font-family:var(--font-mono);">' + (r.conversions || 0).toLocaleString('en-IN') + '</td>' +
+      '<td style="font-family:var(--font-mono);font-weight:700;color:var(--theme-primary);">' + fmtRevenue(r.revenue || 0) + '</td></tr>'
+    )).join('');
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:20px 0;">Failed to load.</td></tr>';
+  }
+}
+
+async function fetchAndRenderUtmAttribution() {
+  const { clientSlug } = state; if (!clientSlug) return;
+  const list = document.getElementById('utmAttributionList');
+  try {
+    const rows = await apiFetch('/clients/' + clientSlug + '/utm/attribution?days=30');
+    if (!rows || !rows.length) {
+      list.innerHTML = '<div style="text-align:center;padding:16px 0;color:#94a3b8;font-size:12px;">No assisted conversions recorded yet.</div>';
+      return;
+    }
+    list.innerHTML = rows.map(r => (
+      '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 4px;border-bottom:1px solid #eef2f7;font-size:11px;">' +
+        '<div><span style="font-weight:600;color:#1e293b;">' + (r.utm_campaign || '—') + '</span> <span style="color:#94a3b8;">via ' + (r.utm_source || '—') + '</span></div>' +
+        '<div style="color:#64748b;">Order #' + (r.order_id || '—') + ' · ' + (r.days_to_convert != null ? r.days_to_convert + 'd to convert' : '') + '</div>' +
+        '<div style="font-weight:700;color:var(--theme-primary);">' + fmtRevenue(r.revenue || 0) + '</div>' +
+      '</div>'
+    )).join('');
+  } catch (e) {
+    list.innerHTML = '<div style="text-align:center;padding:16px 0;color:#94a3b8;font-size:12px;">Failed to load.</div>';
+  }
+}
+
+async function loadUtmSnippets() {
+  const { clientSlug } = state; if (!clientSlug) return;
+  try {
+    const resp = await apiFetch('/clients/' + clientSlug + '/utm/snippets');
+    document.getElementById('utmSnippetA').textContent = resp?.snippetA || 'Unavailable.';
+    document.getElementById('utmSnippetB').textContent = resp?.snippetB || 'Unavailable.';
+    const ga4Input = document.getElementById('ga4MeasurementId');
+    if (ga4Input) ga4Input.value = resp?.ga4MeasurementId || '';
+    const cWrap = document.getElementById('utmSnippetCWrap');
+    if (resp?.snippetC) {
+      document.getElementById('utmSnippetC').textContent = resp.snippetC;
+      if (cWrap) cWrap.style.display = '';
+    } else if (cWrap) {
+      cWrap.style.display = 'none';
+    }
+  } catch (e) {
+    console.warn('[utm-snippets]', e.message);
+  }
+}
+
+function copySnippet(elId) {
+  const el = document.getElementById(elId);
+  if (el) navigator.clipboard?.writeText(el.textContent);
+}
+
+async function saveGa4Id() {
+  const { clientSlug } = state;
+  const id = document.getElementById('ga4MeasurementId')?.value.trim();
+  try {
+    await apiFetch('/clients/' + clientSlug + '/admin/ga4', {
+      method: 'PATCH',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ measurementId: id }),
+    });
+    loadUtmSnippets();
+  } catch (e) {
+    alert('Failed to save GA4 measurement ID: ' + e.message);
+  }
+}
+
+function fetchAndRenderUTM() {
+  loadUtmSavedLinks();
+  fetchAndRenderUtmStats();
+  fetchAndRenderUtmDetails();
+  fetchAndRenderUtmAttribution();
+  loadUtmSnippets();
+  tabCache['utm_analytics'] = { data: true, timestamp: Date.now() };
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// PROJECTIONS INSIGHTS TAB
+// ═══════════════════════════════════════════════════════════════════
+function setBadgeProj(mode) {
+  const b = document.getElementById('projFetchBadge'); const t = document.getElementById('projFetchText');
+  if (b) b.className = 'fetch-badge ' + mode;
+  if (t) t.textContent = mode === 'loading' ? 'Loading…' : mode === 'live' ? 'Live data' : 'No data — upload a file';
+}
+
+async function fetchAndRenderProjections() {
+  const { clientSlug } = state; if (!clientSlug) return;
+  setBadgeProj('loading');
+  const bucket = document.getElementById('projBucket')?.value || 'week';
+  try {
+    const resp = await apiFetch('/clients/' + clientSlug + '/projections?bucket=' + bucket + '&periodsAhead=8');
+    renderProjections(resp);
+    setBadgeProj(resp?.series?.length ? 'live' : 'empty');
+  } catch (e) {
+    console.warn('[projections]', e.message);
+    setBadgeProj('empty');
+  }
+  tabCache['projections_insights'] = { data: true, timestamp: Date.now() };
+  loadSkuCosts();
+  loadPlatformAssumptions();
+}
+
+function renderProjections(resp) {
+  if (!resp) return;
+  const { totals, projection, unpricedSkus, unpricedRevenue, series } = resp;
+
+  const note = document.getElementById('projUnpricedNote');
+  if (unpricedSkus && unpricedSkus.length) {
+    note.style.display = '';
+    note.innerHTML = '⚠ ' + unpricedSkus.length + ' SKU' + (unpricedSkus.length !== 1 ? 's have' : ' has') +
+      ' no cost price set (' + fmtRevenue(unpricedRevenue) + ' in revenue excluded from this calculation) — add pricing below for a complete picture. Missing: ' +
+      unpricedSkus.slice(0, 6).join(', ') + (unpricedSkus.length > 6 ? '…' : '');
+  } else {
+    note.style.display = 'none';
+  }
+
+  document.getElementById('projKpiProfit').innerHTML = fmtRevenue(totals.profit);
+  document.getElementById('projKpiProfit').style.color = totals.profit >= 0 ? '#059669' : '#dc2626';
+  document.getElementById('projKpiReturnLoss').innerHTML = fmtRevenue(totals.returnLoss);
+  document.getElementById('projKpiAdSpend').innerHTML = fmtRevenue(totals.adSpend);
+  document.getElementById('projKpiAdSpendSub').textContent = totals.revenue > 0 ? (((totals.adSpend / totals.revenue) * 100).toFixed(1) + '% of revenue') : '—';
+
+  if (projection) {
+    document.getElementById('projKpiStatus').textContent = projection.isProfitableNow ? '✓ Profitable' : 'Not yet profitable';
+    document.getElementById('projKpiStatus').style.color = projection.isProfitableNow ? '#059669' : '#dc2626';
+    document.getElementById('projKpiStatusSub').textContent = fmtRevenue(projection.currentCumulativeProfit) + ' cumulative';
+  }
+
+  renderProjChart(series, projection);
+  renderProjSummaries(projection);
+}
+
+function renderProjSummaries(projection) {
+  const linEl = document.getElementById('projLinearSummary');
+  const growEl = document.getElementById('projGrowthSummary');
+  if (!projection) { linEl.textContent = growEl.textContent = 'Not enough data yet.'; return; }
+
+  const l = projection.linear;
+  if (!l?.available) {
+    linEl.textContent = l?.reason || 'Not enough history.';
+  } else {
+    linEl.innerHTML = 'Fits a straight line through your <strong>entire</strong> history — conservative, doesn\'t weight recent weeks more than early ones.<br><br>' +
+      'Trend: <strong style="color:' + (l.trending === 'up' ? '#059669' : l.trending === 'down' ? '#dc2626' : '#64748b') + ';">' + l.trending + '</strong> · ' +
+      fmtRevenue(l.slopePerPeriod) + ' per period<br>' +
+      (l.breakevenPeriodsFromNow != null
+        ? 'Projected breakeven in <strong>~' + l.breakevenPeriodsFromNow + ' periods</strong>.'
+        : (projection.isProfitableNow ? 'Already profitable on this basis.' : 'No breakeven in sight on this trend — the whole-history slope isn\'t currently pointing toward zero.'));
+  }
+
+  const g = projection.growthRate;
+  if (!g?.available) {
+    growEl.textContent = g?.reason || 'Not enough history.';
+  } else {
+    growEl.innerHTML = 'Grows revenue at its recent rate and trends the profit margin forward — more responsive to recent improvement (or decline), more volatile with limited history.<br><br>' +
+      'Revenue growth: <strong>' + g.avgRevenueGrowthRatePerPeriod + '%</strong>/period · Margin trend: <strong style="color:' + (g.marginTrendPerPeriod > 0 ? '#059669' : g.marginTrendPerPeriod < 0 ? '#dc2626' : '#64748b') + ';">' + (g.marginTrendPerPeriod > 0 ? '+' : '') + g.marginTrendPerPeriod + 'pp</strong>/period<br>' +
+      (g.breakevenPeriodsFromNow != null
+        ? 'Projected breakeven in <strong>~' + g.breakevenPeriodsFromNow + ' periods</strong>.'
+        : (projection.isProfitableNow ? 'Already profitable on this basis.' : 'No breakeven projected within this window on current momentum.'));
+  }
+}
+
+function renderProjChart(series, projection) {
+  const actualLabels = (series || []).map(s => s.period);
+  const actualCum = [];
+  let running = 0;
+  (series || []).forEach(s => { running += s.profit; actualCum.push(+running.toFixed(2)); });
+
+  const futureCount = projection?.linear?.projectedCumulative?.length || 0;
+  const futureLabels = Array.from({ length: futureCount }, (_, i) => '+' + (i + 1));
+  const labels = [...actualLabels, ...futureLabels];
+
+  const actualData = [...actualCum, ...Array(futureCount).fill(null)];
+  const linearData = projection?.linear?.available
+    ? [...Array(actualCum.length - 1).fill(null), actualCum[actualCum.length - 1], ...projection.linear.projectedCumulative]
+    : [];
+  const growthData = projection?.growthRate?.available
+    ? [...Array(actualCum.length - 1).fill(null), actualCum[actualCum.length - 1], ...projection.growthRate.projectedCumulative]
+    : [];
+
+  renderOrUpdateChart('projChart', '_projChart', {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Actual', data: actualData, borderColor: '#0284c7', backgroundColor: 'rgba(2,132,199,.08)', pointRadius: 3, tension: 0.3, fill: true, borderWidth: 2 },
+        { label: 'Steady trend', data: linearData, borderColor: '#94a3b8', borderDash: [5, 4], pointRadius: 0, tension: 0, fill: false, borderWidth: 2 },
+        { label: 'Recent momentum', data: growthData, borderColor: '#059669', borderDash: [2, 3], pointRadius: 0, tension: 0.3, fill: false, borderWidth: 2 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#fff', borderColor: '#dce5ef', borderWidth: 1,
+          titleColor: '#0f172a', bodyColor: '#64748b', padding: 10,
+          callbacks: { label: ctx => ctx.dataset.label + ': ' + fmtRevenue(ctx.parsed.y) },
+        },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 }, maxRotation: 0, autoSkip: true } },
+        y: { grid: { color: 'rgba(220,229,239,0.5)', drawBorder: false }, ticks: { color: '#94a3b8', font: { size: 10 }, callback: v => fmtRevenue(v) } },
+      },
+    },
+  });
+}
+
+// ── SKU cost price settings ─────────────────────────────────────
+async function loadSkuCosts() {
+  const { clientSlug } = state; if (!clientSlug) return;
+  const tbody = document.getElementById('skuCostsTbody');
+  try {
+    const resp = await apiFetch('/clients/' + clientSlug + '/sku-costs');
+    const costs = resp?.costs || [];
+    if (!costs.length) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:16px 0;">No SKU pricing set yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = costs.map(c => (
+      '<tr><td style="font-family:var(--font-mono);font-weight:600;">' + c.sku + '</td>' +
+      '<td style="font-family:var(--font-mono);">' + fmtRevenue(c.cost_price) + '</td>' +
+      '<td>' + c.effective_from + '</td>' +
+      '<td><button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;color:#dc2626;" onclick="deleteSkuCost(' + JSON.stringify(c.id) + ')">Delete</button></td></tr>'
+    )).join('');
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:16px 0;">Failed to load.</td></tr>';
+  }
+}
+
+async function addSkuCost() {
+  const { clientSlug } = state;
+  const sku = document.getElementById('skuCostSku')?.value.trim();
+  const cost_price = document.getElementById('skuCostPrice')?.value;
+  const effective_from = document.getElementById('skuCostDate')?.value;
+  if (!sku || cost_price === '' || !effective_from) { alert('Fill in SKU, cost price, and effective date.'); return; }
+  try {
+    await apiFetch('/clients/' + clientSlug + '/sku-costs', {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sku, cost_price, effective_from }),
+    });
+    document.getElementById('skuCostSku').value = '';
+    document.getElementById('skuCostPrice').value = '';
+    loadSkuCosts();
+    tabCache['projections_insights'] = null; // pricing changed — profit numbers need recalculating
+  } catch (e) {
+    alert('Failed to save: ' + e.message);
+  }
+}
+
+async function deleteSkuCost(id) {
+  const { clientSlug } = state;
+  try {
+    await apiFetch('/clients/' + clientSlug + '/sku-costs/' + id, { method: 'DELETE' });
+    loadSkuCosts();
+    tabCache['projections_insights'] = null;
+  } catch (e) { alert('Failed to delete: ' + e.message); }
+}
+
+// ── Platform cost assumption settings ───────────────────────────
+async function loadPlatformAssumptions() {
+  const { clientSlug } = state; if (!clientSlug) return;
+  const grid = document.getElementById('platformAssumptionsGrid');
+  try {
+    const resp = await apiFetch('/clients/' + clientSlug + '/platform-assumptions');
+    const assumptions = resp?.assumptions || {};
+    grid.innerHTML = Object.entries(assumptions).map(([platform, a]) => {
+      const m = PLATFORM_META[platform] || { label: platform };
+      return '<div style="border:1px solid var(--color-border);border-radius:var(--radius-sm);padding:10px;">' +
+        '<div style="font-size:11px;font-weight:700;color:#1e293b;margin-bottom:8px;">' + m.label + '</div>' +
+        '<label style="font-size:10px;color:#94a3b8;">Commission %</label>' +
+        '<input type="number" min="0" max="100" step="0.1" value="' + (a.commission_percent || 0) + '" id="assump_comm_' + platform + '" style="width:100%;padding:5px 8px;margin:2px 0 6px;border:1px solid var(--color-border);border-radius:6px;font-size:12px;" />' +
+        '<label style="font-size:10px;color:#94a3b8;">Shipping ₹/order</label>' +
+        '<input type="number" min="0" step="1" value="' + (a.shipping_cost_flat || 0) + '" id="assump_ship_' + platform + '" style="width:100%;padding:5px 8px;margin:2px 0 8px;border:1px solid var(--color-border);border-radius:6px;font-size:12px;" />' +
+        '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;width:100%;" onclick="savePlatformAssumption(' + JSON.stringify(platform) + ')">Save</button>' +
+      '</div>';
+    }).join('');
+  } catch (e) {
+    grid.innerHTML = '<div style="color:#94a3b8;font-size:12px;">Failed to load.</div>';
+  }
+}
+
+async function savePlatformAssumption(platform) {
+  const { clientSlug } = state;
+  const commission_percent = document.getElementById('assump_comm_' + platform)?.value;
+  const shipping_cost_flat = document.getElementById('assump_ship_' + platform)?.value;
+  try {
+    await apiFetch('/clients/' + clientSlug + '/platform-assumptions', {
+      method: 'PATCH',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform, commission_percent, shipping_cost_flat }),
+    });
+    tabCache['projections_insights'] = null;
+  } catch (e) {
+    alert('Failed to save: ' + e.message);
+  }
+}
+
+
 // ─── BOOT ─────────────────────────────────────────────────────────
 function boot(user) {
   state.token      = user && user.token ? user.token : getToken();
@@ -4387,6 +5199,7 @@ function boot(user) {
   dtState.date = today;
   // Warm the server early (non-blocking background request)
   warmServer();
+  loadClientSwitcher();
   showTab('platform_sales'); // Start on Platform Sales
 }
 
@@ -4680,14 +5493,27 @@ function resetLogo() {
   if (fi) fi.value = '';
 }
 
-function saveAppearance() {
-  // Save brand name
+async function saveAppearance() {
+  // Save brand name — persists to the server as the client's real name
+  // (so it's per-client and visible to everyone, not just this browser)
   const nameVal = document.getElementById('brandNameInput')?.value.trim();
   const tagVal  = document.getElementById('brandTaglineInput')?.value.trim();
   if (nameVal) {
     const el = document.querySelector('.logo-text');
     if (el) el.textContent = nameVal;
     try { localStorage.setItem('semya_brand_name', nameVal); } catch(e) {}
+    try {
+      await apiFetch('/clients/' + state.clientSlug + '/admin/rename', {
+        method: 'PATCH',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: nameVal }),
+      });
+      // Reflect the new name in the switcher dropdown immediately
+      const opt = document.querySelector('#clientSwitcher option[value="' + state.clientSlug + '"]');
+      if (opt) opt.textContent = nameVal;
+    } catch (e) {
+      console.warn('[appearance] failed to save client name to server:', e.message);
+    }
   }
   if (tagVal) {
     const el = document.querySelector('.logo-sub');
@@ -4819,6 +5645,7 @@ function confirmDeleteUpload(el) {
       tabCache['campaign_insights']   = null;
       tabCache['geographic_analysis'] = null;
       tabCache['ai_insights']         = null;
+      _sidebarCache = {};
     }
   );
 }
@@ -4847,6 +5674,7 @@ async function confirmRangeDelete() {
       });
       closeDmConfirm();
       tabCache = {};
+      _sidebarCache = {};
     }
   );
 }
@@ -4911,6 +5739,7 @@ function confirmPlatformDelete(el) {
       tabCache['campaign_insights']   = null;
       tabCache['geographic_analysis'] = null;
       tabCache['ai_insights']         = null;
+      _sidebarCache = {};
     }
   );
 }
