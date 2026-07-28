@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- SEMYA FRONTEND BUILD: V36-express4-async-fix -->
+<!-- SEMYA FRONTEND BUILD: V37-client-administration -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -1164,17 +1164,13 @@
             <svg id="settingsArrow" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-left:auto;transition:transform .2s;"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
           <div id="settingsSubmenu" style="display:none;background:#f8fafd;border-top:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9;">
-            <button class="avatar-dropdown-item" style="padding-left:28px;font-size:11px;" onclick="closeAvatarMenu(); openModal();">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              Access Control
+            <button class="avatar-dropdown-item" style="padding-left:28px;font-size:11px;" data-role="admin" onclick="closeAvatarMenu(); openClientAdminModal();">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              Client Administration
             </button>
             <button class="avatar-dropdown-item" style="padding-left:28px;font-size:11px;" onclick="closeAvatarMenu(); openDailyTargetsPanel();">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               Daily Targets
-            </button>
-            <button class="avatar-dropdown-item" style="padding-left:28px;font-size:11px;" onclick="closeAvatarMenu(); openAppearancePanel();">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2a10 10 0 0 1 0 20"/><path d="M12 2a10 10 0 0 0 0 20"/><path d="M2 12h20"/></svg>
-              Appearance
             </button>
             <button class="avatar-dropdown-item" style="padding-left:28px;font-size:11px;" data-role="admin" onclick="closeAvatarMenu(); openUtmToolsModal();">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
@@ -1286,7 +1282,7 @@
           <div class="card-header">
             <span class="card-title">Revenue Over Time</span>
             <div style="display:flex;gap:4px;align-items:center;">
-              <button class="trend-period-btn active" data-period="day"   onclick="setPsTrendPeriod('day')">Daily</button>
+              <button class="trend-period-btn active" data-period="week"  onclick="setPsTrendPeriod('week')">Weekly</button>
               <button class="trend-period-btn"        data-period="month" onclick="setPsTrendPeriod('month')">Monthly</button>
               <button class="trend-period-btn"        data-period="year"  onclick="setPsTrendPeriod('year')">Yearly</button>
             </div>
@@ -2000,98 +1996,203 @@
 <!-- ══════════════════════════════════════════════════════════════════
      ACCESS CONTROL MODAL
 ══════════════════════════════════════════════════════════════════ -->
-<div class="modal-overlay" id="aclModal">
-  <div class="modal">
+<div class="modal-overlay" id="clientAdminModal">
+  <div class="modal" style="width:640px;max-height:90vh;overflow-y:auto;">
     <div class="modal-header">
       <div style="display:flex;align-items:center;gap:10px;">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--theme-accent)" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        <span class="modal-title">Access Control Panel</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--theme-accent)" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span class="modal-title">Client Administration</span>
       </div>
-      <button class="modal-close" onclick="closeModal()">✕</button>
+      <button class="modal-close" onclick="closeClientAdminModal()">✕</button>
     </div>
 
-    <div style="margin-bottom:6px;padding:10px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:var(--radius-sm);display:flex;align-items:center;gap:8px;">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-      <span style="font-size:11px;color:#0284c7;">Managing access for: <strong>Neat Everyday</strong></span>
+    <!-- Tab bar -->
+    <div style="display:flex;gap:0;border-bottom:1px solid var(--color-border);margin-bottom:16px;">
+      <button class="dm-tab active" id="caTab-client"     onclick="setCaTab('client')">Client Section</button>
+      <button class="dm-tab"        id="caTab-appearance" onclick="setCaTab('appearance')">Appearance</button>
+      <button class="dm-tab"        id="caTab-access"     onclick="setCaTab('access')">Access Control</button>
     </div>
 
-    <div style="height:14px;"></div>
+    <!-- ═══ CLIENT SECTION ═══ -->
+    <div id="caPanel-client" class="dm-panel">
+      <div class="acl-section-label">All Clients</div>
+      <div id="caClientList" style="margin:10px 0 18px;">
+        <div class="skel skel-row" style="height:44px;margin-bottom:6px;"></div>
+        <div class="skel skel-row" style="height:44px;"></div>
+      </div>
 
-    <div class="acl-section-label">Dashboard Tabs</div>
-    <div class="acl-rows">
-      <div class="acl-row">
-        <div class="acl-row-info">
-          <span class="acl-row-title">Platform Sales</span>
-          <span class="acl-row-desc">Revenue overview across all platforms</span>
-        </div>
-        <label class="toggle"><input type="checkbox" checked data-tab="platform_sales"><span class="toggle-slider"></span></label>
+      <div style="display:flex;gap:8px;margin-bottom:24px;">
+        <input type="text" id="caNewClientName" placeholder="New client name (e.g. Brand Name)" style="flex:1;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
+        <button class="btn btn-primary" onclick="createCaClient()">+ Add Client</button>
       </div>
-      <div class="acl-row">
-        <div class="acl-row-info">
-          <span class="acl-row-title">SKU Performance</span>
-          <span class="acl-row-desc">Per-SKU revenue, units, and RoAS</span>
+
+      <div id="caEmployeeSection" style="display:none;border-top:1px solid var(--color-border);padding-top:18px;">
+        <div class="acl-section-label">
+          Employees — <span id="caSelectedClientName" style="color:#1e293b;"></span>
         </div>
-        <label class="toggle"><input type="checkbox" checked data-tab="sku_performance"><span class="toggle-slider"></span></label>
-      </div>
-      <div class="acl-row">
-        <div class="acl-row-info">
-          <span class="acl-row-title">Campaign Insights</span>
-          <span class="acl-row-desc">Ad spend, CTR, and campaign breakdown</span>
+        <div id="caEmployeeList" style="margin:10px 0 16px;"></div>
+
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="email" id="caInviteEmail" placeholder="employee@semyadigital.com" style="flex:1;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
+          <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#64748b;white-space:nowrap;">
+            <input type="checkbox" id="caInviteIsLead" /> Make lead
+          </label>
+          <button class="btn btn-primary" onclick="inviteCaEmployee()">Invite</button>
         </div>
-        <label class="toggle"><input type="checkbox" checked data-tab="campaign_insights"><span class="toggle-slider"></span></label>
-      </div>
-      <div class="acl-row">
-        <div class="acl-row-info">
-          <span class="acl-row-title">Geographic Analysis</span>
-          <span class="acl-row-desc">State and city revenue distribution</span>
-        </div>
-        <label class="toggle"><input type="checkbox" data-tab="geographic_analysis"><span class="toggle-slider"></span></label>
-      </div>
-      <div class="acl-row">
-        <div class="acl-row-info">
-          <span class="acl-row-title">AI Insights</span>
-          <span class="acl-row-desc">Powered analysis, inventory signals, micro-targeting</span>
-        </div>
-        <label class="toggle"><input type="checkbox" checked data-tab="ai_insights"><span class="toggle-slider"></span></label>
-      </div>
-      <div class="acl-row">
-        <div class="acl-row-info">
-          <span class="acl-row-title">Daily Targets</span>
-          <span class="acl-row-desc">Target vs achieved performance tracking</span>
-        </div>
-        <label class="toggle"><input type="checkbox" data-tab="daily_targets"><span class="toggle-slider"></span></label>
-      </div>
-      <div class="acl-row">
-        <div class="acl-row-info">
-          <span class="acl-row-title">UTM Analytics</span>
-          <span class="acl-row-desc">Campaign link builder, click/conversion tracking, attribution</span>
-        </div>
-        <label class="toggle"><input type="checkbox" data-tab="utm_analytics"><span class="toggle-slider"></span></label>
-      </div>
-      <div class="acl-row">
-        <div class="acl-row-info">
-          <span class="acl-row-title">Projections Insights</span>
-          <span class="acl-row-desc">Profit calculation and breakeven projections</span>
-        </div>
-        <label class="toggle"><input type="checkbox" data-tab="projections_insights"><span class="toggle-slider"></span></label>
       </div>
     </div>
 
-    <!-- Pending Access Requests — admin only -->
-    <div id="pendingRequestsSection" style="margin-top:4px;">
-      <div class="acl-section-label" style="display:flex;align-items:center;gap:6px;">
-        Pending Access Requests
-        <span class="pending-badge" id="pendingCount">0</span>
+    <!-- ═══ APPEARANCE ═══ -->
+    <div id="caPanel-appearance" class="dm-panel" style="display:none;">
+      <!-- Logo Upload -->
+      <div style="margin-bottom:24px;">
+        <div class="acl-section-label">Client Logo</div>
+        <div style="display:flex;align-items:center;gap:16px;margin-top:12px;">
+          <div id="logoPreviewWrap" style="width:52px;height:52px;border-radius:12px;background:linear-gradient(135deg,var(--theme-deep),var(--theme-primary));display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;color:#fff;overflow:hidden;flex-shrink:0;border:2px solid var(--color-border);">
+            <img id="logoPreviewImg" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover;" />
+            <span id="logoPreviewText">NE</span>
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:12px;font-weight:600;color:#1e293b;margin-bottom:4px;">Upload logo image</div>
+            <div style="font-size:11px;color:#94a3b8;margin-bottom:10px;">PNG, JPG or SVG · Recommended 80×80px</div>
+            <div style="display:flex;gap:8px;">
+              <label style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:var(--theme-accent-soft);border:1px solid var(--theme-primary);color:var(--theme-primary);border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Choose file
+                <input type="file" id="logoFileInput" accept="image/*" style="display:none;" onchange="handleLogoUpload(this)" />
+              </label>
+              <button class="btn btn-ghost" onclick="resetLogo()" style="font-size:11px;padding:7px 12px;">Reset</button>
+            </div>
+          </div>
+        </div>
       </div>
-      <div id="pendingRequestsList" style="min-height:40px;">
-        <p style="font-size:12px;color:#94a3b8;padding:12px 0;" id="pendingEmpty">No pending requests.</p>
+
+      <!-- Brand Name -->
+      <div style="margin-bottom:24px;">
+        <div class="acl-section-label">Brand Name</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">Client Name</label>
+            <input type="text" id="brandNameInput" placeholder="Neat Everyday" value="Neat Everyday"
+              style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;font-family:var(--font-display);color:#1e293b;" />
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">Tagline / Agency</label>
+            <input type="text" id="brandTaglineInput" placeholder="Semya Digital" value="Semya Digital"
+              style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;font-family:var(--font-display);color:#1e293b;" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Theme Colour -->
+      <div style="margin-bottom:24px;">
+        <div class="acl-section-label">Theme Colour</div>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:12px;" id="themeSwatches">
+          <!-- Swatches injected by JS -->
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:14px;">
+          <label style="font-size:11px;font-weight:600;color:#64748b;">Custom colour</label>
+          <input type="color" id="customColourPicker" value="#0284c7"
+            style="width:38px;height:32px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);cursor:pointer;padding:2px;"
+            oninput="applyThemeColour(this.value)" />
+          <span id="customColourHex" style="font-size:11px;font-family:var(--font-mono);color:#64748b;">#0284c7</span>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:10px;">
+        <button class="btn btn-primary" id="caAppearanceSaveBtn" onclick="saveAppearance()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
+          Save Appearance
+        </button>
       </div>
     </div>
 
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveTabPermissions()">Save Access Rules</button>
+    <!-- ═══ ACCESS CONTROL ═══ -->
+    <div id="caPanel-access" class="dm-panel" style="display:none;">
+      <div style="margin-bottom:6px;padding:10px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:var(--radius-sm);display:flex;align-items:center;gap:8px;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span style="font-size:11px;color:#0284c7;">Managing access for: <strong id="caAccessClientName">—</strong></span>
+      </div>
+
+      <div style="height:14px;"></div>
+
+      <div class="acl-section-label">Dashboard Tabs</div>
+      <div class="acl-rows">
+        <div class="acl-row">
+          <div class="acl-row-info">
+            <span class="acl-row-title">Platform Sales</span>
+            <span class="acl-row-desc">Revenue overview across all platforms</span>
+          </div>
+          <label class="toggle"><input type="checkbox" checked data-tab="platform_sales"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="acl-row">
+          <div class="acl-row-info">
+            <span class="acl-row-title">SKU Performance</span>
+            <span class="acl-row-desc">Per-SKU revenue, units, and RoAS</span>
+          </div>
+          <label class="toggle"><input type="checkbox" checked data-tab="sku_performance"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="acl-row">
+          <div class="acl-row-info">
+            <span class="acl-row-title">Campaign Insights</span>
+            <span class="acl-row-desc">Ad spend, CTR, and campaign breakdown</span>
+          </div>
+          <label class="toggle"><input type="checkbox" checked data-tab="campaign_insights"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="acl-row">
+          <div class="acl-row-info">
+            <span class="acl-row-title">Geographic Analysis</span>
+            <span class="acl-row-desc">State and city revenue distribution</span>
+          </div>
+          <label class="toggle"><input type="checkbox" data-tab="geographic_analysis"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="acl-row">
+          <div class="acl-row-info">
+            <span class="acl-row-title">AI Insights</span>
+            <span class="acl-row-desc">Powered analysis, inventory signals, micro-targeting</span>
+          </div>
+          <label class="toggle"><input type="checkbox" checked data-tab="ai_insights"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="acl-row">
+          <div class="acl-row-info">
+            <span class="acl-row-title">Daily Targets</span>
+            <span class="acl-row-desc">Target vs achieved performance tracking</span>
+          </div>
+          <label class="toggle"><input type="checkbox" data-tab="daily_targets"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="acl-row">
+          <div class="acl-row-info">
+            <span class="acl-row-title">UTM Analytics</span>
+            <span class="acl-row-desc">Campaign link builder, click/conversion tracking, attribution</span>
+          </div>
+          <label class="toggle"><input type="checkbox" data-tab="utm_analytics"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="acl-row">
+          <div class="acl-row-info">
+            <span class="acl-row-title">Projections Insights</span>
+            <span class="acl-row-desc">Profit calculation and breakeven projections</span>
+          </div>
+          <label class="toggle"><input type="checkbox" data-tab="projections_insights"><span class="toggle-slider"></span></label>
+        </div>
+      </div>
+
+      <!-- Pending Access Requests — admin only, global (not per-client — these haven't been assigned to a client yet) -->
+      <div id="pendingRequestsSection" style="margin-top:4px;">
+        <div class="acl-section-label" style="display:flex;align-items:center;gap:6px;">
+          Pending Access Requests
+          <span class="pending-badge" id="pendingCount">0</span>
+        </div>
+        <div id="pendingRequestsList" style="min-height:40px;">
+          <p style="font-size:12px;color:#94a3b8;padding:12px 0;" id="pendingEmpty">No pending requests.</p>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeClientAdminModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveTabPermissions()">Save Access Rules</button>
+      </div>
     </div>
+
   </div>
 </div>
 
@@ -2207,84 +2308,6 @@
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════
-     APPEARANCE MODAL
-══════════════════════════════════════════════════════════════════ -->
-<div class="modal-overlay" id="appearanceModal">
-  <div class="modal" style="width:500px;max-height:90vh;overflow-y:auto;">
-    <div class="modal-header">
-      <div style="display:flex;align-items:center;gap:10px;">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--theme-accent)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20"/><path d="M2 12h20"/></svg>
-        <span class="modal-title">Appearance</span>
-      </div>
-      <button class="modal-close" onclick="closeAppearancePanel()">✕</button>
-    </div>
-
-    <!-- Logo Upload -->
-    <div style="margin-bottom:24px;">
-      <div class="acl-section-label">Client Logo</div>
-      <div style="display:flex;align-items:center;gap:16px;margin-top:12px;">
-        <div id="logoPreviewWrap" style="width:52px;height:52px;border-radius:12px;background:linear-gradient(135deg,var(--theme-deep),var(--theme-primary));display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;color:#fff;overflow:hidden;flex-shrink:0;border:2px solid var(--color-border);">
-          <img id="logoPreviewImg" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover;" />
-          <span id="logoPreviewText">NE</span>
-        </div>
-        <div style="flex:1;">
-          <div style="font-size:12px;font-weight:600;color:#1e293b;margin-bottom:4px;">Upload logo image</div>
-          <div style="font-size:11px;color:#94a3b8;margin-bottom:10px;">PNG, JPG or SVG · Recommended 80×80px</div>
-          <div style="display:flex;gap:8px;">
-            <label style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:var(--theme-accent-soft);border:1px solid var(--theme-primary);color:var(--theme-primary);border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer;">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              Choose file
-              <input type="file" id="logoFileInput" accept="image/*" style="display:none;" onchange="handleLogoUpload(this)" />
-            </label>
-            <button class="btn btn-ghost" onclick="resetLogo()" style="font-size:11px;padding:7px 12px;">Reset</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Brand Name -->
-    <div style="margin-bottom:24px;">
-      <div class="acl-section-label">Brand Name</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
-        <div>
-          <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">Client Name</label>
-          <input type="text" id="brandNameInput" placeholder="Neat Everyday" value="Neat Everyday"
-            style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;font-family:var(--font-display);color:#1e293b;" />
-        </div>
-        <div>
-          <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">Tagline / Agency</label>
-          <input type="text" id="brandTaglineInput" placeholder="Semya Digital" value="Semya Digital"
-            style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;font-family:var(--font-display);color:#1e293b;" />
-        </div>
-      </div>
-    </div>
-
-    <!-- Theme Colour -->
-    <div style="margin-bottom:24px;">
-      <div class="acl-section-label">Theme Colour</div>
-      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:12px;" id="themeSwatches">
-        <!-- Swatches injected by JS -->
-      </div>
-      <div style="display:flex;align-items:center;gap:10px;margin-top:14px;">
-        <label style="font-size:11px;font-weight:600;color:#64748b;">Custom colour</label>
-        <input type="color" id="customColourPicker" value="#0284c7"
-          style="width:38px;height:32px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);cursor:pointer;padding:2px;"
-          oninput="applyThemeColour(this.value)" />
-        <span id="customColourHex" style="font-size:11px;font-family:var(--font-mono);color:#64748b;">#0284c7</span>
-      </div>
-    </div>
-
-    <div style="display:flex;justify-content:flex-end;gap:10px;">
-      <button class="btn btn-ghost" onclick="closeAppearancePanel()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveAppearance()">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
-        Save Appearance
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- ══════════════════════════════════════════════════════════════════
      UTM CAMPAIGN TOOLS MODAL  (Settings → UTM Campaign Tools)
 ══════════════════════════════════════════════════════════════════ -->
 <div class="modal-overlay" id="utmToolsModal">
@@ -2293,6 +2316,7 @@
       <div style="display:flex;align-items:center;gap:10px;">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--theme-accent)" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         <span class="modal-title">UTM Campaign Tools</span>
+
       </div>
       <button class="modal-close" onclick="closeUtmToolsModal()">✕</button>
     </div>
@@ -3496,7 +3520,7 @@ function updateSidebarForTab(tabKey) {
 // ═══════════════════════════════════════════════════════════════════
 // PLATFORM SALES
 // ═══════════════════════════════════════════════════════════════════
-const psState = { platform: '', dateFrom: '', dateTo: '', trendPeriod: 'day', _lastData: null };
+const psState = { platform: '', dateFrom: '', dateTo: '', trendPeriod: 'week', _lastData: null };
 
 const MOCK_PS = {
   platforms: [
@@ -3603,20 +3627,13 @@ async function fetchAndRenderPS() {
 
 // Picks the right time-bucket from the platform-sales response and
 // (re)draws the Revenue Over Time chart — called on first load and
-// whenever the Daily/Monthly/Yearly toggle changes, with no re-fetch.
+// whenever the Weekly/Monthly/Yearly toggle changes, with no re-fetch.
 function renderPsRevenueChart(data, period) {
   const bucket = period === 'month' ? (data.monthly || [])
                : period === 'year'  ? (data.yearly  || [])
-               : (data.daily || data.weekly || []); // fall back to weekly if a daily bucket isn't present (e.g. mock/fallback data)
+               : (data.weekly || []); // default: week
 
-  const labels = bucket.map(b => {
-    if (period === 'day' && b.day) {
-      // "2026-07-16" -> "16 Jul"
-      const d = new Date(b.day);
-      return isNaN(d.getTime()) ? b.day : d.getDate() + ' ' + d.toLocaleString('default', { month: 'short' });
-    }
-    return b.month || b.year || b.week || '';
-  });
+  const labels = bucket.map(b => b.month || b.year || b.week || '');
   const values = bucket.map(b => +(b.revenue / 100000).toFixed(2));
 
   // Daily data can have a lot of points — thin the dots out so it doesn't
@@ -4208,12 +4225,193 @@ document.getElementById('dtDate').addEventListener('change', function() {
 // ═══════════════════════════════════════════════════════════════════
 
 // openModal — opens ACL modal and loads pending requests for admins
-function openModal() {
-  document.getElementById('aclModal').classList.add('open');
+// ═══════════════════════════════════════════════════════════════════
+// CLIENT ADMINISTRATION  (Settings → Client Administration)
+// ═══════════════════════════════════════════════════════════════════
+const caState = { clientId: null, clientSlug: null, clientName: null };
+
+function openClientAdminModal() {
+  document.getElementById('clientAdminModal')?.classList.add('open');
+  setCaTab('client');
+  loadCaClients();
   if (window.semyaUser?.role === 'admin') loadPendingRequests();
+  // Default the Access Control / Appearance tabs to whichever client
+  // is currently active on the dashboard, until the admin picks a
+  // different one in the Client Section tab.
+  if (!caState.clientSlug && state.clientSlug) {
+    caState.clientSlug = state.clientSlug;
+    caState.clientName = document.querySelector('.logo-text')?.textContent || state.clientSlug;
+  }
+  updateCaAccessHeader();
+}
+function closeClientAdminModal() {
+  document.getElementById('clientAdminModal')?.classList.remove('open');
+}
+document.getElementById('clientAdminModal')?.addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeClientAdminModal();
+});
+
+function setCaTab(tab) {
+  ['client', 'appearance', 'access'].forEach(t => {
+    document.getElementById('caTab-' + t)?.classList.toggle('active', t === tab);
+    const panel = document.getElementById('caPanel-' + t);
+    if (panel) panel.style.display = t === tab ? '' : 'none';
+  });
+  if (tab === 'appearance') prefillAppearanceTab();
+  if (tab === 'access' && caState.clientSlug) loadAccessControlForClient(caState.clientSlug);
 }
 
-// Load clients list for the assign dropdown — real data, not a stub.
+function updateCaAccessHeader() {
+  const el = document.getElementById('caAccessClientName');
+  if (el) el.textContent = caState.clientName || '—';
+}
+
+// ── Client list + create ────────────────────────────────────────
+async function loadCaClients() {
+  const list = document.getElementById('caClientList');
+  if (!list) return;
+  try {
+    const resp = await apiFetch('/auth/admin/clients');
+    const clients = resp?.clients || [];
+    if (!clients.length) {
+      list.innerHTML = '<div style="text-align:center;padding:16px 0;color:#94a3b8;font-size:12px;">No clients yet — add one below.</div>';
+      return;
+    }
+    list.innerHTML = clients.map(c => (
+      '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1.5px solid ' + (c.id === caState.clientId ? 'var(--theme-primary)' : 'var(--color-border)') + ';border-radius:var(--radius-sm);margin-bottom:6px;">' +
+        '<div><div style="font-size:13px;font-weight:600;color:#1e293b;">' + c.name + '</div>' +
+        '<div style="font-size:11px;color:#94a3b8;">' + c.employeeCount + ' employee' + (c.employeeCount !== 1 ? 's' : '') + '</div></div>' +
+        '<button class="btn btn-ghost" style="font-size:11px;padding:6px 12px;" onclick="selectCaClient(' + JSON.stringify(c.id) + ',' + JSON.stringify(c.slug) + ',' + JSON.stringify(c.name) + ')">' + (c.id === caState.clientId ? 'Selected' : 'Manage') + '</button>' +
+      '</div>'
+    )).join('');
+  } catch (e) {
+    list.innerHTML = '<div style="text-align:center;padding:16px 0;color:#94a3b8;font-size:12px;">Failed to load clients.</div>';
+  }
+}
+
+async function createCaClient() {
+  const input = document.getElementById('caNewClientName');
+  const name = input?.value.trim();
+  if (!name) { alert('Enter a client name first.'); return; }
+  try {
+    const resp = await apiFetch('/auth/admin/clients', {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    input.value = '';
+    await loadCaClients();
+    loadClientSwitcher(); // so the new client shows up in the header dropdown immediately
+    if (resp?.client) selectCaClient(resp.client.id, resp.client.slug, resp.client.name);
+  } catch (e) {
+    alert('Failed to create client: ' + e.message);
+  }
+}
+
+function selectCaClient(id, slug, name) {
+  caState.clientId = id; caState.clientSlug = slug; caState.clientName = name;
+  document.getElementById('caEmployeeSection').style.display = '';
+  document.getElementById('caSelectedClientName').textContent = name;
+  updateCaAccessHeader();
+  loadCaClients();     // re-render so the "Manage"/"Selected" state updates
+  loadCaEmployees(id);
+}
+
+// ── Employees ────────────────────────────────────────────────────
+async function loadCaEmployees(clientId) {
+  const list = document.getElementById('caEmployeeList');
+  if (!list) return;
+  list.innerHTML = '<div class="skel skel-row" style="height:36px;"></div>';
+  try {
+    const resp = await apiFetch('/auth/admin/employees?clientId=' + clientId);
+    const employees = (resp?.employees || []).filter(e => e.is_active);
+    if (!employees.length) {
+      list.innerHTML = '<div style="font-size:12px;color:#94a3b8;padding:8px 0;">No employees added yet.</div>';
+      return;
+    }
+    list.innerHTML = employees.map(e => (
+      '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 4px;border-bottom:1px solid #f1f5f9;">' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+          '<span style="font-size:12px;color:#1e293b;">' + e.email + '</span>' +
+          (e.is_lead ? '<span style="font-size:9px;font-weight:700;color:#d97706;background:#fff7ed;border:1px solid #fed7aa;padding:2px 6px;border-radius:99px;">LEAD</span>' : '') +
+        '</div>' +
+        '<div style="display:flex;gap:6px;align-items:center;">' +
+          '<label style="font-size:10px;color:#94a3b8;display:flex;align-items:center;gap:4px;cursor:pointer;">' +
+            '<input type="checkbox" ' + (e.is_lead ? 'checked' : '') + ' onchange="toggleCaEmployeeLead(' + JSON.stringify(e.id) + ',this.checked)" /> Lead' +
+          '</label>' +
+          '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;color:#dc2626;" onclick="removeCaEmployee(' + JSON.stringify(e.id) + ')">Remove</button>' +
+        '</div>' +
+      '</div>'
+    )).join('');
+  } catch (e) {
+    list.innerHTML = '<div style="font-size:12px;color:#94a3b8;padding:8px 0;">Failed to load employees.</div>';
+  }
+}
+
+async function inviteCaEmployee() {
+  const emailInput = document.getElementById('caInviteEmail');
+  const leadInput  = document.getElementById('caInviteIsLead');
+  const email = emailInput?.value.trim();
+  if (!email) { alert('Enter an email address first.'); return; }
+  if (!caState.clientId) { alert('Select a client first.'); return; }
+  try {
+    await apiFetch('/auth/admin/invite-employee', {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, clientId: caState.clientId, isLead: leadInput?.checked || false }),
+    });
+    emailInput.value = '';
+    if (leadInput) leadInput.checked = false;
+    loadCaEmployees(caState.clientId);
+    loadCaClients(); // refresh employee counts
+  } catch (e) {
+    alert('Failed to invite employee: ' + e.message);
+  }
+}
+
+async function toggleCaEmployeeLead(userId, isLead) {
+  try {
+    await apiFetch('/auth/admin/employee/' + userId, {
+      method: 'PATCH',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isLead }),
+    });
+  } catch (e) {
+    alert('Failed to update: ' + e.message);
+    loadCaEmployees(caState.clientId); // revert visual state on failure
+  }
+}
+
+async function removeCaEmployee(userId) {
+  if (!confirm('Remove this person\'s access to ' + caState.clientName + '?')) return;
+  try {
+    await apiFetch('/auth/admin/employee/' + userId, { method: 'DELETE' });
+    loadCaEmployees(caState.clientId);
+    loadCaClients();
+  } catch (e) {
+    alert('Failed to remove: ' + e.message);
+  }
+}
+
+// ── Access Control (now client-aware — was hardcoded to whichever
+//    client the toggles happened to last show, never actually loaded
+//    from the server) ────────────────────────────────────────────
+async function loadAccessControlForClient(slug) {
+  updateCaAccessHeader();
+  try {
+    const cfg = await apiFetch('/clients/' + slug + '/dashboard-config');
+    const perms = cfg?.tabs || {};
+    document.querySelectorAll('#caPanel-access input[type=checkbox][data-tab]').forEach(cb => {
+      const p = perms[cb.dataset.tab];
+      // Prefer clientEnabled (what the client actually sees) over the
+      // admin-bypass 'enabled' flag, since this toggle IS the setting.
+      cb.checked = p ? (p.clientEnabled ?? p.enabled ?? false) : cb.checked;
+    });
+  } catch (e) {
+    console.warn('[access-control] failed to load current permissions:', e.message);
+  }
+}
+
 let cachedClients = [];
 async function loadClients() {
   if (cachedClients.length) return cachedClients;
@@ -4330,12 +4528,12 @@ async function rejectRequest(email, reqId) {
   }
 }
 
-// Save tab permissions (replaces the old closeModal on save)
+// Save tab permissions for whichever client is selected in Client Administration
 async function saveTabPermissions() {
-  const { clientSlug } = state;
-  if (!clientSlug) { closeModal(); return; }
+  const clientSlug = caState.clientSlug || state.clientSlug;
+  if (!clientSlug) { closeClientAdminModal(); return; }
 
-  const toggles = document.querySelectorAll('#aclModal input[type=checkbox][data-tab]');
+  const toggles = document.querySelectorAll('#caPanel-access input[type=checkbox][data-tab]');
   const saves   = [];
 
   toggles.forEach(toggle => {
@@ -4349,13 +4547,19 @@ async function saveTabPermissions() {
 
   try {
     await Promise.all(saves);
-    tabCache['sku_performance'] = null;
-    tabCache['platform_sales']  = null;
+    // Clear every tab's cache, not just two — a permission change can
+    // affect any of them, and stale cached data would otherwise still
+    // show for a tab that was just locked/unlocked.
+    Object.keys(tabCache).forEach(k => tabCache[k] = null);
+    // If we were editing the client currently shown on the dashboard,
+    // refresh the nav lock badges immediately rather than requiring
+    // a reload to see the effect.
+    if (clientSlug === state.clientSlug) loadTabPermissions();
   } catch(e) {
     console.warn('[tab-permissions] save failed:', e.message);
   }
 
-  closeModal();
+  closeClientAdminModal();
 }
 
 // Update auth guard to use Supabase session instead of localStorage JWT
@@ -4788,8 +4992,7 @@ async function handleUpload() {
 
 // ─── MODAL + DRAWER ───────────────────────────────────────────────
 // openModal is defined/overridden in the ACL section above; closeModal here:
-function closeModal() { document.getElementById('aclModal').classList.remove('open'); }
-document.getElementById('aclModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+// (closeModal/aclModal replaced by closeClientAdminModal — see above)
 function openDrawer()  { document.getElementById('uploadDrawer').classList.add('open'); }
 function closeDrawer() { document.getElementById('uploadDrawer').classList.remove('open'); }
 document.getElementById('uploadDrawer').addEventListener('click', e => { if (e.target === e.currentTarget) closeDrawer(); });
@@ -5269,7 +5472,7 @@ async function savePlatformAssumption(platform) {
 
 
 // ─── BOOT ─────────────────────────────────────────────────────────
-const FRONTEND_BUILD = 'V36-express4-async-fix'; // bump alongside backend health version
+const FRONTEND_BUILD = 'V37-client-administration'; // bump alongside backend health version
 console.log('[Semya] Frontend build:', FRONTEND_BUILD);
 
 function boot(user) {
@@ -5481,23 +5684,14 @@ const THEME_PRESETS = [
 ];
 let _activeThemeIdx = 0;
 
-function openAppearancePanel() {
-  const modal = document.getElementById('appearanceModal');
-  if (!modal) return;
+function prefillAppearanceTab() {
   renderThemeSwatches();
   // Pre-fill brand fields from current DOM
   const nameEl = document.getElementById('brandNameInput');
   const tagEl  = document.getElementById('brandTaglineInput');
   if (nameEl) nameEl.value = document.querySelector('.logo-text')?.textContent || 'Neat Everyday';
   if (tagEl)  tagEl.value  = document.querySelector('.logo-sub')?.textContent  || 'Semya Digital';
-  modal.classList.add('open');
 }
-function closeAppearancePanel() {
-  document.getElementById('appearanceModal')?.classList.remove('open');
-}
-document.getElementById('appearanceModal')?.addEventListener('click', function(e) {
-  if (e.target === e.currentTarget) closeAppearancePanel();
-});
 
 // ─── UTM Campaign Tools modal ───────────────────────────────────
 function openUtmToolsModal() {
@@ -5614,40 +5808,54 @@ function resetLogo() {
 }
 
 async function saveAppearance() {
+  const targetSlug = caState.clientSlug || state.clientSlug;
+  const btn = document.getElementById('caAppearanceSaveBtn');
+  if (btn) btn.textContent = 'Saving…';
+
   // Save brand name — persists to the server as the client's real name
   // (so it's per-client and visible to everyone, not just this browser)
   const nameVal = document.getElementById('brandNameInput')?.value.trim();
   const tagVal  = document.getElementById('brandTaglineInput')?.value.trim();
   if (nameVal) {
-    const el = document.querySelector('.logo-text');
-    if (el) el.textContent = nameVal;
-    try { localStorage.setItem('semya_brand_name', nameVal); } catch(e) {}
+    // Only touch the live header text if we're editing the client
+    // that's actually showing on the dashboard right now — editing a
+    // different client's appearance from Client Administration
+    // shouldn't visually rename what the admin is currently looking at.
+    if (targetSlug === state.clientSlug) {
+      const el = document.querySelector('.logo-text');
+      if (el) el.textContent = nameVal;
+      try { localStorage.setItem('semya_brand_name', nameVal); } catch(e) {}
+    }
     try {
-      await apiFetch('/clients/' + state.clientSlug + '/admin/rename', {
+      await apiFetch('/clients/' + targetSlug + '/admin/rename', {
         method: 'PATCH',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: nameVal }),
       });
       // Reflect the new name in the switcher dropdown immediately
-      const opt = document.querySelector('#clientSwitcher option[value="' + state.clientSlug + '"]');
+      const opt = document.querySelector('#clientSwitcher option[value="' + targetSlug + '"]');
       if (opt) opt.textContent = nameVal;
+      loadCaClients(); // refresh the Client Section list too
     } catch (e) {
       console.warn('[appearance] failed to save client name to server:', e.message);
     }
   }
-  if (tagVal) {
+  if (tagVal && targetSlug === state.clientSlug) {
     const el = document.querySelector('.logo-sub');
     if (el) el.textContent = tagVal;
     try { localStorage.setItem('semya_brand_tagline', tagVal); } catch(e) {}
   }
   // Save active theme
-  try {
-    const t = THEME_PRESETS[_activeThemeIdx];
-    localStorage.setItem('semya_theme', JSON.stringify({
-      primary: t.primary, deep: t.deep, accent: t.accent
-    }));
-  } catch(e) {}
-  closeAppearancePanel();
+  if (targetSlug === state.clientSlug) {
+    try {
+      const t = THEME_PRESETS[_activeThemeIdx];
+      localStorage.setItem('semya_theme', JSON.stringify({
+        primary: t.primary, deep: t.deep, accent: t.accent
+      }));
+    } catch(e) {}
+  }
+
+  if (btn) { btn.textContent = '✓ Saved'; setTimeout(() => { btn.textContent = 'Save Appearance'; }, 1500); }
 }
 
 // Restore persisted appearance on load
