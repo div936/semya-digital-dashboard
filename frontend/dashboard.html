@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- SEMYA FRONTEND BUILD: V32-modal-select-clip-fix -->
+<!-- SEMYA FRONTEND BUILD: V33-modal-scroll-fix -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -740,6 +740,8 @@
       padding: 28px;
       width: 440px;
       max-width: 95vw;
+      max-height: 88vh;
+      overflow-y: auto;
       box-shadow: 0 8px 40px rgba(0,0,0,.14), 0 2px 8px rgba(0,0,0,.06);
       transform: translateY(12px);
       transition: transform .22s;
@@ -5266,7 +5268,7 @@ async function savePlatformAssumption(platform) {
 
 
 // ─── BOOT ─────────────────────────────────────────────────────────
-const FRONTEND_BUILD = 'V32-modal-select-clip-fix'; // bump alongside backend health version
+const FRONTEND_BUILD = 'V33-modal-scroll-fix'; // bump alongside backend health version
 console.log('[Semya] Frontend build:', FRONTEND_BUILD);
 
 function boot(user) {
