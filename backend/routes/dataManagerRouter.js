@@ -28,7 +28,7 @@ router.get('/:client_slug/uploads', rbacMiddleware, adminOnly, async (req, res) 
   const { client } = req.semya;
   const { data, error } = await supabaseAdmin
     .from('uploads')
-    .select('id, detected_platform, detected_data_type, status, row_count, skipped_rows, error_message, created_at, original_name')
+    .select('id, detected_platform, detected_data_type, status, row_count, skipped_rows, rows_updated, rows_duplicate_in_file, error_message, created_at, original_name')
     .eq('client_id', client.id)
     .order('created_at', { ascending: false })
     .limit(200);
@@ -43,6 +43,8 @@ router.get('/:client_slug/uploads', rbacMiddleware, adminOnly, async (req, res) 
     status: u.status,
     row_count: u.row_count,
     skipped_rows: u.skipped_rows,
+    rows_updated: u.rows_updated || 0,
+    rows_duplicate_in_file: u.rows_duplicate_in_file || 0,
     error_message: u.error_message,
     created_at: u.created_at,
     original_filename: u.original_name,

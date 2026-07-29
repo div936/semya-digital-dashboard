@@ -38,7 +38,7 @@ import xlsx from 'xlsx';
 import path from 'path';
 import { parse as parseCsv } from 'csv-parse/sync';
 import { supabaseAdmin }  from '../lib/supabase.js';
-import { REVENUE_MAP, CAMPAIGN_MAP, normaliseBatch, classifyDataType, scoreHeaderRow } from '../lib/columnMapper.js';
+import { REVENUE_MAP, CAMPAIGN_MAP, normaliseBatch, classifyDataType, scoreHeaderRow, computeDedupKey } from '../lib/columnMapper.js';
 import { generateInsights, generateNarrativeSummaries } from '../lib/insightGenerator.js';
 
 // ═══════════════════════════════════════════════════════════════════
@@ -242,32 +242,97 @@ function extractDateFromPreamble(preambleLines) {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// BULK INSERT — inserts in chunks to avoid Supabase payload limits.
-// Chunks are sent with bounded concurrency (not fully sequential) so
-// large files (10k+ rows) don't take so long that a hosting platform's
-// request/gateway timeout kills the connection before we respond.
+// DEDUPLICATION  (revenue rows)
+//
+// Attaches row_hash/order_id/order_item_id/dedup_method to each row
+// (see computeDedupKey() in columnMapper.js), and drops any row that
+// hashes the same as one already seen EARLIER IN THIS SAME FILE — a
+// file can genuinely contain a literal repeat of a line, and without
+// this check both copies would attempt the same upsert key within one
+// batch, which is at best redundant and at worst order-dependent.
+// Returns { rows, withinFileDuplicates }.
+// ═══════════════════════════════════════════════════════════════════
+function attachDedupKeys(rows) {
+  const seen = new Set();
+  const out = [];
+  let withinFileDuplicates = 0;
+
+  rows.forEach((row, i) => {
+    const rawExtras = row.raw_extras || {};
+    const dk = computeDedupKey(rawExtras, row);
+    if (seen.has(dk.rowHash)) {
+      withinFileDuplicates++;
+      return;
+    }
+    seen.add(dk.rowHash);
+    out.push({
+      ...row,
+      row_hash: dk.rowHash,
+      order_id: dk.orderId,
+      order_item_id: dk.orderItemId,
+      dedup_method: dk.dedupMethod,
+    });
+  });
+
+  return { rows: out, withinFileDuplicates };
+}
+
+// Checks which row_hashes already exist for this client, so the
+// caller can report an accurate new-vs-updated split. Chunked to keep
+// each IN-list a reasonable size.
+async function findExistingHashes(clientId, hashes) {
+  const existing = new Set();
+  const CHECK_CHUNK = 1000;
+  for (let i = 0; i < hashes.length; i += CHECK_CHUNK) {
+    const chunk = hashes.slice(i, i + CHECK_CHUNK);
+    const { data, error } = await supabaseAdmin
+      .from('revenue_data')
+      .select('row_hash')
+      .eq('client_id', clientId)
+      .in('row_hash', chunk);
+    if (error) throw new Error(`Failed to check existing rows: ${error.message}`);
+    for (const r of data || []) existing.add(r.row_hash);
+  }
+  return existing;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// BULK UPSERT — inserts new rows / replaces matching existing ones in
+// chunks, to avoid Supabase payload limits. Chunks are sent with
+// bounded concurrency (not fully sequential) so large files (10k+
+// rows) don't take so long that a hosting platform's request/gateway
+// timeout kills the connection before we respond.
+//
+// conflictCols identifies what counts as "the same row" — for
+// revenue_data that's (client_id, row_hash); for campaign_data it's
+// (client_id, platform, campaign_name, campaign_date). A conflicting
+// row gets ALL its columns replaced with the new values (Supabase's
+// default upsert behaviour) — so a later export showing an order's
+// updated status/revenue naturally overwrites the earlier version
+// instead of creating a duplicate.
 // ═══════════════════════════════════════════════════════════════════
 const CHUNK_SIZE   = 500;
-const CONCURRENCY  = 5; // number of chunk inserts in flight at once
+const CONCURRENCY  = 5; // number of chunk upserts in flight at once
 
-async function bulkInsert(table, rows) {
+async function bulkUpsert(table, rows, conflictCols) {
   const chunks = [];
   for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
     chunks.push(rows.slice(i, i + CHUNK_SIZE));
   }
 
-  let inserted = 0;
+  let processed = 0;
   for (let i = 0; i < chunks.length; i += CONCURRENCY) {
     const batch = chunks.slice(i, i + CONCURRENCY);
     const results = await Promise.all(
-      batch.map((chunk) => supabaseAdmin.from(table).insert(chunk))
+      batch.map((chunk) => supabaseAdmin.from(table).upsert(chunk, { onConflict: conflictCols }))
     );
     for (const { error } of results) {
-      if (error) throw new Error(`Supabase insert error on ${table}: ${error.message}`);
+      if (error) throw new Error(`Supabase upsert error on ${table}: ${error.message}`);
     }
-    inserted += batch.reduce((sum, c) => sum + c.length, 0);
+    processed += batch.reduce((sum, c) => sum + c.length, 0);
   }
-  return inserted;
+  return processed;
 }
 
 
@@ -346,26 +411,55 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
 
     // 4. Normalise via column mapper
     const map = dataType === 'revenue' ? REVENUE_MAP : CAMPAIGN_MAP;
-    const { rows, skipped } = normaliseBatch(rawRows, map, {
+    const { rows: normalisedRows, skipped } = normaliseBatch(rawRows, map, {
       clientId,
       platform,
       uploadId,
       defaultDate,
     });
 
-    // 5. Bulk insert into the correct table
-    const table     = dataType === 'revenue' ? 'revenue_data' : 'campaign_data';
-    const inserted  = await bulkInsert(table, rows);
+    // 5. Deduplicate + upsert into the correct table
+    const table = dataType === 'revenue' ? 'revenue_data' : 'campaign_data';
+    let inserted = 0, updated = 0, withinFileDuplicates = 0;
+
+    if (dataType === 'revenue') {
+      const { rows, withinFileDuplicates: wfd } = attachDedupKeys(normalisedRows);
+      withinFileDuplicates = wfd;
+
+      // Figure out new vs. updated BEFORE upserting, so the admin sees
+      // an honest breakdown rather than just a total row count.
+      const existingHashes = await findExistingHashes(clientId, rows.map((r) => r.row_hash));
+      updated  = rows.filter((r) => existingHashes.has(r.row_hash)).length;
+      inserted = rows.length - updated;
+
+      await bulkUpsert(table, rows, 'client_id,row_hash');
+    } else {
+      // Campaign rows dedup on a natural key (platform + campaign name
+      // + date) rather than a computed hash — no line-item granularity
+      // to worry about for ad performance rows.
+      const seen = new Set();
+      const rows = [];
+      for (const row of normalisedRows) {
+        const key = (row.campaign_name || '') + '|' + (row.campaign_date || '');
+        if (row.campaign_name && row.campaign_date) {
+          if (seen.has(key)) { withinFileDuplicates++; continue; }
+          seen.add(key);
+        }
+        rows.push(row);
+      }
+      await bulkUpsert(table, rows, 'client_id,platform,campaign_name,campaign_date');
+      inserted = rows.length; // campaign rows without a name+date can't be matched against existing ones anyway
+    }
 
     // 6. Mark upload as complete
     const note = routingCorrected
       ? `Note: filename suggested '${filenameDataType}' data, but the columns in this file matched '${dataType}' data instead — routed accordingly.`
       : null;
-    await finaliseUpload(uploadId, 'success', inserted, skipped, note);
+    await finaliseUpload(uploadId, 'success', inserted, skipped, note, { updated, withinFileDuplicates });
 
     console.log(
       `[ingestion] ✓ ${originalName} → ${table} | ` +
-      `platform=${platform} rows=${inserted} skipped=${skipped}` +
+      `platform=${platform} new=${inserted} updated=${updated} skipped=${skipped} withinFileDupes=${withinFileDuplicates}` +
       (routingCorrected ? ` | routing corrected (${filenameDataType} → ${dataType})` : '')
     );
 
@@ -379,7 +473,7 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
 
     return {
       uploadId, platform, dataType,
-      rowCount: inserted, skippedRows: skipped,
+      rowCount: inserted, updatedRows: updated, withinFileDuplicates, skippedRows: skipped,
       routingCorrected, filenameDataType,
     };
 
@@ -394,7 +488,7 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
 // ─────────────────────────────────────────────────────────────────
 // finaliseUpload — updates the uploads audit row
 // ─────────────────────────────────────────────────────────────────
-async function finaliseUpload(uploadId, status, rowCount, skippedRows, errorMessage = null) {
+async function finaliseUpload(uploadId, status, rowCount, skippedRows, errorMessage = null, dedupStats = {}) {
   const { error } = await supabaseAdmin
     .from('uploads')
     .update({
@@ -403,6 +497,8 @@ async function finaliseUpload(uploadId, status, rowCount, skippedRows, errorMess
       skipped_rows:  skippedRows,
       error_message: errorMessage,
       completed_at:  new Date().toISOString(),
+      rows_updated:            dedupStats.updated || 0,
+      rows_duplicate_in_file:  dedupStats.withinFileDuplicates || 0,
     })
     .eq('id', uploadId);
 

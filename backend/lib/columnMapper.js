@@ -22,6 +22,8 @@
 // key   = raw column header (lowercased + trimmed for matching)
 // value = standard target field name
 // ═══════════════════════════════════════════════════════════════════
+import crypto from 'crypto';
+
 export const REVENUE_MAP = {
 
   // ── SKU / Product identifier ──────────────────────────────────
@@ -335,7 +337,7 @@ export function extractIdentity(rawExtras) {
 // from a sibling row of the same order that does have it.
 // ═══════════════════════════════════════════════════════════════════
 const ORDER_ID_KEYS = [
-  'Order Id', 'Order ID', 'order id', 'Order Number', 'ORDER ITEM ID',
+  'Order Id', 'Order ID', 'order id', 'Order Number',
   'amazon-order-id', 'merchant-order-id', 'Name', 'Id',
 ];
 
@@ -346,6 +348,79 @@ export function extractOrderId(rawExtras) {
     if (v !== undefined && v !== '' && v !== null) return String(v).trim();
   }
   return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DEDUPLICATION  (ported from the previous dashboard's proven design)
+//
+// 3-tier dedup key, most to least reliable:
+//   1. order_item_id — unique per LINE ITEM. An order with 3 different
+//      products has 1 order_id but 3 different order_item_ids — this
+//      is what correctly keeps all 3 instead of treating the 2nd and
+//      3rd as false duplicates of the 1st.
+//   2. order_id + sku — used when there's an order ID but no native
+//      line-item-level ID (most platforms). Distinguishes different
+//      products within the same order.
+//   3. composite (date + sku + state + units + revenue) — last resort
+//      when neither ID is present at all. Can rarely produce a false-
+//      positive collision (two different customers buying the same
+//      cheap SKU, same state, same day, same price) — platforms that
+//      expose a real order ID should always be preferred.
+//
+// Re-uploading the same file (or an overlapping export) is then safe:
+// matching rows get their mutable fields (status/revenue/units)
+// replaced with the newest values via upsert, rather than creating a
+// duplicate — e.g. an order that shows as "Cancelled" in a later
+// export correctly overwrites the earlier "Pending" row instead of
+// both existing side by side.
+// ═══════════════════════════════════════════════════════════════════
+const ORDER_ITEM_ID_KEYS = ['order-item-id', 'Order Item Id', 'ORDER ITEM ID'];
+
+export function extractOrderItemId(rawExtras) {
+  if (!rawExtras) return null;
+  for (const k of ORDER_ITEM_ID_KEYS) {
+    let v = rawExtras[k];
+    if (v === undefined || v === '' || v === null) continue;
+    v = String(v).trim().replace(/^'/, ''); // Flipkart prefixes a ' to force-text in Excel
+    // Amazon uses "0" as a placeholder order-item-id on some zero-
+    // revenue adjustment rows — treat that as "not present", or every
+    // such row across every order would collide as false duplicates.
+    if (v === '0') continue;
+    return v;
+  }
+  return null;
+}
+
+function sha256Hex(str) {
+  return crypto.createHash('sha256').update(str).digest('hex');
+}
+
+// Returns { rowHash, orderId, orderItemId, dedupMethod } for one
+// normalised revenue row. Call after normaliseRow() so standardFields
+// (date/sku/state/units/revenue) are already resolved.
+export function computeDedupKey(rawExtras, standardFields) {
+  const orderId     = extractOrderId(rawExtras);
+  const orderItemId = extractOrderItemId(rawExtras);
+  const date    = standardFields.order_date || '';
+  const sku     = standardFields.standard_sku || '';
+  const state   = standardFields.standard_state || '';
+  const units   = standardFields.standard_units ?? '';
+  const revenue = standardFields.standard_revenue ?? '';
+
+  if (orderItemId) {
+    return { rowHash: sha256Hex('order_item_id:' + orderItemId), orderId, orderItemId, dedupMethod: 'order_item_id' };
+  }
+  if (orderId) {
+    // Synthesise a line-item-level key the same way the reference
+    // system does for platforms with no native item-level ID (e.g.
+    // Shopify): order + sku + revenue, so two different products (or
+    // the same product at two different prices) in one order don't
+    // collide into a single row.
+    const synthetic = orderId + '::' + sku + '::' + revenue;
+    return { rowHash: sha256Hex('order_id_sku:' + orderId + '|' + sku), orderId, orderItemId: synthetic, dedupMethod: 'order_id_sku' };
+  }
+  const composite = `composite:${date}|${sku}|${state}|${units}|${revenue}`;
+  return { rowHash: sha256Hex(composite), orderId: null, orderItemId: null, dedupMethod: 'composite' };
 }
 
 // Groups rows by platform+orderId and fills in a blank standard_city /
