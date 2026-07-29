@@ -144,6 +144,18 @@ router.delete('/:client_slug/data/platform', rbacMiddleware, adminOnly, async (r
   if (dataType === 'all' || dataType === 'revenue')  await deleteFromTable('revenue_data');
   if (dataType === 'all' || dataType === 'campaign') await deleteFromTable('campaign_data');
 
+  // Also clear the matching Upload History records — this is an
+  // all-or-nothing wipe for this platform (unlike a date-range
+  // delete, which can remove only part of an upload's rows), so
+  // every upload event for it is now stale and should disappear
+  // along with the data, not linger showing row counts that no
+  // longer exist anywhere.
+  let uploadsQuery = supabaseAdmin.from('uploads').delete().eq('client_id', client.id);
+  if (platform !== 'all') uploadsQuery = uploadsQuery.eq('detected_platform', platform.toLowerCase());
+  if (dataType !== 'all') uploadsQuery = uploadsQuery.eq('detected_data_type', dataType);
+  const { error: uploadsErr } = await uploadsQuery;
+  if (uploadsErr) errors.push('uploads: ' + uploadsErr.message);
+
   if (errors.length) return res.status(500).json({ error: errors.join('; ') });
   return res.json({ ok: true, rowsDeleted: totalDeleted, platform });
 });
