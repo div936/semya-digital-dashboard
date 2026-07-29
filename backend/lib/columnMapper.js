@@ -178,7 +178,18 @@ export const CAMPAIGN_MAP = {
   '14 day total sales':         'standard_revenue',
   '7 day total sales':          'standard_revenue',
   'purchase value':             'standard_revenue',
-  'purchase roas':              'standard_revenue',   // Meta uses this key
+  // NOTE: 'purchase roas' / 'website purchase roas' are intentionally
+  // NOT mapped here. ROAS is a RATIO (e.g. "3.5" meaning 3.5x return),
+  // not a currency amount — mapping it directly to standard_revenue
+  // silently corrupted every row's revenue with a tiny ratio value
+  // instead of a real rupee amount (this is exactly what caused
+  // near-zero RoAS to show for Meta on the Platform Health widget,
+  // despite Meta being the highest-revenue platform). When a real
+  // Meta export has no direct currency revenue column at all (common
+  // — confirmed against an actual file), revenue is instead derived
+  // as spend × ROAS in normaliseBatch() below, which is what ROAS
+  // mathematically means, rather than treating the ratio as if it
+  // were currency.
   'campaign revenue':           'standard_revenue',
   'total revenue':              'standard_revenue',   // Flipkart ads export
   'conversion value':           'standard_revenue',
@@ -541,6 +552,23 @@ export function normaliseRow(rawRow, map) {
 // Returns:
 //   { rows: Array<normalised_record>, skipped: number }
 // ═══════════════════════════════════════════════════════════════════
+const ROAS_KEYS = [
+  'Purchase ROAS (return on ad spend)',
+  'Website purchase ROAS (return on ad spend)',
+  'ROAS', 'Total ROAS', 'Direct RoAS',
+];
+
+function extractRoasRatio(rawExtras) {
+  if (!rawExtras) return null;
+  for (const k of ROAS_KEYS) {
+    const v = rawExtras[k];
+    if (v === undefined || v === '' || v === null) continue;
+    const n = Number(String(v).replace(/[^0-9.\-]/g, ''));
+    if (!isNaN(n) && n >= 0) return n;
+  }
+  return null;
+}
+
 export function normaliseBatch(rawRows, map, { clientId, platform, uploadId, defaultDate } = {}) {
   const rows = [];
   let skipped = 0;
@@ -553,6 +581,18 @@ export function normaliseBatch(rawRows, map, { clientId, platform, uploadId, def
     // file rather than a per-row date column — fall back to it here.
     if (!standardFields[dateField] && defaultDate) {
       standardFields[dateField] = defaultDate;
+    }
+
+    // Campaign rows: some platforms' exports (confirmed against a real
+    // Meta Ads export) have no direct currency revenue column at all —
+    // only a ROAS ratio (e.g. "3.5" meaning 3.5x return) and a spend
+    // figure. Revenue = spend × ROAS is what that ratio mathematically
+    // means, so derive it here rather than leaving revenue null (or,
+    // as a previous version of this code did, wrongly treating the
+    // ratio itself as if it were a currency amount).
+    if (map === CAMPAIGN_MAP && standardFields.standard_revenue == null && standardFields.standard_spend != null) {
+      const roas = extractRoasRatio(rawExtras);
+      if (roas != null) standardFields.standard_revenue = +(standardFields.standard_spend * roas).toFixed(2);
     }
 
     // Skip rows with no identifiable revenue or SKU at all (i.e. the

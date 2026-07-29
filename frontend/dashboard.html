@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- SEMYA FRONTEND BUILD: V44-summary-shows-orphaned-platforms -->
+<!-- SEMYA FRONTEND BUILD: V46-roas-revenue-fix -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -1959,10 +1959,13 @@
     <div class="ai-panel">
       <div class="ai-header">
         <div class="ai-icon">✦</div>
-        <div>
+        <div style="flex:1;">
           <div class="ai-label">AI Insights</div>
           <div class="ai-sub" id="aiSubtitle">Powered · —</div>
         </div>
+        <button data-role="admin" onclick="regenerateSidebarSummary()" id="sidebarRegenBtn" title="Regenerate" style="background:none;border:none;cursor:pointer;color:#94a3b8;padding:4px;flex-shrink:0;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        </button>
       </div>
       <div id="aiInsightsList">
         <div class="skel skel-insight"></div>
@@ -3213,6 +3216,23 @@ function getScopesForTab(tabKey) {
   if (rawFilter === 'amazon')  return ['amazon', 'acutas'];
   if (rawFilter === 'website') return ['meta', 'google'];
   return [rawFilter];
+}
+
+async function regenerateSidebarSummary() {
+  const btn = document.getElementById('sidebarRegenBtn');
+  const { clientSlug } = state; if (!clientSlug) return;
+  if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
+  try {
+    await apiFetch('/clients/' + clientSlug + '/ai-summary/regenerate', {
+      method: 'POST', headers: authHeaders(),
+    });
+    _sidebarCache = {};
+    updateSidebarForTab(activeTab || 'platform_sales');
+  } catch (e) {
+    alert('Failed to regenerate: ' + e.message);
+  } finally {
+    if (btn) { btn.style.opacity = ''; btn.style.pointerEvents = ''; }
+  }
 }
 
 async function renderSidebarSummary(scopes) {
@@ -5647,7 +5667,7 @@ async function savePlatformAssumption(platform) {
 
 
 // ─── BOOT ─────────────────────────────────────────────────────────
-const FRONTEND_BUILD = 'V44-summary-shows-orphaned-platforms'; // bump alongside backend health version
+const FRONTEND_BUILD = 'V46-roas-revenue-fix'; // bump alongside backend health version
 console.log('[Semya] Frontend build:', FRONTEND_BUILD);
 
 function boot(user) {

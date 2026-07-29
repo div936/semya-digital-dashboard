@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS campaign_data (
   standard_revenue  NUMERIC(14,2),
   standard_impressions  BIGINT,
   standard_clicks   BIGINT,
-  standard_orders   INTEGER,
+  standard_orders   NUMERIC(10,2), -- not INTEGER: Google Ads' "Conversions" is often fractional (attribution-split across touchpoints)
   raw_extras        JSONB DEFAULT '{}'::JSONB,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

@@ -1,0 +1,13 @@
+-- db/column_type_fixes.sql
+-- ─────────────────────────────────────────────────────────────────
+-- COLUMN TYPE FIXES
+--
+-- campaign_data.standard_orders was INTEGER, which rejects any
+-- decimal value. Google Ads' "Conversions" column (which maps to this
+-- field) is genuinely fractional under certain attribution models —
+-- a campaign can legitimately show "6.86 conversions" when credit for
+-- a single conversion gets split across multiple ad touchpoints. This
+-- isn't bad data or a mapping bug; NUMERIC is the correct type for
+-- what this column actually needs to hold.
+-- ─────────────────────────────────────────────────────────────────
+ALTER TABLE campaign_data ALTER COLUMN standard_orders TYPE NUMERIC(10,2);
