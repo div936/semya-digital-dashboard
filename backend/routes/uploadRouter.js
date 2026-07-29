@@ -78,6 +78,9 @@ router.post(
       const dedupNote = result.updatedRows > 0
         ? ` (${result.rowCount} new, ${result.updatedRows} updated from a previous upload)`
         : '';
+      const degradedNote = result.dedupDegraded
+        ? ' Note: duplicate-detection isn\'t set up yet for this database (run db/dedup_schema.sql) — rows were added without checking for duplicates.'
+        : '';
 
       return res.json({
         ok:           true,
@@ -88,9 +91,10 @@ router.post(
         rowsUpdated:  result.updatedRows,
         rowsSkipped:  result.skippedRows,
         withinFileDuplicates: result.withinFileDuplicates,
-        message:      result.routingCorrected
+        dedupDegraded: result.dedupDegraded,
+        message:      (result.routingCorrected
           ? `${result.rowCount} rows ingested into ${result.dataType} table for platform '${result.platform}'${dedupNote}. Note: the filename suggested '${result.filenameDataType}' data, but this file's columns matched '${result.dataType}' data instead — routed accordingly.`
-          : `${result.rowCount} rows ingested into ${result.dataType} table for platform '${result.platform}'${dedupNote}.`,
+          : `${result.rowCount} rows ingested into ${result.dataType} table for platform '${result.platform}'${dedupNote}.`) + degradedNote,
       });
 
     } catch (err) {

@@ -277,9 +277,26 @@ function attachDedupKeys(rows) {
   return { rows: out, withinFileDuplicates };
 }
 
+// True if this Postgres/PostgREST error is specifically "a column we
+// expect doesn't exist" — i.e. the dedup_schema.sql migration hasn't
+// been run yet — as opposed to some other real failure. Matches both
+// Postgres's own wording ("column X does not exist") and PostgREST's
+// ("Could not find the 'X' column ... in the schema cache").
+function isMissingDedupColumnError(error) {
+  if (!error) return false;
+  const msg = (error.message || '').toLowerCase();
+  return (msg.includes('does not exist') || msg.includes('schema cache')) &&
+    (msg.includes('row_hash') || msg.includes('order_id') || msg.includes('order_item_id') || msg.includes('dedup_method'));
+}
+
 // Checks which row_hashes already exist for this client, so the
 // caller can report an accurate new-vs-updated split. Chunked to keep
 // each IN-list a reasonable size.
+//
+// Degrades gracefully if the dedup_schema.sql migration hasn't been
+// run yet: rather than blocking the upload entirely, this just
+// returns "nothing matched" (so every row reports as new, and no
+// updated-row detection happens) until the migration runs.
 async function findExistingHashes(clientId, hashes) {
   const existing = new Set();
   const CHECK_CHUNK = 1000;
@@ -290,10 +307,16 @@ async function findExistingHashes(clientId, hashes) {
       .select('row_hash')
       .eq('client_id', clientId)
       .in('row_hash', chunk);
-    if (error) throw new Error(`Failed to check existing rows: ${error.message}`);
+    if (error) {
+      if (isMissingDedupColumnError(error)) {
+        console.warn('[ingestion] Dedup columns not found (migration not run?) — skipping duplicate-check for this upload:', error.message);
+        return { hashes: existing, degraded: true };
+      }
+      throw new Error(`Failed to check existing rows: ${error.message}`);
+    }
     for (const r of data || []) existing.add(r.row_hash);
   }
-  return existing;
+  return { hashes: existing, degraded: false };
 }
 
 
@@ -311,9 +334,15 @@ async function findExistingHashes(clientId, hashes) {
 // default upsert behaviour) — so a later export showing an order's
 // updated status/revenue naturally overwrites the earlier version
 // instead of creating a duplicate.
+//
+// Degrades gracefully if the dedup_schema.sql migration hasn't been
+// run yet: falls back to a plain insert with the dedup-specific
+// columns stripped out, rather than failing the whole upload over a
+// feature that isn't set up yet. Returns { processed, degraded }.
 // ═══════════════════════════════════════════════════════════════════
 const CHUNK_SIZE   = 500;
 const CONCURRENCY  = 5; // number of chunk upserts in flight at once
+const DEDUP_ONLY_COLUMNS = ['row_hash', 'order_id', 'order_item_id', 'dedup_method'];
 
 async function bulkUpsert(table, rows, conflictCols) {
   const chunks = [];
@@ -322,17 +351,36 @@ async function bulkUpsert(table, rows, conflictCols) {
   }
 
   let processed = 0;
+  let degraded = false;
+
   for (let i = 0; i < chunks.length; i += CONCURRENCY) {
     const batch = chunks.slice(i, i + CONCURRENCY);
-    const results = await Promise.all(
+    let results = await Promise.all(
       batch.map((chunk) => supabaseAdmin.from(table).upsert(chunk, { onConflict: conflictCols }))
     );
+
+    const schemaError = results.find((r) => r.error && isMissingDedupColumnError(r.error));
+    if (schemaError) {
+      // Retry this batch as a plain insert with dedup columns
+      // stripped, rather than failing the whole upload.
+      console.warn(`[ingestion] Dedup columns not found on ${table} (migration not run?) — inserting without dedup for this upload.`);
+      degraded = true;
+      const strippedBatch = batch.map((chunk) => chunk.map((row) => {
+        const clean = { ...row };
+        for (const col of DEDUP_ONLY_COLUMNS) delete clean[col];
+        return clean;
+      }));
+      results = await Promise.all(
+        strippedBatch.map((chunk) => supabaseAdmin.from(table).insert(chunk))
+      );
+    }
+
     for (const { error } of results) {
       if (error) throw new Error(`Supabase upsert error on ${table}: ${error.message}`);
     }
     processed += batch.reduce((sum, c) => sum + c.length, 0);
   }
-  return processed;
+  return { processed, degraded };
 }
 
 
@@ -420,7 +468,7 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
 
     // 5. Deduplicate + upsert into the correct table
     const table = dataType === 'revenue' ? 'revenue_data' : 'campaign_data';
-    let inserted = 0, updated = 0, withinFileDuplicates = 0;
+    let inserted = 0, updated = 0, withinFileDuplicates = 0, dedupDegraded = false;
 
     if (dataType === 'revenue') {
       const { rows, withinFileDuplicates: wfd } = attachDedupKeys(normalisedRows);
@@ -428,11 +476,12 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
 
       // Figure out new vs. updated BEFORE upserting, so the admin sees
       // an honest breakdown rather than just a total row count.
-      const existingHashes = await findExistingHashes(clientId, rows.map((r) => r.row_hash));
-      updated  = rows.filter((r) => existingHashes.has(r.row_hash)).length;
+      const { hashes: existingHashes, degraded: checkDegraded } = await findExistingHashes(clientId, rows.map((r) => r.row_hash));
+      updated  = existingHashes.size ? rows.filter((r) => existingHashes.has(r.row_hash)).length : 0;
       inserted = rows.length - updated;
 
-      await bulkUpsert(table, rows, 'client_id,row_hash');
+      const { degraded: upsertDegraded } = await bulkUpsert(table, rows, 'client_id,row_hash');
+      dedupDegraded = checkDegraded || upsertDegraded;
     } else {
       // Campaign rows dedup on a natural key (platform + campaign name
       // + date) rather than a computed hash — no line-item granularity
@@ -452,14 +501,16 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
     }
 
     // 6. Mark upload as complete
-    const note = routingCorrected
-      ? `Note: filename suggested '${filenameDataType}' data, but the columns in this file matched '${dataType}' data instead — routed accordingly.`
-      : null;
+    const notes = [];
+    if (routingCorrected) notes.push(`Note: filename suggested '${filenameDataType}' data, but the columns in this file matched '${dataType}' data instead — routed accordingly.`);
+    if (dedupDegraded)    notes.push(`Note: duplicate-detection is not active yet for this client (run db/dedup_schema.sql) — rows were added without checking for duplicates.`);
+    const note = notes.length ? notes.join(' ') : null;
     await finaliseUpload(uploadId, 'success', inserted, skipped, note, { updated, withinFileDuplicates });
 
     console.log(
       `[ingestion] ✓ ${originalName} → ${table} | ` +
       `platform=${platform} new=${inserted} updated=${updated} skipped=${skipped} withinFileDupes=${withinFileDuplicates}` +
+      (dedupDegraded ? ' | DEDUP DEGRADED (migration not run)' : '') +
       (routingCorrected ? ` | routing corrected (${filenameDataType} → ${dataType})` : '')
     );
 
@@ -474,7 +525,7 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
     return {
       uploadId, platform, dataType,
       rowCount: inserted, updatedRows: updated, withinFileDuplicates, skippedRows: skipped,
-      routingCorrected, filenameDataType,
+      routingCorrected, filenameDataType, dedupDegraded,
     };
 
   } catch (err) {
@@ -501,6 +552,21 @@ async function finaliseUpload(uploadId, status, rowCount, skippedRows, errorMess
       rows_duplicate_in_file:  dedupStats.withinFileDuplicates || 0,
     })
     .eq('id', uploadId);
+
+  if (error && isMissingDedupColumnError(error)) {
+    // The uploads table's own dedup-tracking columns aren't there yet
+    // either (same un-run migration) — retry without them so the
+    // upload record still gets marked complete instead of staying
+    // stuck on "processing" forever, which would be worse than just
+    // missing the extra stats.
+    console.warn('[ingestion] uploads table missing dedup columns (migration not run?) — finalising without them.');
+    const { error: retryError } = await supabaseAdmin
+      .from('uploads')
+      .update({ status, row_count: rowCount, skipped_rows: skippedRows, error_message: errorMessage, completed_at: new Date().toISOString() })
+      .eq('id', uploadId);
+    if (retryError) console.error(`[ingestion] Failed to finalise upload ${uploadId} even without dedup columns:`, retryError.message);
+    return;
+  }
 
   if (error) {
     console.error(`[ingestion] Failed to finalise upload ${uploadId}:`, error.message);

@@ -75,7 +75,7 @@ app.use('/clients', insightsRouter);
 app.use('/clients', projectionsRouter);
 
 // ─── Health check ─────────────────────────────────────────────────
-app.get('/health', (_req, res) => res.json({ ok: true, version: 'V40-dedup-multifile-upload' }));
+app.get('/health', (_req, res) => res.json({ ok: true, version: 'V41-dedup-graceful-degrade' }));
 
 // ─── 404 ──────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'Route not found.' }));
