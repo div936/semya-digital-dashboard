@@ -297,24 +297,48 @@ function isMissingDedupColumnError(error) {
 // run yet: rather than blocking the upload entirely, this just
 // returns "nothing matched" (so every row reports as new, and no
 // updated-row detection happens) until the migration runs.
+// Shared by findExistingHashes and bulkUpsert below.
+const CHUNK_SIZE   = 500;
+const CONCURRENCY  = 5; // number of chunk requests in flight at once
+
 async function findExistingHashes(clientId, hashes) {
   const existing = new Set();
-  const CHECK_CHUNK = 1000;
-  for (let i = 0; i < hashes.length; i += CHECK_CHUNK) {
-    const chunk = hashes.slice(i, i + CHECK_CHUNK);
-    const { data, error } = await supabaseAdmin
-      .from('revenue_data')
-      .select('row_hash')
-      .eq('client_id', clientId)
-      .in('row_hash', chunk);
-    if (error) {
-      if (isMissingDedupColumnError(error)) {
-        console.warn('[ingestion] Dedup columns not found (migration not run?) — skipping duplicate-check for this upload:', error.message);
-        return { hashes: existing, degraded: true };
+  // Each row_hash is a 64-character SHA-256 hex string. A .in() filter
+  // sends these as a comma-separated query string — at the previous
+  // chunk size of 1000, that's ~65,000 characters per request, well
+  // past typical URL-length limits (proxies/gateways commonly cap
+  // around 8-16KB). That's almost certainly what silently failed here
+  // (the error came back with no usable message, which is itself a
+  // symptom of a request getting rejected before it ever reached
+  // Postgres in a normal, parseable way). 150 hashes keeps each
+  // request under ~10KB, comfortably safe.
+  const CHECK_CHUNK = 100;
+  const chunks = [];
+  for (let i = 0; i < hashes.length; i += CHECK_CHUNK) chunks.push(hashes.slice(i, i + CHECK_CHUNK));
+
+  // Bounded concurrency — the smaller chunk size means a large file
+  // now needs many more requests here; running them one at a time
+  // would add real latency (and timeout risk) on top of the upsert
+  // step that follows. Same CONCURRENCY value bulkUpsert already uses.
+  for (let i = 0; i < chunks.length; i += CONCURRENCY) {
+    const batch = chunks.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(
+      batch.map((chunk) => supabaseAdmin.from('revenue_data').select('row_hash').eq('client_id', clientId).in('row_hash', chunk))
+    );
+    for (const { data, error } of results) {
+      if (error) {
+        if (isMissingDedupColumnError(error)) {
+          console.warn('[ingestion] Dedup columns not found (migration not run?) — skipping duplicate-check for this upload:', error.message);
+          return { hashes: existing, degraded: true };
+        }
+        // Include every field the error object might have, not just
+        // .message — that field being empty is exactly what made the
+        // last failure unreadable ("Failed to check existing rows: ").
+        const detail = [error.message, error.details, error.hint, error.code].filter(Boolean).join(' | ') || JSON.stringify(error) || 'unknown error (empty error object)';
+        throw new Error(`Failed to check existing rows: ${detail}`);
       }
-      throw new Error(`Failed to check existing rows: ${error.message}`);
+      for (const r of data || []) existing.add(r.row_hash);
     }
-    for (const r of data || []) existing.add(r.row_hash);
   }
   return { hashes: existing, degraded: false };
 }
@@ -340,8 +364,6 @@ async function findExistingHashes(clientId, hashes) {
 // columns stripped out, rather than failing the whole upload over a
 // feature that isn't set up yet. Returns { processed, degraded }.
 // ═══════════════════════════════════════════════════════════════════
-const CHUNK_SIZE   = 500;
-const CONCURRENCY  = 5; // number of chunk upserts in flight at once
 const DEDUP_ONLY_COLUMNS = ['row_hash', 'order_id', 'order_item_id', 'dedup_method'];
 
 async function bulkUpsert(table, rows, conflictCols) {
