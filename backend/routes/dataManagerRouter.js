@@ -57,16 +57,22 @@ router.get('/:client_slug/uploads', rbacMiddleware, adminOnly, async (req, res) 
 router.get('/:client_slug/data/summary', rbacMiddleware, adminOnly, async (req, res) => {
   const { client } = req.semya;
 
-  const [{ data: rev, error: e1 }, { data: camp, error: e2 }] = await Promise.all([
+  const [{ data: rev, error: e1 }, { data: camp, error: e2 }, { data: uploads, error: e3 }] = await Promise.all([
     supabaseAdmin.from('revenue_data').select('platform').eq('client_id', client.id),
     supabaseAdmin.from('campaign_data').select('platform').eq('client_id', client.id),
+    supabaseAdmin.from('uploads').select('detected_platform').eq('client_id', client.id),
   ]);
 
-  if (e1 || e2) return res.status(500).json({ error: 'Failed to fetch data summary.' });
+  if (e1 || e2 || e3) return res.status(500).json({ error: 'Failed to fetch data summary.' });
 
   const summary = {};
   (rev  || []).forEach(r => { if (!summary[r.platform]) summary[r.platform] = { revenue: 0, campaign: 0 }; summary[r.platform].revenue++; });
   (camp || []).forEach(c => { if (!summary[c.platform]) summary[c.platform] = { revenue: 0, campaign: 0 }; summary[c.platform].campaign++; });
+  // Also surface platforms that have Upload History records but zero
+  // current data rows (e.g. the data was already cleared but old
+  // upload entries are still lingering) — otherwise there's no way to
+  // reach those stale records from this screen at all.
+  (uploads || []).forEach(u => { if (u.detected_platform && !summary[u.detected_platform]) summary[u.detected_platform] = { revenue: 0, campaign: 0 }; });
 
   return res.json({ summary });
 });
