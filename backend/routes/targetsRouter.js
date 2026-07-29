@@ -22,14 +22,31 @@ router.get('/:client_slug/targets', rbacMiddleware, async (req, res) => {
   const { client } = req.semya;
   const date = req.query.date || new Date().toISOString().split('T')[0];
 
-  // 1. Load saved targets for this date
-  const { data: targetRows, error: tErr } = await supabaseAdmin
+  // 1. Load targets — for EACH platform independently, the most
+  //    recently-set value on or before the requested date is what's
+  //    "in effect" (not an exact match on that exact date). A target
+  //    set once carries forward to every later date until it's
+  //    explicitly changed again, and each platform's own history is
+  //    independent — changing only Flipkart on a later date doesn't
+  //    reset Amazon/Blinkit/Website back to zero.
+  const { data: allTargetRows, error: tErr } = await supabaseAdmin
     .from('daily_targets')
-    .select('platform, revenue_target, units_target')
+    .select('platform, revenue_target, units_target, target_date')
     .eq('client_id', client.id)
-    .eq('target_date', date);
+    .lte('target_date', date)
+    .order('target_date', { ascending: false });
 
   if (tErr) return res.status(500).json({ error: 'Failed to load targets.' });
+
+  // Rows are newest-first, so the first row seen for each platform is
+  // the one currently in effect for the requested date.
+  const targetRows = [];
+  const seenPlatforms = new Set();
+  for (const row of (allTargetRows || [])) {
+    if (seenPlatforms.has(row.platform)) continue;
+    seenPlatforms.add(row.platform);
+    targetRows.push(row);
+  }
 
   // 2. Load actual revenue for the same date from revenue_data
   const { data: revenueRows, error: rErr } = await supabaseAdmin
