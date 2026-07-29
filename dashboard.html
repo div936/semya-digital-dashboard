@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- SEMYA FRONTEND BUILD: V48-targets-carry-forward -->
+<!-- SEMYA FRONTEND BUILD: V49-save-refreshes-tab -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -5633,6 +5633,7 @@ async function addSkuCost() {
     document.getElementById('skuCostPrice').value = '';
     loadSkuCosts();
     tabCache['projections_insights'] = null; // pricing changed — profit numbers need recalculating
+    refreshActiveTab();
   } catch (e) {
     alert('Failed to save: ' + e.message);
   }
@@ -5644,6 +5645,7 @@ async function deleteSkuCost(id) {
     await apiFetch('/clients/' + clientSlug + '/sku-costs/' + id, { method: 'DELETE' });
     loadSkuCosts();
     tabCache['projections_insights'] = null;
+    refreshActiveTab();
   } catch (e) { alert('Failed to delete: ' + e.message); }
 }
 
@@ -5681,6 +5683,7 @@ async function savePlatformAssumption(platform) {
       body: JSON.stringify({ platform, commission_percent, shipping_cost_flat }),
     });
     tabCache['projections_insights'] = null;
+    refreshActiveTab();
   } catch (e) {
     alert('Failed to save: ' + e.message);
   }
@@ -5688,7 +5691,7 @@ async function savePlatformAssumption(platform) {
 
 
 // ─── BOOT ─────────────────────────────────────────────────────────
-const FRONTEND_BUILD = 'V48-targets-carry-forward'; // bump alongside backend health version
+const FRONTEND_BUILD = 'V49-save-refreshes-tab'; // bump alongside backend health version
 console.log('[Semya] Frontend build:', FRONTEND_BUILD);
 
 function boot(user) {
@@ -5864,6 +5867,7 @@ async function saveTargetsFromModal() {
     if (!res.ok) throw new Error('Server returned ' + res.status);
     if (statusEl) { statusEl.textContent = '✓ Saved'; statusEl.style.color = '#059669'; }
     tabCache['daily_targets'] = null;
+    refreshActiveTab(); // re-render the tab now, not just invalidate the cache for next time
     setTimeout(() => {
       if (statusEl) statusEl.textContent = '';
       closeDailyTargetsPanel();
