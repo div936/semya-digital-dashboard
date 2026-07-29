@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- SEMYA FRONTEND BUILD: V38-onclick-quote-fix -->
+<!-- SEMYA FRONTEND BUILD: V39-stale-refresh-fix -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -3471,14 +3471,33 @@ function showTab(tabKey) {
 
   const cached = tabCache[tabKey];
   const fresh  = cached && (Date.now() - cached.timestamp < CACHE_TTL);
-  if (tabKey === 'platform_sales'      && !fresh) fetchAndRenderPS();
-  if (tabKey === 'campaign_insights'   && !fresh) fetchAndRenderCI();
-  if (tabKey === 'sku_performance'      && !fresh) fetchAndRender();
-  if (tabKey === 'geographic_analysis'  && !fresh) fetchAndRenderGEO();
-  if (tabKey === 'daily_targets'        && !fresh) fetchAndRenderDT();
-  if (tabKey === 'ai_insights'          && !fresh) { fetchAndRenderAI(); fetchAndRenderFraud(); }
-  if (tabKey === 'utm_analytics'        && !fresh) fetchAndRenderUTM();
-  if (tabKey === 'projections_insights' && !fresh) fetchAndRenderProjections();
+  if (!fresh) fetchTabData(tabKey);
+}
+
+// Fetches whichever tab's data corresponds to tabKey — shared by
+// showTab() (switching tabs) and refreshActiveTab() (re-fetching
+// after an upload/delete, without necessarily switching tabs).
+function fetchTabData(tabKey) {
+  if (tabKey === 'platform_sales')      fetchAndRenderPS();
+  if (tabKey === 'campaign_insights')   fetchAndRenderCI();
+  if (tabKey === 'sku_performance')     fetchAndRender();
+  if (tabKey === 'geographic_analysis') fetchAndRenderGEO();
+  if (tabKey === 'daily_targets')       fetchAndRenderDT();
+  if (tabKey === 'ai_insights')         { fetchAndRenderAI(); fetchAndRenderFraud(); }
+  if (tabKey === 'utm_analytics')       fetchAndRenderUTM();
+  if (tabKey === 'projections_insights') fetchAndRenderProjections();
+}
+
+// Re-fetches whatever tab is currently on screen — used after an
+// upload or delete, where the previous code always called
+// fetchAndRender() (the SKU Performance tab's specific fetch
+// function) regardless of which tab was actually being viewed, so a
+// successful upload while on any *other* tab (e.g. Platform Sales)
+// invalidated that tab's cache but never actually re-requested its
+// data — the visible numbers just silently stayed stale until the
+// user manually switched tabs away and back.
+function refreshActiveTab() {
+  if (activeTab) fetchTabData(activeTab);
 }
 
 // ─── Tab permissions / access lock ─────────────────────────────
@@ -5038,7 +5057,7 @@ async function handleUpload() {
       tabCache['geographic_analysis'] = null;
       tabCache['ai_insights']         = null;
       _sidebarCache = {};
-      fetchAndRender();
+      refreshActiveTab();
       closeDrawer();
     }, 2000);
 
@@ -5100,7 +5119,7 @@ async function switchClient(newSlug) {
   } catch (e) {
     console.warn('[client-switch] failed to load new client config:', e.message);
   }
-  fetchAndRender();
+  refreshActiveTab();
 }
 
 document.getElementById('clientSwitcher')?.addEventListener('change', (e) => switchClient(e.target.value));
@@ -5535,7 +5554,7 @@ async function savePlatformAssumption(platform) {
 
 
 // ─── BOOT ─────────────────────────────────────────────────────────
-const FRONTEND_BUILD = 'V38-onclick-quote-fix'; // bump alongside backend health version
+const FRONTEND_BUILD = 'V39-stale-refresh-fix'; // bump alongside backend health version
 console.log('[Semya] Frontend build:', FRONTEND_BUILD);
 
 function boot(user) {
@@ -6037,6 +6056,7 @@ function confirmDeleteUpload(el) {
       tabCache['geographic_analysis'] = null;
       tabCache['ai_insights']         = null;
       _sidebarCache = {};
+      refreshActiveTab();
     }
   );
 }
@@ -6066,6 +6086,7 @@ async function confirmRangeDelete() {
       closeDmConfirm();
       tabCache = {};
       _sidebarCache = {};
+      refreshActiveTab();
     }
   );
 }
@@ -6131,6 +6152,7 @@ function confirmPlatformDelete(el) {
       tabCache['geographic_analysis'] = null;
       tabCache['ai_insights']         = null;
       _sidebarCache = {};
+      refreshActiveTab();
     }
   );
 }
