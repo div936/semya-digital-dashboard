@@ -77,7 +77,7 @@ app.use('/clients', projectionsRouter);
 // ─── Health check ─────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({
   ok: true,
-  version: 'V48-targets-carry-forward',
+  version: 'V49-save-refreshes-tab',
   // Presence checks only — never the actual values. Lets you verify a
   // deployment has the right environment variables configured without
   // needing server log access. A missing ANTHROPIC_API_KEY in
