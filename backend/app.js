@@ -77,7 +77,7 @@ app.use('/clients', projectionsRouter);
 // ─── Health check ─────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({
   ok: true,
-  version: 'V46-roas-revenue-fix',
+  version: 'V47-daily-targets-grouped',
   // Presence checks only — never the actual values. Lets you verify a
   // deployment has the right environment variables configured without
   // needing server log access. A missing ANTHROPIC_API_KEY in

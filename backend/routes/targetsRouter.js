@@ -40,10 +40,14 @@ router.get('/:client_slug/targets', rbacMiddleware, async (req, res) => {
 
   if (rErr) return res.status(500).json({ error: 'Failed to load actuals.' });
 
-  // 3. Aggregate actuals by platform
+  // 3. Aggregate actuals by platform — 'amazon' folds in 'acutas' and
+  //    'meta' folds in 'google', matching the grouped Daily Targets
+  //    concept used throughout the rest of the app (Amazon = Neat
+  //    Amazon + Acutas, Website = Meta + Google combined).
+  const DT_GROUP_OF = { acutas: 'amazon', google: 'meta' };
   const actuals = {};
   for (const row of (revenueRows || [])) {
-    const p = row.platform;
+    const p = DT_GROUP_OF[row.platform] || row.platform;
     if (!actuals[p]) actuals[p] = { revenue: 0, units: 0 };
     actuals[p].revenue += Number(row.standard_revenue) || 0;
     actuals[p].units   += Number(row.standard_units)   || 0;
