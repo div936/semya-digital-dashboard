@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- SEMYA FRONTEND BUILD: V46-roas-revenue-fix -->
+<!-- SEMYA FRONTEND BUILD: V47-daily-targets-grouped -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -4110,6 +4110,15 @@ const dtState = { date: '', targets: {}, achieved: {} };
 
 const PLATFORMS_DT = ['amazon', 'flipkart', 'blinkit', 'meta'];
 
+// Daily Targets shows GROUPED labels ("Amazon" = Neat Amazon + Acutas
+// combined, "Website" = Meta + Google combined) — deliberately
+// different from PLATFORM_META's labels, which are used elsewhere to
+// show those as distinct sub-brands. Storage keys stay 'amazon'/'meta'
+// internally (no migration needed); only the display text and the
+// achieved-revenue aggregation below are group-aware.
+const DT_LABELS = { amazon: 'Amazon', flipkart: 'Flipkart', blinkit: 'Blinkit', meta: 'Website' };
+const DT_GROUP_MEMBERS = { amazon: ['amazon', 'acutas'], meta: ['meta', 'google'] };
+
 const MOCK_TARGETS = {
   amazon:   { target: 600000, achieved: 512000 },
   flipkart: { target: 200000, achieved: 198000 },
@@ -4155,6 +4164,18 @@ async function fetchAndRenderDT() {
     if (resp && resp.platforms && resp.platforms.length) {
       achieved = {};
       resp.platforms.forEach(p => { achieved[p.platform] = { revenue: p.totalRevenue, units: p.totalUnits }; });
+      // Fold sub-brand revenue into its group's bucket — platform-sales
+      // returns amazon/acutas/meta/google as separate entries, but
+      // Daily Targets only ever reads the 'amazon'/'meta' keys, so
+      // acutas and google revenue was previously counted nowhere.
+      for (const [group, members] of Object.entries(DT_GROUP_MEMBERS)) {
+        for (const member of members) {
+          if (member === group || !achieved[member]) continue;
+          if (!achieved[group]) achieved[group] = { revenue: 0, units: 0 };
+          achieved[group].revenue += achieved[member].revenue;
+          achieved[group].units   += achieved[member].units;
+        }
+      }
       isLive = true;
     }
   } catch(e) { console.warn('[DT] achieved API miss:', e.message); }
@@ -4200,7 +4221,7 @@ function renderDT(targets, achieved) {
 
   // Platform progress bars
   document.getElementById('dtPlatformProgress').innerHTML = platforms.map(p => {
-    const m        = PLATFORM_META[p] || { label: p.toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
+    const m        = { ...(PLATFORM_META[p] || { color: '#94a3b8', pillClass: 'pill-amz' }), label: DT_LABELS[p] || p.toUpperCase() };
     const tgt      = targets[p]?.target   || 0;
     const ach      = achieved[p]?.revenue || targets[p]?.achieved || 0;
     const pct      = tgt > 0 ? Math.min((ach / tgt * 100), 150) : 0;  // cap bar at 150%
@@ -5667,7 +5688,7 @@ async function savePlatformAssumption(platform) {
 
 
 // ─── BOOT ─────────────────────────────────────────────────────────
-const FRONTEND_BUILD = 'V46-roas-revenue-fix'; // bump alongside backend health version
+const FRONTEND_BUILD = 'V47-daily-targets-grouped'; // bump alongside backend health version
 console.log('[Semya] Frontend build:', FRONTEND_BUILD);
 
 function boot(user) {
@@ -5815,9 +5836,8 @@ function closeDailyTargetsPanel() {
 function populateDtModalInputs() {
   const container = document.getElementById('dtModalInputs');
   if (!container) return;
-  const PLATFORMS_DT = ['amazon', 'flipkart', 'blinkit', 'meta'];
   container.innerHTML = PLATFORMS_DT.map(p => {
-    const m   = PLATFORM_META[p] || { label: p.toUpperCase() };
+    const m   = { ...(PLATFORM_META[p] || {}), label: DT_LABELS[p] || p.toUpperCase() };
     const tgt = dtState.targets[p]?.target || 0;
     return '<div class="target-input-group"><label class="target-input-label"><span class="platform-pill ' + (PLATFORM_META[p]?.pillClass || '') + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span> Daily Target</label><div class="target-input-wrap"><span class="target-input-prefix">&#8377;</span><input type="number" class="target-input" id="dtModalTarget_' + p + '" value="' + tgt + '" min="0" step="10000" /></div></div>';
   }).join('');
@@ -5826,7 +5846,6 @@ async function saveTargetsFromModal() {
   const { clientSlug } = state; if (!clientSlug) return;
   const statusEl = document.getElementById('dtModalStatus');
   if (statusEl) { statusEl.textContent = 'Saving…'; statusEl.style.color = '#64748b'; }
-  const PLATFORMS_DT = ['amazon', 'flipkart', 'blinkit', 'meta'];
   PLATFORMS_DT.forEach(p => {
     const input = document.getElementById('dtModalTarget_' + p);
     if (input) {
