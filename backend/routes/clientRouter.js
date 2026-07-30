@@ -403,7 +403,7 @@ function aggregateCampaignInsights(campaignRows, revenueRows) {
   // ── Product-wise revenue, for the platforms in this view ───────
   const byProduct = {};
   for (const row of revenueRows) {
-    const sku = row.standard_sku || 'Unknown';
+    const sku = row.standard_sku || 'No SKU Data (ad platform)';
     const key = row.platform + '|' + sku;
     if (!byProduct[key]) byProduct[key] = { sku, platform: row.platform, revenue: 0, units: 0 };
     byProduct[key].revenue += Number(row.standard_revenue) || 0;
@@ -616,7 +616,7 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
     // different platforms can both have an unmapped/"Unknown" SKU;
     // keying by SKU alone would silently merge their revenue into a
     // single row attributed to whichever platform was seen first.
-    const sku = row.standard_sku || 'Unknown';
+    const sku = row.standard_sku || 'No SKU Data (ad platform)';
     const prodKey = p + '|' + sku;
     if (!byProduct[prodKey]) byProduct[prodKey] = { sku, platform: p, revenue: 0, units: 0 };
     byProduct[prodKey].revenue += rev;
@@ -627,7 +627,19 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
     // name is blank/unmatched). Grouped across all platforms, not
     // per-platform, since a category like "Castor Oil" is the same
     // product line regardless of which channel it sold through.
-    const category = inferCategory(row.standard_product_name, row.standard_sku);
+    //
+    // Split "Uncategorized" into two honest buckets instead of one
+    // misleading one: ad platforms like Meta report revenue at the
+    // campaign level with NO product name or SKU at all — that's not
+    // a classification failure, there's genuinely nothing to classify.
+    // A real product name/SKU that just didn't match any keyword is a
+    // different, fixable problem (the keyword list is missing a
+    // product line) and shouldn't be hidden inside the same bucket.
+    const hasProductSignal = !!(row.standard_product_name || (row.standard_sku && row.standard_sku !== 'No SKU Data (ad platform)'));
+    let category = inferCategory(row.standard_product_name, row.standard_sku);
+    if (category === 'Uncategorized' && !hasProductSignal) {
+      category = 'No Product Data (Ad Platforms)';
+    }
     if (!byCategory[category]) byCategory[category] = { category, revenue: 0, units: 0 };
     byCategory[category].revenue += rev;
     byCategory[category].units   += u;
