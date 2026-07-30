@@ -1234,7 +1234,7 @@
             <div class="sku-pill" data-ps-platform="website">Website</div>
           </div>
           <div class="status-filter-wrap" style="position:relative;">
-            <button type="button" class="sku-pill" id="psStatusFilterBtn" onclick="togglePsStatusMenu()" style="cursor:pointer;">Order status <span id="psStatusFilterCount"></span> ▾</button>
+            <button type="button" class="sku-pill" id="psStatusFilterBtn" onclick="togglePsStatusMenu()" style="cursor:pointer;appearance:none;-webkit-appearance:none;outline:none;font-family:inherit;line-height:normal;">Order status <span id="psStatusFilterCount"></span> ▾</button>
             <div id="psStatusFilterMenu" style="display:none;position:absolute;top:110%;left:0;z-index:20;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:10px 12px;min-width:230px;">
               <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">Uncheck a status to exclude it from every number below. Everything is included by default.</div>
               <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
@@ -1252,6 +1252,16 @@
               <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
                 <input type="checkbox" class="ps-status-cb" value="Shipped - Returning to Seller" checked onchange="onPsStatusChange()"> Returning to Seller
               </label>
+            </div>
+          </div>
+          <div class="status-filter-wrap" style="position:relative;">
+            <button type="button" class="sku-pill" id="psProductFilterBtn" onclick="togglePsProductMenu()" style="cursor:pointer;appearance:none;-webkit-appearance:none;outline:none;font-family:inherit;line-height:normal;">
+              <span id="psProductFilterLabel">Product: All</span> ▾
+            </button>
+            <div id="psProductFilterMenu" style="display:none;position:absolute;top:110%;left:0;z-index:20;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:8px;min-width:240px;max-height:320px;overflow-y:auto;">
+              <input type="text" id="psProductSearch" placeholder="Search product…" oninput="filterPsProductOptions(this.value)"
+                     style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--color-border);border-radius:6px;margin-bottom:6px;box-sizing:border-box;" />
+              <div id="psProductOptionsList"></div>
             </div>
           </div>
           <span class="fetch-badge loading" id="psFetchBadge" style="margin-left:auto;">
@@ -1364,7 +1374,7 @@
     <!-- SKU Selector -->
     <div class="card card-sm">
       <div class="sku-selector-bar">
-        <span class="sku-label">Viewing SKU</span>
+        <span class="sku-label">Product Name</span>
         <div class="sku-custom-wrap" id="skuCustomWrap">
           <div class="sku-custom-trigger" id="skuCustomTrigger" onclick="toggleSkuDropdown(event)">
             <span id="skuCustomLabel">Loading SKUs…</span>
@@ -1630,6 +1640,11 @@
         <div class="card-header">
           <span class="card-title">All Campaigns</span>
           <span class="card-badge">Detailed</span>
+        </div>
+        <div style="margin-bottom:10px;position:relative;max-width:280px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="ciCampaignSearch" placeholder="Search campaign name…" oninput="filterCICampaignTable(this.value)"
+                 style="width:100%;padding:7px 10px 7px 30px;font-size:12px;border:1px solid var(--color-border);border-radius:8px;background:var(--color-surface-2);color:var(--theme-text);" />
         </div>
         <div class="table-wrap">
           <table>
@@ -3509,7 +3524,16 @@ async function fetchAndRender() {
 
   // Fall back — don't wipe existing SKU list on empty result
   if (!revenueData) {
-    revenueData  = null;
+    // IMPORTANT: was previously set to `null` here, then passed straight
+    // into renderKPIs/renderCities/etc below, which read
+    // revenueData.prevRevenue etc — that throws on null, and since it's
+    // outside the try/catch above, it silently crashed the whole
+    // function before ever reaching setBadge(). That's why platforms
+    // with no uploaded data (e.g. Website) got stuck on "Loading…"
+    // forever instead of showing "No data — upload a file". Using a
+    // valid empty shape here instead of null fixes that for every
+    // platform, not just Website.
+    revenueData  = { totalRevenue: 0, totalUnits: 0, cities: [], byPlatform: [], weekly: [], monthly: [], yearly: [], prevRevenue: 0, prevUnits: 0 };
     campaignRows = [];
     if (!_skuOptions.length) populateSkuDropdown([]); // only call if truly empty
   }
@@ -3658,7 +3682,7 @@ function updateSidebarForTab(tabKey) {
 // ═══════════════════════════════════════════════════════════════════
 // PLATFORM SALES
 // ═══════════════════════════════════════════════════════════════════
-const psState = { platform: '', dateFrom: '', dateTo: '', trendPeriod: 'week', excludeStatuses: [], _lastData: null };
+const psState = { platform: '', dateFrom: '', dateTo: '', trendPeriod: 'week', excludeStatuses: [], category: '', _lastData: null };
 
 const MOCK_PS = {
   platforms: [
@@ -3684,11 +3708,23 @@ const MOCK_PS = {
 function togglePsStatusMenu() {
   const m = document.getElementById('psStatusFilterMenu');
   if (m) m.style.display = m.style.display === 'none' ? 'block' : 'none';
+  const pm = document.getElementById('psProductFilterMenu');
+  if (pm) pm.style.display = 'none';
+}
+function togglePsProductMenu() {
+  const m = document.getElementById('psProductFilterMenu');
+  if (m) m.style.display = m.style.display === 'none' ? 'block' : 'none';
+  const sm = document.getElementById('psStatusFilterMenu');
+  if (sm) sm.style.display = 'none';
 }
 document.addEventListener('click', function(e) {
-  const wrap = document.querySelector('.status-filter-wrap');
-  const menu = document.getElementById('psStatusFilterMenu');
-  if (wrap && menu && !wrap.contains(e.target)) menu.style.display = 'none';
+  // Fixed: was querySelector (singular) — only closed whichever
+  // .status-filter-wrap happened to be found first, leaving the other
+  // dropdown (status vs product) stuck open when clicking outside it.
+  document.querySelectorAll('.status-filter-wrap').forEach(wrap => {
+    const menu = wrap.querySelector('div[id$="FilterMenu"]');
+    if (menu && !wrap.contains(e.target)) menu.style.display = 'none';
+  });
 });
 function onPsStatusChange() {
   // Unchecked box = excluded status. Checked (default) = included, same
@@ -3699,6 +3735,38 @@ function onPsStatusChange() {
   psState.excludeStatuses = unchecked;
   const countEl = document.getElementById('psStatusFilterCount');
   if (countEl) countEl.textContent = unchecked.length ? `(${unchecked.length} hidden)` : '';
+  tabCache['platform_sales'] = null;
+  fetchAndRenderPS();
+}
+
+// ── Product/category filter ─────────────────────────────────────
+let _psAllCategories = []; // full list, populated from availableCategories on first live fetch
+
+function populatePsProductOptions(categories) {
+  _psAllCategories = categories || [];
+  renderPsProductOptions(_psAllCategories);
+}
+
+function renderPsProductOptions(categories) {
+  const list = document.getElementById('psProductOptionsList');
+  if (!list) return;
+  const rows = ['<div class="sku-custom-option' + (psState.category ? '' : ' selected') + '" onclick="selectPsProduct(\'\')" style="padding:6px 8px;font-size:12.5px;cursor:pointer;border-radius:6px;' + (psState.category ? '' : 'background:#eff6ff;color:var(--theme-primary);font-weight:600;') + '">All products</div>']
+    .concat(categories.map(cat =>
+      '<div class="sku-custom-option' + (psState.category === cat ? ' selected' : '') + '" onclick="selectPsProduct(\'' + cat.replace(/'/g, "\\'") + '\')" style="padding:6px 8px;font-size:12.5px;cursor:pointer;border-radius:6px;' +
+      (psState.category === cat ? 'background:#eff6ff;color:var(--theme-primary);font-weight:600;' : '') + '">' + cat + '</div>'
+    ));
+  list.innerHTML = rows.join('');
+}
+
+function filterPsProductOptions(term) {
+  const t = (term || '').toLowerCase();
+  renderPsProductOptions(t ? _psAllCategories.filter(c => c.toLowerCase().includes(t)) : _psAllCategories);
+}
+
+function selectPsProduct(category) {
+  psState.category = category;
+  document.getElementById('psProductFilterLabel').textContent = category ? ('Product: ' + category) : 'Product: All';
+  document.getElementById('psProductFilterMenu').style.display = 'none';
   tabCache['platform_sales'] = null;
   fetchAndRenderPS();
 }
@@ -3717,10 +3785,12 @@ async function fetchAndRenderPS() {
   if (psState.dateFrom) qp.set('from', psState.dateFrom);
   if (psState.dateTo)   qp.set('to',   psState.dateTo);
   if (psState.excludeStatuses.length) qp.set('excludeStatuses', psState.excludeStatuses.join(','));
+  if (psState.category) qp.set('category', psState.category);
   const q = qp.toString() ? '?' + qp.toString() : '';
   let data = null; let isLive = false;
   try {
     const resp = await apiFetch('/clients/' + clientSlug + '/platform-sales' + q);
+    if (resp && resp.availableCategories) populatePsProductOptions(resp.availableCategories);
     if (resp && resp.platforms && resp.platforms.length) { data = resp; isLive = true; }
   } catch(e) { console.warn('[PS]', e.message); }
   // If primary endpoint returned empty (possible status filter mismatch), also try raw sku data
@@ -3964,6 +4034,36 @@ async function fetchAndRenderCI() {
   setBadgeCI(isLive ? 'live' : 'empty');
 }
 
+// Cache of the last-loaded All Campaigns list (sorted by revenue), so the
+// search box can filter client-side without a new API call.
+let _ciAllCampaignsSorted = [];
+
+function renderCICampaignRows(searchTerm) {
+  const ciTbody = document.getElementById('ciCampaignTbody');
+  if (!ciTbody) return;
+  const term = (searchTerm || '').trim().toLowerCase();
+  const rows = term
+    ? _ciAllCampaignsSorted.filter(c => (c.campaign_name || '').toLowerCase().includes(term))
+    : _ciAllCampaignsSorted;
+
+  if (!rows.length) {
+    ciTbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#94a3b8;font-size:12px;padding:20px 0;">' +
+      (term ? 'No campaigns match "' + searchTerm + '".' : 'No campaign data for this selection.') +
+      '</td></tr>';
+    return;
+  }
+  ciTbody.innerHTML = rows.map(c => {
+    const m    = PLATFORM_META[c.platform] || { label: (c.platform||'').toUpperCase(), pillClass: 'pill-amz' };
+    const roas = c.standard_spend > 0 ? c.standard_revenue/c.standard_spend : 0;
+    const ctr  = c.standard_impressions > 0 ? (c.standard_clicks/c.standard_impressions*100) : 0;
+    return '<tr><td><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></td><td style="font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (c.campaign_name||'—') + '</td><td style="font-family:var(--font-mono);font-size:11px;">' + fmtRevenue(c.standard_spend||0) + '</td><td style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--theme-primary);">' + fmtRevenue(c.standard_revenue||0) + '</td><td><span style="font-weight:700;color:' + roasColor(roas) + ';font-family:var(--font-mono);font-size:11px;">' + (roas > 0 ? fmtRoas(roas) : '—') + '</span></td><td style="font-family:var(--font-mono);font-size:11px;">' + (c.standard_clicks||0).toLocaleString('en-IN') + '</td><td style="font-family:var(--font-mono);font-size:11px;color:#94a3b8;">' + (c.standard_impressions||0).toLocaleString('en-IN') + '</td><td style="font-family:var(--font-mono);font-size:11px;">' + ctr.toFixed(2) + '%</td></tr>';
+  }).join('');
+}
+
+function filterCICampaignTable(term) {
+  renderCICampaignRows(term);
+}
+
 function renderCI(payload) {
   const campaigns = payload.campaigns || [];
   const totalSpend  = payload.totalSpend  != null ? payload.totalSpend  : campaigns.reduce((s, c) => s + (c.standard_spend || 0), 0);
@@ -4025,13 +4125,11 @@ function renderCI(payload) {
   }).join('');
 
   const ciTbody = document.getElementById('ciCampaignTbody');
-  const sorted  = [...campaigns].sort((a,b) => (b.standard_revenue||0)-(a.standard_revenue||0));
-  ciTbody.innerHTML = sorted.map(c => {
-    const m    = PLATFORM_META[c.platform] || { label: (c.platform||'').toUpperCase(), pillClass: 'pill-amz' };
-    const roas = c.standard_spend > 0 ? c.standard_revenue/c.standard_spend : 0;
-    const ctr  = c.standard_impressions > 0 ? (c.standard_clicks/c.standard_impressions*100) : 0;
-    return '<tr><td><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></td><td style="font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (c.campaign_name||'—') + '</td><td style="font-family:var(--font-mono);font-size:11px;">' + fmtRevenue(c.standard_spend||0) + '</td><td style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--theme-primary);">' + fmtRevenue(c.standard_revenue||0) + '</td><td><span style="font-weight:700;color:' + roasColor(roas) + ';font-family:var(--font-mono);font-size:11px;">' + (roas > 0 ? fmtRoas(roas) : '—') + '</span></td><td style="font-family:var(--font-mono);font-size:11px;">' + (c.standard_clicks||0).toLocaleString('en-IN') + '</td><td style="font-family:var(--font-mono);font-size:11px;color:#94a3b8;">' + (c.standard_impressions||0).toLocaleString('en-IN') + '</td><td style="font-family:var(--font-mono);font-size:11px;">' + ctr.toFixed(2) + '%</td></tr>';
-  }).join('');
+  _ciAllCampaignsSorted = [...campaigns].sort((a,b) => (b.standard_revenue||0)-(a.standard_revenue||0));
+  // Re-apply whatever search term is currently in the box (if the user
+  // was mid-search when new data loaded, e.g. after a platform toggle)
+  const existingSearch = document.getElementById('ciCampaignSearch');
+  renderCICampaignRows(existingSearch ? existingSearch.value : '');
 
   // ── Fulfilment channel split (Amazon FBA vs Merchant) ──────────
   // Only meaningful when the revenue-side data actually carries the

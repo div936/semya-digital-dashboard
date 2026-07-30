@@ -181,7 +181,26 @@ router.get(
       ? new Set(req.query.excludeStatuses.split(',').map(s => s.trim()).filter(Boolean))
       : new Set();
 
-    const summary = aggregatePlatformSales(data, excludeStatuses);
+    // `category` is an optional filter that scopes the ENTIRE response
+    // (KPIs, trend chart, platform split, top products) to a single
+    // inferred product category — not just a display list. Uses the
+    // same inferCategory() as Revenue by Category, so the filter and
+    // the chart it's driven from always agree.
+    const categoryFilter = req.query.category || null;
+    const dataForSummary = categoryFilter
+      ? data.filter(row => inferCategory(row.standard_product_name, row.standard_sku) === categoryFilter)
+      : data;
+
+    const summary = aggregatePlatformSales(dataForSummary, excludeStatuses);
+    // Dropdown needs the FULL category list regardless of which one is
+    // currently selected — computed from unfiltered `data`, not
+    // dataForSummary, so the options never shrink to just the active one.
+    if (categoryFilter) {
+      const unfilteredSummary = aggregatePlatformSales(data, excludeStatuses);
+      summary.availableCategories = unfilteredSummary.categories.map(c => c.category);
+    } else {
+      summary.availableCategories = summary.categories.map(c => c.category);
+    }
     return res.json(summary);
   }
 );
