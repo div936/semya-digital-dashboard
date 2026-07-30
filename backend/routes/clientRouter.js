@@ -14,7 +14,7 @@ import { Router } from 'express';
 import { rbacMiddleware, requireTab } from '../middleware/rbac.js';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { detectSuspiciousPatterns } from '../lib/fraudDetector.js';
-import { backfillLocationByOrder, normaliseStateName } from '../lib/columnMapper.js';
+import { backfillLocationByOrder, normaliseStateName, inferCategory } from '../lib/columnMapper.js';
 
 const router = Router({ mergeParams: true });
 
@@ -163,7 +163,7 @@ router.get(
         // standard_sku added so Platform Sales can show a real
         // product-wise breakdown instead of bucketing everything
         // into "Unknown".
-        .select('platform, order_date, standard_revenue, standard_units, standard_status, standard_sku')
+        .select('platform, order_date, standard_revenue, standard_units, standard_status, standard_sku, standard_product_name')
         .eq('client_id', client.id)
         .range(from, to);
       if (req.query.from)      q = q.or(`order_date.gte.${req.query.from},order_date.is.null`);
@@ -518,6 +518,7 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
   const byWeek     = {};
   const byMonth    = {};
   const byYear     = {};
+  const byCategory = {};
   const byProduct  = {};
 
   const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -574,6 +575,16 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
     if (!byProduct[prodKey]) byProduct[prodKey] = { sku, platform: p, revenue: 0, units: 0 };
     byProduct[prodKey].revenue += rev;
     byProduct[prodKey].units   += u;
+
+    // Category — ported keyword inference from the old dashboard, run
+    // against the product name (falls back to SKU internally if the
+    // name is blank/unmatched). Grouped across all platforms, not
+    // per-platform, since a category like "Castor Oil" is the same
+    // product line regardless of which channel it sold through.
+    const category = inferCategory(row.standard_product_name, row.standard_sku);
+    if (!byCategory[category]) byCategory[category] = { category, revenue: 0, units: 0 };
+    byCategory[category].revenue += rev;
+    byCategory[category].units   += u;
   }
 
   const platforms  = Object.values(byPlatform);
@@ -594,6 +605,9 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 10);
 
+  const categories = Object.values(byCategory)
+    .sort((a, b) => b.revenue - a.revenue);
+
   return {
     grandTotal,
     prevGrandTotal: grandTotal * 0.82,
@@ -602,6 +616,7 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
     monthly,
     yearly,
     topProducts,
+    categories,
     platforms: platforms.map((p) => ({
       ...p,
       sharePercent: grandTotal > 0 ? +((p.totalRevenue / grandTotal) * 100).toFixed(1) : 0,

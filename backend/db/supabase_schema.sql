@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS revenue_data (
   standard_state    TEXT,
   standard_status   TEXT,
   standard_fulfillment_channel TEXT,  -- e.g. 'Amazon' (FBA) vs 'Merchant' — Amazon-only dimension
+  standard_product_name TEXT,  -- full product name/title, kept separate from standard_sku; used for category inference
   raw_extras        JSONB DEFAULT '{}'::JSONB,  -- leftover unmapped columns
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

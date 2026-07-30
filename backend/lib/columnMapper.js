@@ -40,12 +40,16 @@ export const REVENUE_MAP = {
   'product id':                 'standard_sku',
   'lineitem sku':               'standard_sku',   // Shopify order export
 
-  // Low-priority SKU fallbacks — only used when a file has NO real
-  // SKU/ASIN/ID column at all (e.g. Blinkit exports, which sometimes
-  // only give a product name). Kept in a separate map, not REVENUE_MAP
-  // itself, so normaliseRow can prefer a real SKU column over these
-  // regardless of which column happens to appear first in the file.
-  // See FALLBACK_SKU_MAP below and its use in normaliseRow().
+  // Product name/title, captured as its own field regardless of whether
+  // a real SKU also exists. Needed for category inference (see
+  // inferCategory() below) — a short SKU code alone rarely contains
+  // enough signal to guess a product category from.
+  'product name':               'standard_product_name',
+  'product title':               'standard_product_name',
+
+  // Note: SKU fallback (using the product name/title as standard_sku
+  // when no real SKU column exists) is now handled in normaliseRow()
+  // directly from standard_product_name above — see below.
 
   // ── Revenue / Sales amount ────────────────────────────────────
   'item price':                 'standard_revenue',
@@ -148,19 +152,81 @@ export const REVENUE_MAP = {
 };
 
 // ═══════════════════════════════════════════════════════════════════
-// FALLBACK SKU MAP
-// Only consulted by normaliseRow() when a row has no value from any
-// real SKU-like column (asin/sku/seller sku/item id/etc). Some
-// platforms (Blinkit in particular) only export a product name/title,
-// no short code — in that case, using the name as the "SKU" is the
-// best available option. But when a file DOES have a real short SKU
-// alongside a separate title/description column, the short SKU should
-// always win, regardless of which column comes first in the file.
+// CATEGORY INFERENCE
+// Ported directly from the old dashboard's CATEGORY_KEYWORDS /
+// infer_category() (main.py) so both dashboards classify products into
+// the same categories from the same source data. Matching is
+// case-insensitive substring search against the product name first,
+// falling back to the SKU if the name is blank or unmatched — same
+// order and same keyword lists as the original, kept in sync
+// deliberately. Extend both together if a new product line is added.
 // ═══════════════════════════════════════════════════════════════════
-export const FALLBACK_SKU_MAP = {
-  'product name':  'standard_sku',
-  'product title': 'standard_sku',
-};
+export const CATEGORY_KEYWORDS = [
+  ['Castor & Senna Capsules', ['castromix', 'castor & senna', 'castor and senna']],
+  ['Castor Oil',              ['castor oil', 'erand oil', 'arandi']],
+  ['Coconut Oil',             ['coconut oil']],
+  ['Mustard Oil',             ['mustard oil']],
+  ['Almond Oil',              ['almond oil', 'badam oil']],
+  ['Black Sesame Oil',        ['black sesame', 'til oil']],
+  ['Sesame Oil',              ['sesame oil']],
+  ['Olive Oil',               ['olive oil']],
+  ['Walnut Oil',              ['walnut oil', 'akhrot']],
+  ['Pistachio Oil',           ['pistachio oil']],
+  ['Wheat Germ Oil',          ['wheat germ']],
+  ['Garlic Oil',              ['garlic oil']],
+  ['Neem Seed Oil',           ['neem seed oil', 'neem oil']],
+  ['Kalonji / Black Seed Oil',['kalonji', 'black seed oil', 'nigella']],
+  ['Fenugreek Oil',           ['fenugreek', 'methi']],
+  ['Flaxseed Oil',            ['flaxseed', 'flax seed']],
+  ['Evening Primrose Oil',    ['evening primrose', 'primrose oil']],
+  ['Omega 3-6-9',             ['omega 3-6-9', 'omega-3-6-9', 'omega 3 6 9', 'vegan omega']],
+  ['Aloe Vera Gel',           ['aloe vera']],
+  ['Rose Water',              ['rose water', 'gulab jal', 'pushkar rose']],
+  ['Immunity Booster',        ['immunity booster', 'immunity combo', 'immunty']],
+  ['Brahmi Capsules',         ['brahmi']],
+  ['Ashwagandha Capsules',    ['ashwagandha']],
+  ['Triphala Capsules',       ['triphala']],
+  ['Turmeric Capsules',       ['turmeric & a2', 'turmeric oil']],
+  ['Hair Care',               ['hair & scalp', 'hairfall rescue', 'hair growth oil', 'kesh amrit',
+                                'anti-dandruff', 'overnight hair', 'hair strength']],
+  ['Combo / Gift Set',        ['combo', 'bliss box', 'glow aura', 'poshak shakti',
+                                'wellness power', 'skin & detox', 'hormonal balance',
+                                'gut health', 'active life', 'diy lip']],
+];
+
+export const SKU_CATEGORY_KEYWORDS = [
+  ['Castor & Senna Capsules', ['cm-b', 'cm-j', 'cm-mb']],
+  ['Castor Oil',              ['co-200ml', 'co-500ml', 'co-b-', 'co-pack', 'fba-co', 'nt-castor']],
+  ['Coconut Oil',             ['exvrgncocnt']],
+  ['Mustard Oil',             ['ylmustoil']],
+  ['Almond Oil',              ['almndoil']],
+  ['Black Sesame Oil',        ['blksesmoil']],
+  ['Walnut Oil',              ['wlntoil']],
+  ['Pistachio Oil',           ['pstachoil']],
+  ['Wheat Germ Oil',          ['whtgemoil', 'wgo-b']],
+  ['Garlic Oil',              ['garlic', 'go-b']],
+  ['Neem Seed Oil',           ['neem', 'nso-b']],
+  ['Kalonji / Black Seed Oil',['kalnji', 'klo-b']],
+  ['Fenugreek Oil',           ['fengrk', 'fo-b']],
+  ['Flaxseed Oil',            ['flxseed', 'fso-b']],
+  ['Evening Primrose Oil',    ['prmrose', 'pro-b']],
+  ['Omega 3-6-9',             ['omega-369']],
+  ['Aloe Vera Gel',           ['aloevera', 'ag-t']],
+  ['Rose Water',              ['prw-']],
+  ['Immunity Booster',        ['immunty', 'imb-b', 'ib-tg']],
+];
+
+export function inferCategory(productName, sku) {
+  const nameLower = (productName || '').toLowerCase();
+  for (const [category, keywords] of CATEGORY_KEYWORDS) {
+    if (keywords.some(kw => nameLower.includes(kw))) return category;
+  }
+  const skuLower = (sku || '').toLowerCase();
+  for (const [category, keywords] of SKU_CATEGORY_KEYWORDS) {
+    if (keywords.some(kw => skuLower.includes(kw))) return category;
+  }
+  return 'Uncategorized';
+}
 
 
 // ═══════════════════════════════════════════════════════════════════
@@ -467,7 +533,6 @@ export function normaliseStateName(raw) {
 export function normaliseRow(rawRow, map) {
   const standardFields = {};
   const rawExtras = {};
-  const fallbackCandidates = {}; // low-priority sku fallbacks, applied only if no real SKU found
 
   for (const [rawKey, rawValue] of Object.entries(rawRow)) {
     const target = resolveKey(map, rawKey);
@@ -477,16 +542,6 @@ export function normaliseRow(rawRow, map) {
       if (standardFields[target] === undefined) {
         standardFields[target] = coerceValue(target, rawValue);
       }
-    } else if (map === REVENUE_MAP && FALLBACK_SKU_MAP[normaliseHeaderKey(rawKey)]) {
-      // Real SKU-like columns are handled above via REVENUE_MAP. This
-      // branch only catches product name/title columns, held back
-      // until we know whether a real SKU value showed up anywhere else
-      // in this row (see below) — so a long product title never wins
-      // over an actual SKU/ASIN just because of column order.
-      if (fallbackCandidates.standard_sku === undefined) {
-        fallbackCandidates.standard_sku = coerceValue('standard_sku', rawValue);
-      }
-      rawExtras[rawKey] = rawValue; // keep it visible in raw_extras too
     } else {
       // Unmapped column — store in raw_extras for AI insight generator
       // (this is also where buyer name/phone/address live — see
@@ -495,10 +550,13 @@ export function normaliseRow(rawRow, map) {
     }
   }
 
-  // Only fall back to product name/title as the SKU when this row had
-  // no real SKU/ASIN/item-id column at all.
-  if (standardFields.standard_sku === undefined && fallbackCandidates.standard_sku !== undefined) {
-    standardFields.standard_sku = fallbackCandidates.standard_sku;
+  // SKU fallback: only when this row had no real SKU/ASIN/item-id column
+  // at all, fall back to the product name/title (now captured separately
+  // as standard_product_name above) — so a long descriptive title never
+  // wins over an actual short SKU just because of column order, but is
+  // still available as a last resort when no real SKU exists.
+  if (map === REVENUE_MAP && standardFields.standard_sku === undefined && standardFields.standard_product_name !== undefined) {
+    standardFields.standard_sku = standardFields.standard_product_name;
   }
 
   return { standardFields, rawExtras };
