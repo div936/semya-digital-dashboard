@@ -38,9 +38,14 @@ export const REVENUE_MAP = {
   'item id':                    'standard_sku',
   'listing id':                 'standard_sku',
   'product id':                 'standard_sku',
-  'product name':               'standard_sku',   // Blinkit fallback
-  'product title':              'standard_sku',
   'lineitem sku':               'standard_sku',   // Shopify order export
+
+  // Low-priority SKU fallbacks — only used when a file has NO real
+  // SKU/ASIN/ID column at all (e.g. Blinkit exports, which sometimes
+  // only give a product name). Kept in a separate map, not REVENUE_MAP
+  // itself, so normaliseRow can prefer a real SKU column over these
+  // regardless of which column happens to appear first in the file.
+  // See FALLBACK_SKU_MAP below and its use in normaliseRow().
 
   // ── Revenue / Sales amount ────────────────────────────────────
   'item price':                 'standard_revenue',
@@ -140,6 +145,21 @@ export const REVENUE_MAP = {
   'fulfilment channel':         'standard_fulfillment_channel',
   'fulfillment-channel':        'standard_fulfillment_channel',
   'fulfilled-by':               'standard_fulfillment_channel',
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// FALLBACK SKU MAP
+// Only consulted by normaliseRow() when a row has no value from any
+// real SKU-like column (asin/sku/seller sku/item id/etc). Some
+// platforms (Blinkit in particular) only export a product name/title,
+// no short code — in that case, using the name as the "SKU" is the
+// best available option. But when a file DOES have a real short SKU
+// alongside a separate title/description column, the short SKU should
+// always win, regardless of which column comes first in the file.
+// ═══════════════════════════════════════════════════════════════════
+export const FALLBACK_SKU_MAP = {
+  'product name':  'standard_sku',
+  'product title': 'standard_sku',
 };
 
 
@@ -447,6 +467,7 @@ export function normaliseStateName(raw) {
 export function normaliseRow(rawRow, map) {
   const standardFields = {};
   const rawExtras = {};
+  const fallbackCandidates = {}; // low-priority sku fallbacks, applied only if no real SKU found
 
   for (const [rawKey, rawValue] of Object.entries(rawRow)) {
     const target = resolveKey(map, rawKey);
@@ -456,12 +477,28 @@ export function normaliseRow(rawRow, map) {
       if (standardFields[target] === undefined) {
         standardFields[target] = coerceValue(target, rawValue);
       }
+    } else if (map === REVENUE_MAP && FALLBACK_SKU_MAP[normaliseHeaderKey(rawKey)]) {
+      // Real SKU-like columns are handled above via REVENUE_MAP. This
+      // branch only catches product name/title columns, held back
+      // until we know whether a real SKU value showed up anywhere else
+      // in this row (see below) — so a long product title never wins
+      // over an actual SKU/ASIN just because of column order.
+      if (fallbackCandidates.standard_sku === undefined) {
+        fallbackCandidates.standard_sku = coerceValue('standard_sku', rawValue);
+      }
+      rawExtras[rawKey] = rawValue; // keep it visible in raw_extras too
     } else {
       // Unmapped column — store in raw_extras for AI insight generator
       // (this is also where buyer name/phone/address live — see
       // extractIdentity() above)
       rawExtras[rawKey] = rawValue;
     }
+  }
+
+  // Only fall back to product name/title as the SKU when this row had
+  // no real SKU/ASIN/item-id column at all.
+  if (standardFields.standard_sku === undefined && fallbackCandidates.standard_sku !== undefined) {
+    standardFields.standard_sku = fallbackCandidates.standard_sku;
   }
 
   return { standardFields, rawExtras };
