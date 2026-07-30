@@ -46,6 +46,7 @@ export const REVENUE_MAP = {
   // enough signal to guess a product category from.
   'product name':               'standard_product_name',
   'product title':               'standard_product_name',
+  'lineitem name':              'standard_product_name',   // Shopify order export (Meta/Instagram Shop) — was missing entirely, root cause of Meta rows showing no product name
 
   // Note: SKU fallback (using the product name/title as standard_sku
   // when no real SKU column exists) is now handled in normaliseRow()
