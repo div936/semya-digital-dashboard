@@ -2556,23 +2556,22 @@
     </div>
 
     <div style="font-size:12px;color:#64748b;line-height:1.6;">
-      Files are automatically routed to the correct database table based on their filename prefix.
+      Files are automatically routed to the correct database table based on their filename prefix. Select up to 5 files at once.
     </div>
 
     <!-- File picker -->
-    <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+    <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()"
+         ondragover="event.preventDefault(); this.style.borderColor='#0284c7'; this.style.background='#eff6ff';"
+         ondragleave="this.style.borderColor=''; this.style.background='';"
+         ondrop="handleFilesDropped(event)">
       <div class="drop-zone-icon">📂</div>
-      <p id="dropZoneText">Drop your <strong>.xlsx</strong> or <strong>.csv</strong> here</p>
+      <p id="dropZoneText">Drop up to <strong>5</strong> <strong>.xlsx</strong> or <strong>.csv</strong> files here</p>
       <p style="font-size:10px;margin-top:4px;" id="dropZoneSubtext">or click to browse</p>
-      <input type="file" id="fileInput" accept=".xlsx,.csv" style="display:none;" onchange="handleFileSelected(this)">
+      <input type="file" id="fileInput" accept=".xlsx,.csv" multiple style="display:none;" onchange="handleFileSelected(this)">
     </div>
 
-    <!-- Selected file display -->
-    <div id="selectedFileInfo" style="display:none;padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">
-      <div style="font-size:11px;font-weight:700;color:#059669;margin-bottom:3px;">File selected:</div>
-      <div id="selectedFileName" style="font-size:12px;color:#1e293b;font-weight:600;word-break:break-all;"></div>
-      <div id="selectedFileSize" style="font-size:10px;color:#64748b;margin-top:2px;"></div>
-    </div>
+    <!-- Selected files list (up to 5) -->
+    <div id="selectedFileInfo" style="display:none;display:flex;flex-direction:column;gap:6px;"></div>
 
     <!-- Upload status -->
     <div id="uploadStatus" style="display:none;padding:10px 14px;border-radius:8px;font-size:12px;font-weight:600;"></div>
@@ -2591,9 +2590,12 @@
       </div>
     </div>
 
-    <button class="btn btn-primary" id="uploadBtn" onclick="handleUpload()" style="width:100%;justify-content:center;padding:12px;margin-top:auto;">
+    <!-- Per-file upload progress (populated during handleUploadAll) -->
+    <div id="uploadProgressList" style="display:none;display:flex;flex-direction:column;gap:6px;"></div>
+
+    <button class="btn btn-primary" id="uploadBtn" onclick="handleUploadAll()" style="width:100%;justify-content:center;padding:12px;margin-top:auto;">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      Upload & Merge
+      <span id="uploadBtnLabel">Upload & Merge</span>
     </button>
   </div>
 </div>
@@ -5083,37 +5085,121 @@ function lineChartOptions(prefix, suffix, decimals) {
 
 
 // ─── FILE UPLOAD HANDLER ──────────────────────────────────────────
-function handleFileSelected(input) {
-  const file = input.files[0];
-  if (!file) return;
+let selectedFiles = []; // up to 5 File objects, populated by picker or drag-drop
 
-  // Show file info
-  const info = document.getElementById('selectedFileInfo');
-  const name = document.getElementById('selectedFileName');
-  const size = document.getElementById('selectedFileSize');
+function handleFilesDropped(e) {
+  e.preventDefault();
   const zone = document.getElementById('dropZone');
-  const status = document.getElementById('uploadStatus');
-
-  name.textContent = file.name;
-  size.textContent = (file.size / 1024).toFixed(1) + ' KB';
-  info.style.display = 'block';
-  status.style.display = 'none';
-  zone.style.borderColor = '#059669';
-  zone.style.background  = '#f0fdf4';
+  zone.style.borderColor = '';
+  zone.style.background  = '';
+  const files = Array.from(e.dataTransfer.files || []).filter(f => /\.(xlsx|csv)$/i.test(f.name));
+  setSelectedFiles(files);
 }
 
-async function handleUpload() {
-  const input  = document.getElementById('fileInput');
-  const file   = input.files[0];
-  const btn    = document.getElementById('uploadBtn');
-  const status = document.getElementById('uploadStatus');
+function handleFileSelected(input) {
+  setSelectedFiles(Array.from(input.files || []));
+}
 
-  if (!file) {
+function setSelectedFiles(files) {
+  const status = document.getElementById('uploadStatus');
+  if (files.length > 5) {
     status.style.display = 'block';
     status.style.background = '#fef2f2';
     status.style.border = '1px solid #fecaca';
     status.style.color  = '#dc2626';
-    status.textContent  = 'Please select a file first.';
+    status.textContent  = 'You can upload up to 5 files at a time — only the first 5 were kept.';
+    files = files.slice(0, 5);
+  } else {
+    status.style.display = 'none';
+  }
+  selectedFiles = files;
+
+  const info = document.getElementById('selectedFileInfo');
+  const zone = document.getElementById('dropZone');
+  if (!files.length) {
+    info.style.display = 'none';
+    zone.style.borderColor = '';
+    zone.style.background  = '';
+    return;
+  }
+  info.style.display = 'flex';
+  zone.style.borderColor = '#059669';
+  zone.style.background  = '#f0fdf4';
+  info.innerHTML = files.map((f, i) =>
+    '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">' +
+      '<div style="min-width:0;">' +
+        '<div style="font-size:12px;color:#1e293b;font-weight:600;word-break:break-all;">' + f.name + '</div>' +
+        '<div style="font-size:10px;color:#64748b;margin-top:1px;">' + (f.size / 1024).toFixed(1) + ' KB</div>' +
+      '</div>' +
+      '<button type="button" onclick="removeSelectedFile(' + i + ')" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:14px;padding:2px 6px;">✕</button>' +
+    '</div>'
+  ).join('');
+  document.getElementById('uploadBtnLabel').textContent =
+    files.length === 1 ? 'Upload & Merge' : 'Upload & Merge ' + files.length + ' Files';
+}
+
+function removeSelectedFile(idx) {
+  selectedFiles.splice(idx, 1);
+  setSelectedFiles(selectedFiles);
+  // Also clear the underlying input so re-picking the same file re-fires onchange
+  const input = document.getElementById('fileInput');
+  if (input) input.value = '';
+}
+
+// Uploads one file via the existing single-file backend endpoint — the
+// backend already routes purely by filename prefix, so no backend change
+// is needed to support multiple files; we just call this once per file.
+async function uploadOneFile(file, clientSlug) {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const freshToken = await getFreshToken();
+  if (!freshToken) throw new Error('SESSION_EXPIRED');
+
+  let res = await fetch(API_BASE + '/clients/' + clientSlug + '/upload', {
+    method:      'POST',
+    headers:     { 'Authorization': 'Bearer ' + freshToken },
+    credentials: 'include',
+    body:        formData,
+  });
+
+  if (res.status === 401) {
+    console.warn('[upload] 401 received, refreshing token and retrying...', file.name);
+    if (window._supabaseClient) {
+      const { data: refreshed } = await window._supabaseClient.auth.refreshSession();
+      if (refreshed?.session?.access_token) {
+        const newToken = refreshed.session.access_token;
+        localStorage.setItem(TOKEN_KEY, newToken);
+        const retryForm = new FormData();
+        retryForm.append('file', file);
+        res = await fetch(API_BASE + '/clients/' + clientSlug + '/upload', {
+          method:      'POST',
+          headers:     { 'Authorization': 'Bearer ' + newToken },
+          credentials: 'include',
+          body:        retryForm,
+        });
+      } else {
+        throw new Error('SESSION_EXPIRED');
+      }
+    }
+  }
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Upload failed');
+  return data;
+}
+
+async function handleUploadAll() {
+  const btn    = document.getElementById('uploadBtn');
+  const status = document.getElementById('uploadStatus');
+  const progressList = document.getElementById('uploadProgressList');
+
+  if (!selectedFiles.length) {
+    status.style.display = 'block';
+    status.style.background = '#fef2f2';
+    status.style.border = '1px solid #fecaca';
+    status.style.color  = '#dc2626';
+    status.textContent  = 'Please select at least one file first.';
     return;
   }
 
@@ -5125,70 +5211,62 @@ async function handleUpload() {
     return;
   }
 
-  // Show loading state
   btn.disabled = true;
-  btn.textContent = 'Uploading...';
-  status.style.display = 'block';
-  status.style.background = '#eff6ff';
-  status.style.border = '1px solid #bfdbfe';
-  status.style.color  = '#0284c7';
-  status.textContent  = 'Uploading ' + file.name + '...';
+  status.style.display = 'none';
+  progressList.style.display = 'flex';
+  progressList.innerHTML = selectedFiles.map((f, i) =>
+    '<div id="uploadRow_' + i + '" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:11.5px;">' +
+      '<span style="word-break:break-all;">' + f.name + '</span>' +
+      '<span id="uploadRowStatus_' + i + '" style="color:#94a3b8;flex-shrink:0;margin-left:8px;">Waiting…</span>' +
+    '</div>'
+  ).join('');
 
-  try {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const freshToken = await getFreshToken();
-    if (!freshToken) return; // Session expired, redirecting to login
-
-    let res = await fetch(API_BASE + '/clients/' + clientSlug + '/upload', {
-      method:      'POST',
-      headers:     { 'Authorization': 'Bearer ' + freshToken },
-      credentials: 'include',
-      body:        formData,
-    });
-
-    // If 401, try one token refresh and retry
-    if (res.status === 401) {
-      console.warn('[upload] 401 received, refreshing token and retrying...');
-      if (window._supabaseClient) {
-        const { data: refreshed } = await window._supabaseClient.auth.refreshSession();
-        if (refreshed?.session?.access_token) {
-          const newToken = refreshed.session.access_token;
-          localStorage.setItem(TOKEN_KEY, newToken);
-          // Rebuild formData (consumed by first request)
-          const retryForm = new FormData();
-          retryForm.append('file', file);
-          res = await fetch(API_BASE + '/clients/' + clientSlug + '/upload', {
-            method:      'POST',
-            headers:     { 'Authorization': 'Bearer ' + newToken },
-            credentials: 'include',
-            body:        retryForm,
-          });
-        } else {
-          handleSessionExpiry();
-          return;
-        }
+  // Sequential, not parallel — files can share a platform/table and the
+  // backend has no dedup/locking, so uploading one at a time avoids any
+  // race between two files writing to the same table at once.
+  let successCount = 0, failCount = 0;
+  for (let i = 0; i < selectedFiles.length; i++) {
+    const file = selectedFiles[i];
+    const rowStatus = document.getElementById('uploadRowStatus_' + i);
+    if (rowStatus) { rowStatus.textContent = 'Uploading…'; rowStatus.style.color = '#0284c7'; }
+    try {
+      const data = await uploadOneFile(file, clientSlug);
+      successCount++;
+      if (rowStatus) {
+        rowStatus.textContent = '✓ ' + (data.rowsIngested ?? '') + ' rows → ' + (data.platform || 'done');
+        rowStatus.style.color = '#059669';
       }
+    } catch (err) {
+      if (err.message === 'SESSION_EXPIRED') { handleSessionExpiry(); return; }
+      failCount++;
+      if (rowStatus) { rowStatus.textContent = '✗ ' + (err.message || 'Failed'); rowStatus.style.color = '#dc2626'; }
     }
+  }
 
-    const data = await res.json();
-
-    if (!res.ok) throw new Error(data.error || 'Upload failed');
-
-    // Success
+  status.style.display = 'block';
+  if (failCount === 0) {
     status.style.background = '#f0fdf4';
     status.style.border = '1px solid #bbf7d0';
     status.style.color  = '#059669';
-    status.textContent  = '✓ ' + data.rowsIngested + ' rows uploaded for ' + data.platform + '. Dashboard will refresh shortly.';
+    status.textContent  = '✓ All ' + successCount + ' file' + (successCount !== 1 ? 's' : '') + ' uploaded. Dashboard will refresh shortly.';
+  } else {
+    status.style.background = '#fef2f2';
+    status.style.border = '1px solid #fecaca';
+    status.style.color  = '#dc2626';
+    status.textContent  = successCount + ' succeeded, ' + failCount + ' failed — see rows above.';
+  }
 
-    // Reset file input
-    input.value = '';
-    document.getElementById('selectedFileInfo').style.display = 'none';
-    document.getElementById('dropZone').style.borderColor = '';
-    document.getElementById('dropZone').style.background  = '';
+  // Reset selection
+  selectedFiles = [];
+  const input = document.getElementById('fileInput');
+  if (input) input.value = '';
+  document.getElementById('selectedFileInfo').style.display = 'none';
+  document.getElementById('dropZone').style.borderColor = '';
+  document.getElementById('dropZone').style.background  = '';
+  document.getElementById('uploadBtnLabel').textContent = 'Upload & Merge';
+  btn.disabled = false;
 
-    // Refresh data after 2 seconds
+  if (successCount > 0) {
     setTimeout(() => {
       tabCache['platform_sales']      = null;
       tabCache['sku_performance']     = null;
@@ -5199,15 +5277,6 @@ async function handleUpload() {
       fetchAndRender();
       closeDrawer();
     }, 2000);
-
-  } catch(err) {
-    status.style.background = '#fef2f2';
-    status.style.border = '1px solid #fecaca';
-    status.style.color  = '#dc2626';
-    status.textContent  = '✗ ' + (err.message || 'Upload failed. Check filename prefix.');
-  } finally {
-    btn.disabled    = false;
-    btn.innerHTML   = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Upload & Merge';
   }
 }
 
