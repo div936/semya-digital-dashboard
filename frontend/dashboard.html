@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- SEMYA FRONTEND BUILD: V50-trend-chart-dom-fix -->
+<!-- SEMYA FRONTEND BUILD: V38-onclick-quote-fix -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -1233,6 +1233,29 @@
             <div class="sku-pill" data-ps-platform="blinkit">Blinkit</div>
             <div class="sku-pill" data-ps-platform="website">Website</div>
           </div>
+          <div class="status-filter-wrap" style="position:relative;">
+            <button type="button" class="trend-period-btn" id="psStatusFilterBtn" onclick="togglePsStatusMenu()">
+              Order status <span id="psStatusFilterCount"></span> ▾
+            </button>
+            <div id="psStatusFilterMenu" style="display:none;position:absolute;top:110%;left:0;z-index:20;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:10px 12px;min-width:230px;">
+              <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">Uncheck a status to exclude it from every number below. Everything is included by default.</div>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-status-cb" value="Cancelled" checked onchange="onPsStatusChange()"> Cancelled
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-status-cb" value="Pending" checked onchange="onPsStatusChange()"> Pending
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-status-cb" value="Unshipped" checked onchange="onPsStatusChange()"> Unshipped
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-status-cb" value="Shipped - Returned to Seller" checked onchange="onPsStatusChange()"> Returned to Seller
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-status-cb" value="Shipped - Returning to Seller" checked onchange="onPsStatusChange()"> Returning to Seller
+              </label>
+            </div>
+          </div>
           <span class="fetch-badge loading" id="psFetchBadge" style="margin-left:auto;">
             <span class="fetch-dot"></span><span id="psFetchText">Loading</span>
           </span>
@@ -1507,7 +1530,7 @@
         </div>
         <div class="kpi-card">
           <div class="kpi-icon">📈</div>
-          <div class="kpi-label">Campaign Revenue</div>
+          <div class="kpi-label">Revenue (Actual Orders)</div>
           <div class="kpi-value" id="ciKpiRev"><span class="skel skel-val"></span></div>
           <div><span class="kpi-delta" id="ciKpiRevDelta"><span class="skel skel-delta"></span></span></div>
           <div class="kpi-sub" id="ciKpiRevSub"><span class="skel skel-sub"></span></div>
@@ -1549,6 +1572,31 @@
           </div>
           <div id="ciSpendLegend" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;">
             <span class="skel skel-delta"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Fulfilment Channel + Product Breakdown -->
+      <div class="mid-grid" id="ciFulfillmentCard" style="display:none;">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Fulfilment Channel</span>
+            <span class="card-badge">Amazon: FBA vs Merchant</span>
+          </div>
+          <div class="stat-bar-list" id="ciFulfillmentList"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Top Products (this view)</span>
+            <span class="card-badge">By revenue</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>SKU</th><th>Platform</th><th>Revenue</th></tr></thead>
+              <tbody id="ciProductTbody">
+                <tr><td colspan="4"><span class="skel skel-row" style="display:block"></span></td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -1719,7 +1767,7 @@
       </div>
 
       <!-- KPIs -->
-      <div class="kpi-grid">
+      <div class="kpi-grid-4">
         <div class="kpi-card">
           <div class="kpi-icon">₹</div>
           <div class="kpi-label">Today's Revenue</div>
@@ -1741,6 +1789,13 @@
           <div><span class="kpi-delta" id="dtKpiAttainmentDelta"><span class="skel skel-delta"></span></span></div>
           <div class="kpi-sub" id="dtKpiAttainmentSub"><span class="skel skel-sub"></span></div>
         </div>
+        <div class="kpi-card">
+          <div class="kpi-icon">💸</div>
+          <div class="kpi-label">Today's Ad Spend</div>
+          <div class="kpi-value" id="dtKpiSpend"><span class="skel skel-val"></span></div>
+          <div><span class="kpi-delta" id="dtKpiSpendDelta"><span class="skel skel-delta"></span></span></div>
+          <div class="kpi-sub" id="dtKpiSpendSub"><span class="skel skel-sub"></span></div>
+        </div>
       </div>
 
       <!-- Platform Progress + 7-day Trend -->
@@ -1761,16 +1816,11 @@
 
         <div class="card">
           <div class="card-header">
-            <span class="card-title">Platform Attainment %</span>
+            <span class="card-title">7-Day Attainment Trend</span>
             <span class="card-badge">% of target hit</span>
           </div>
           <div class="chart-wrap" style="height:220px;">
             <canvas id="dtTrendChart"></canvas>
-            <div id="dtTrendEmptyState" style="display:none;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:10px;padding:20px 0;">
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/><polyline points="9 15 12 12 15 15 18 12"/></svg>
-              <div style="font-size:12px;font-weight:600;color:#94a3b8;">No attainment data yet</div>
-              <div style="font-size:11px;color:#cbd5e1;text-align:center;max-width:180px;line-height:1.5;">Set daily targets and upload platform data to see your attainment trend here.</div>
-            </div>
           </div>
         </div>
 
@@ -1964,13 +2014,10 @@
     <div class="ai-panel">
       <div class="ai-header">
         <div class="ai-icon">✦</div>
-        <div style="flex:1;">
+        <div>
           <div class="ai-label">AI Insights</div>
           <div class="ai-sub" id="aiSubtitle">Powered · —</div>
         </div>
-        <button data-role="admin" onclick="regenerateSidebarSummary()" id="sidebarRegenBtn" title="Regenerate" style="background:none;border:none;cursor:pointer;color:#94a3b8;padding:4px;flex-shrink:0;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-        </button>
       </div>
       <div id="aiInsightsList">
         <div class="skel skel-insight"></div>
@@ -2513,18 +2560,18 @@
     </div>
 
     <!-- File picker -->
-    <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()"
-         ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+    <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
       <div class="drop-zone-icon">📂</div>
       <p id="dropZoneText">Drop your <strong>.xlsx</strong> or <strong>.csv</strong> here</p>
-      <p style="font-size:10px;margin-top:4px;" id="dropZoneSubtext">or click to browse · up to 5 files at once</p>
-      <input type="file" id="fileInput" accept=".xlsx,.csv" multiple style="display:none;" onchange="handleFileSelected(this)">
+      <p style="font-size:10px;margin-top:4px;" id="dropZoneSubtext">or click to browse</p>
+      <input type="file" id="fileInput" accept=".xlsx,.csv" style="display:none;" onchange="handleFileSelected(this)">
     </div>
 
-    <!-- Selected files display -->
+    <!-- Selected file display -->
     <div id="selectedFileInfo" style="display:none;padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">
-      <div style="font-size:11px;font-weight:700;color:#059669;margin-bottom:6px;" id="selectedFilesHeading">File selected:</div>
-      <div id="selectedFilesList" style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;"></div>
+      <div style="font-size:11px;font-weight:700;color:#059669;margin-bottom:3px;">File selected:</div>
+      <div id="selectedFileName" style="font-size:12px;color:#1e293b;font-weight:600;word-break:break-all;"></div>
+      <div id="selectedFileSize" style="font-size:10px;color:#64748b;margin-top:2px;"></div>
     </div>
 
     <!-- Upload status -->
@@ -3223,23 +3270,6 @@ function getScopesForTab(tabKey) {
   return [rawFilter];
 }
 
-async function regenerateSidebarSummary() {
-  const btn = document.getElementById('sidebarRegenBtn');
-  const { clientSlug } = state; if (!clientSlug) return;
-  if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
-  try {
-    await apiFetch('/clients/' + clientSlug + '/ai-summary/regenerate', {
-      method: 'POST', headers: authHeaders(),
-    });
-    _sidebarCache = {};
-    updateSidebarForTab(activeTab || 'platform_sales');
-  } catch (e) {
-    alert('Failed to regenerate: ' + e.message);
-  } finally {
-    if (btn) { btn.style.opacity = ''; btn.style.pointerEvents = ''; }
-  }
-}
-
 async function renderSidebarSummary(scopes) {
   const list = document.getElementById('aiInsightsList');
   const confEl = document.getElementById('aiConfidence');
@@ -3496,33 +3526,14 @@ function showTab(tabKey) {
 
   const cached = tabCache[tabKey];
   const fresh  = cached && (Date.now() - cached.timestamp < CACHE_TTL);
-  if (!fresh) fetchTabData(tabKey);
-}
-
-// Fetches whichever tab's data corresponds to tabKey — shared by
-// showTab() (switching tabs) and refreshActiveTab() (re-fetching
-// after an upload/delete, without necessarily switching tabs).
-function fetchTabData(tabKey) {
-  if (tabKey === 'platform_sales')      fetchAndRenderPS();
-  if (tabKey === 'campaign_insights')   fetchAndRenderCI();
-  if (tabKey === 'sku_performance')     fetchAndRender();
-  if (tabKey === 'geographic_analysis') fetchAndRenderGEO();
-  if (tabKey === 'daily_targets')       fetchAndRenderDT();
-  if (tabKey === 'ai_insights')         { fetchAndRenderAI(); fetchAndRenderFraud(); }
-  if (tabKey === 'utm_analytics')       fetchAndRenderUTM();
-  if (tabKey === 'projections_insights') fetchAndRenderProjections();
-}
-
-// Re-fetches whatever tab is currently on screen — used after an
-// upload or delete, where the previous code always called
-// fetchAndRender() (the SKU Performance tab's specific fetch
-// function) regardless of which tab was actually being viewed, so a
-// successful upload while on any *other* tab (e.g. Platform Sales)
-// invalidated that tab's cache but never actually re-requested its
-// data — the visible numbers just silently stayed stale until the
-// user manually switched tabs away and back.
-function refreshActiveTab() {
-  if (activeTab) fetchTabData(activeTab);
+  if (tabKey === 'platform_sales'      && !fresh) fetchAndRenderPS();
+  if (tabKey === 'campaign_insights'   && !fresh) fetchAndRenderCI();
+  if (tabKey === 'sku_performance'      && !fresh) fetchAndRender();
+  if (tabKey === 'geographic_analysis'  && !fresh) fetchAndRenderGEO();
+  if (tabKey === 'daily_targets'        && !fresh) fetchAndRenderDT();
+  if (tabKey === 'ai_insights'          && !fresh) { fetchAndRenderAI(); fetchAndRenderFraud(); }
+  if (tabKey === 'utm_analytics'        && !fresh) fetchAndRenderUTM();
+  if (tabKey === 'projections_insights' && !fresh) fetchAndRenderProjections();
 }
 
 // ─── Tab permissions / access lock ─────────────────────────────
@@ -3582,7 +3593,7 @@ function updateSidebarForTab(tabKey) {
 // ═══════════════════════════════════════════════════════════════════
 // PLATFORM SALES
 // ═══════════════════════════════════════════════════════════════════
-const psState = { platform: '', dateFrom: '', dateTo: '', trendPeriod: 'week', _lastData: null };
+const psState = { platform: '', dateFrom: '', dateTo: '', trendPeriod: 'week', excludeStatuses: [], _lastData: null };
 
 const MOCK_PS = {
   platforms: [
@@ -3605,6 +3616,28 @@ const MOCK_PS = {
   ],
 };
 
+function togglePsStatusMenu() {
+  const m = document.getElementById('psStatusFilterMenu');
+  if (m) m.style.display = m.style.display === 'none' ? 'block' : 'none';
+}
+document.addEventListener('click', function(e) {
+  const wrap = document.querySelector('.status-filter-wrap');
+  const menu = document.getElementById('psStatusFilterMenu');
+  if (wrap && menu && !wrap.contains(e.target)) menu.style.display = 'none';
+});
+function onPsStatusChange() {
+  // Unchecked box = excluded status. Checked (default) = included, same
+  // sense as the old dashboard's "all checked by default" filter.
+  const unchecked = Array.from(document.querySelectorAll('.ps-status-cb'))
+    .filter(cb => !cb.checked)
+    .map(cb => cb.value);
+  psState.excludeStatuses = unchecked;
+  const countEl = document.getElementById('psStatusFilterCount');
+  if (countEl) countEl.textContent = unchecked.length ? `(${unchecked.length} hidden)` : '';
+  tabCache['platform_sales'] = null;
+  fetchAndRenderPS();
+}
+
 function setBadgePS(mode) {
   const b = document.getElementById('psFetchBadge'); const t = document.getElementById('psFetchText');
   if (b) b.className = 'fetch-badge ' + mode;
@@ -3618,6 +3651,7 @@ async function fetchAndRenderPS() {
   if (psState.platform) qp.set('platform', psState.platform);
   if (psState.dateFrom) qp.set('from', psState.dateFrom);
   if (psState.dateTo)   qp.set('to',   psState.dateTo);
+  if (psState.excludeStatuses.length) qp.set('excludeStatuses', psState.excludeStatuses.join(','));
   const q = qp.toString() ? '?' + qp.toString() : '';
   let data = null; let isLive = false;
   try {
@@ -3637,6 +3671,7 @@ async function fetchAndRenderPS() {
       if (psState.platform) skuQ.set('platform', psState.platform);
       if (psState.dateFrom) skuQ.set('from', psState.dateFrom);
       if (psState.dateTo)   skuQ.set('to',   psState.dateTo);
+      if (psState.excludeStatuses.length) skuQ.set('excludeStatuses', psState.excludeStatuses.join(','));
       const skuR = await apiFetch('/clients/' + clientSlug + '/sku-performance?' + skuQ.toString());
       if (skuR && skuR.revenue && skuR.revenue.length) {
         // Aggregate by platform from raw revenue rows
@@ -3812,24 +3847,38 @@ async function fetchAndRenderCI() {
   if (ciState.platform) qp.set('platform', ciState.platform);
   if (ciState.dateFrom) qp.set('from', ciState.dateFrom);
   if (ciState.dateTo)   qp.set('to',   ciState.dateTo);
+  if (psState.excludeStatuses.length) qp.set('excludeStatuses', psState.excludeStatuses.join(','));
   const q = qp.toString() ? '?' + qp.toString() : '';
-  let campaigns = null; let isLive = false;
+  // Backend now returns an object: { campaigns, platformSummary, totalSpend,
+  // totalRevenue, overallRoas, fulfillmentBreakdown, topProducts } — not a
+  // bare array. Keep a safe fallback for the old shape in case a stale
+  // deploy is still serving it.
+  let payload = null; let isLive = false;
   try {
     const resp = await apiFetch('/clients/' + clientSlug + '/campaign-insights' + q);
-    if (Array.isArray(resp) && resp.length) { campaigns = resp; isLive = true; }
+    if (Array.isArray(resp)) {
+      // Old shape fallback
+      if (resp.length) { payload = { campaigns: resp, platformSummary: [], fulfillmentBreakdown: [], topProducts: [] }; isLive = true; }
+    } else if (resp && Array.isArray(resp.campaigns)) {
+      if (resp.campaigns.length) isLive = true;
+      payload = resp;
+    }
   } catch(e) { console.warn('[CI]', e.message); }
-  if (!campaigns) campaigns = [];
-  renderCI(campaigns);
-  tabCache['campaign_insights'] = { data: campaigns, timestamp: Date.now() };
+  if (!payload) payload = { campaigns: [], platformSummary: [], fulfillmentBreakdown: [], topProducts: [] };
+  renderCI(payload);
+  tabCache['campaign_insights'] = { data: payload, timestamp: Date.now() };
   setBadgeCI(isLive ? 'live' : 'empty');
 }
 
-function renderCI(campaigns) {
-  const totalSpend  = campaigns.reduce((s, c) => s + (c.standard_spend || 0), 0);
-  const totalRev    = campaigns.reduce((s, c) => s + (c.standard_revenue || 0), 0);
+function renderCI(payload) {
+  const campaigns = payload.campaigns || [];
+  const totalSpend  = payload.totalSpend  != null ? payload.totalSpend  : campaigns.reduce((s, c) => s + (c.standard_spend || 0), 0);
+  // totalRevenue from the backend is real order-level revenue (revenue_data),
+  // more trustworthy than a campaign export's self-attributed revenue.
+  const totalRev    = payload.totalRevenue != null ? payload.totalRevenue : campaigns.reduce((s, c) => s + (c.standard_revenue || 0), 0);
   const totalClicks = campaigns.reduce((s, c) => s + (c.standard_clicks || 0), 0);
   const totalImpr   = campaigns.reduce((s, c) => s + (c.standard_impressions || 0), 0);
-  const blendedRoas = totalSpend > 0 ? totalRev / totalSpend : 0;
+  const blendedRoas = payload.overallRoas != null ? payload.overallRoas : (totalSpend > 0 ? totalRev / totalSpend : 0);
   const avgCTR      = totalImpr  > 0 ? (totalClicks / totalImpr * 100) : 0;
 
   document.getElementById('ciKpiSpend').innerHTML    = fmtRevenue(totalSpend);
@@ -3889,6 +3938,41 @@ function renderCI(campaigns) {
     const ctr  = c.standard_impressions > 0 ? (c.standard_clicks/c.standard_impressions*100) : 0;
     return '<tr><td><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></td><td style="font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (c.campaign_name||'—') + '</td><td style="font-family:var(--font-mono);font-size:11px;">' + fmtRevenue(c.standard_spend||0) + '</td><td style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--theme-primary);">' + fmtRevenue(c.standard_revenue||0) + '</td><td><span style="font-weight:700;color:' + roasColor(roas) + ';font-family:var(--font-mono);font-size:11px;">' + (roas > 0 ? fmtRoas(roas) : '—') + '</span></td><td style="font-family:var(--font-mono);font-size:11px;">' + (c.standard_clicks||0).toLocaleString('en-IN') + '</td><td style="font-family:var(--font-mono);font-size:11px;color:#94a3b8;">' + (c.standard_impressions||0).toLocaleString('en-IN') + '</td><td style="font-family:var(--font-mono);font-size:11px;">' + ctr.toFixed(2) + '%</td></tr>';
   }).join('');
+
+  // ── Fulfilment channel split (Amazon FBA vs Merchant) ──────────
+  // Only meaningful when the revenue-side data actually carries the
+  // field (Amazon/Acutas exports). Hide the card entirely rather than
+  // show an empty/misleading chart for platforms that don't have it.
+  const fbEl = document.getElementById('ciFulfillmentCard');
+  const fb = payload.fulfillmentBreakdown || [];
+  const fbReal = fb.filter(f => f.channel !== 'Not specified');
+  if (fbEl) {
+    if (!fbReal.length) {
+      fbEl.style.display = 'none';
+    } else {
+      fbEl.style.display = '';
+      const fbTotal = fb.reduce((s, f) => s + f.revenue, 0);
+      document.getElementById('ciFulfillmentList').innerHTML = fb.map(f => {
+        const pct = fbTotal > 0 ? (f.revenue / fbTotal * 100).toFixed(1) : 0;
+        const color = f.channel === 'Amazon' ? '#ff9900' : f.channel === 'Merchant' ? '#0284c7' : '#94a3b8';
+        return '<div class="stat-bar-row"><div class="stat-bar-meta"><span class="stat-bar-name">' + f.channel + ' <span style="color:#94a3b8;font-weight:400;">(' + f.orders.toLocaleString('en-IN') + ' orders)</span></span><div class="stat-bar-vals"><span class="stat-bar-rev">' + fmtRevenue(f.revenue) + '</span><span class="stat-bar-pct">' + pct + '%</span></div></div><div class="stat-bar-bg"><div class="stat-bar-fill" style="width:' + pct + '%;background:' + color + ';"></div></div></div>';
+      }).join('');
+    }
+  }
+
+  // ── Product-wise revenue for platforms in view ──────────────────
+  const ciProdTbody = document.getElementById('ciProductTbody');
+  if (ciProdTbody) {
+    const prods = payload.topProducts || [];
+    if (!prods.length) {
+      ciProdTbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#94a3b8;font-size:12px;padding:20px 0;">No product data for this selection.</td></tr>';
+    } else {
+      ciProdTbody.innerHTML = prods.slice(0, 10).map((p, i) => {
+        const m = PLATFORM_META[p.platform] || { label: (p.platform||'').toUpperCase(), pillClass: 'pill-amz' };
+        return '<tr><td style="color:#94a3b8;font-size:11px;font-weight:700;">' + (i+1) + '</td><td style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#1e293b;">' + (p.sku||'—') + '</td><td><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></td><td style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--theme-primary);">' + fmtRevenue(p.revenue||0) + '</td></tr>';
+      }).join('');
+    }
+  }
 }
 
 document.querySelectorAll('[data-ci-platform]').forEach(pill => {
@@ -4115,15 +4199,6 @@ const dtState = { date: '', targets: {}, achieved: {} };
 
 const PLATFORMS_DT = ['amazon', 'flipkart', 'blinkit', 'meta'];
 
-// Daily Targets shows GROUPED labels ("Amazon" = Neat Amazon + Acutas
-// combined, "Website" = Meta + Google combined) — deliberately
-// different from PLATFORM_META's labels, which are used elsewhere to
-// show those as distinct sub-brands. Storage keys stay 'amazon'/'meta'
-// internally (no migration needed); only the display text and the
-// achieved-revenue aggregation below are group-aware.
-const DT_LABELS = { amazon: 'Amazon', flipkart: 'Flipkart', blinkit: 'Blinkit', meta: 'Website' };
-const DT_GROUP_MEMBERS = { amazon: ['amazon', 'acutas'], meta: ['meta', 'google'] };
-
 const MOCK_TARGETS = {
   amazon:   { target: 600000, achieved: 512000 },
   flipkart: { target: 200000, achieved: 198000 },
@@ -4169,18 +4244,6 @@ async function fetchAndRenderDT() {
     if (resp && resp.platforms && resp.platforms.length) {
       achieved = {};
       resp.platforms.forEach(p => { achieved[p.platform] = { revenue: p.totalRevenue, units: p.totalUnits }; });
-      // Fold sub-brand revenue into its group's bucket — platform-sales
-      // returns amazon/acutas/meta/google as separate entries, but
-      // Daily Targets only ever reads the 'amazon'/'meta' keys, so
-      // acutas and google revenue was previously counted nowhere.
-      for (const [group, members] of Object.entries(DT_GROUP_MEMBERS)) {
-        for (const member of members) {
-          if (member === group || !achieved[member]) continue;
-          if (!achieved[group]) achieved[group] = { revenue: 0, units: 0 };
-          achieved[group].revenue += achieved[member].revenue;
-          achieved[group].units   += achieved[member].units;
-        }
-      }
       isLive = true;
     }
   } catch(e) { console.warn('[DT] achieved API miss:', e.message); }
@@ -4201,15 +4264,23 @@ async function fetchAndRenderDT() {
 function renderDT(targets, achieved) {
   const platforms = PLATFORMS_DT;
   let totalTarget   = 0, totalAchieved = 0, totalUnits = 0;
+  let totalSpendTarget = 0, totalSpendActual = 0;
 
   platforms.forEach(p => {
     totalTarget   += (targets[p]?.target   || 0);
     totalAchieved += (achieved[p]?.revenue || targets[p]?.achieved || 0);
     totalUnits    += (achieved[p]?.units   || 0);
+    // Spend comes straight from the /targets endpoint (it already joins
+    // campaign_data for actual spend + computes ROAS) — not from
+    // platform-sales, which only knows revenue_data.
+    totalSpendTarget += (targets[p]?.spendTarget || 0);
+    totalSpendActual += (targets[p]?.spendActual || 0);
   });
 
   const attainPct = totalTarget > 0 ? (totalAchieved / totalTarget * 100) : 0;
   const attainCls = attainPct >= 100 ? 'up' : attainPct >= 80 ? '' : 'down';
+  const overallRoas = totalSpendActual > 0 ? (totalAchieved / totalSpendActual) : null;
+  const spendVsPlanPct = totalSpendTarget > 0 ? (totalSpendActual / totalSpendTarget * 100) : null;
 
   // KPIs
   document.getElementById('dtKpiRevenue').innerHTML    = fmtRevenue(totalAchieved);
@@ -4224,30 +4295,51 @@ function renderDT(targets, achieved) {
     : '<span class="kpi-delta down">' + fmtRevenue(totalTarget - totalAchieved) + ' remaining</span>';
   document.getElementById('dtKpiAttainmentSub').innerHTML = attainPct.toFixed(0) + '% overall attainment';
 
+  const dtSpendEl = document.getElementById('dtKpiSpend');
+  if (dtSpendEl) {
+    dtSpendEl.innerHTML = fmtRevenue(totalSpendActual);
+    const spendDeltaEl = document.getElementById('dtKpiSpendDelta');
+    if (spendDeltaEl) {
+      spendDeltaEl.innerHTML = spendVsPlanPct != null
+        ? '<span class="kpi-delta ' + (spendVsPlanPct <= 100 ? '' : 'down') + '">' + spendVsPlanPct.toFixed(0) + '% of plan</span>'
+        : '';
+    }
+    const spendSubEl = document.getElementById('dtKpiSpendSub');
+    if (spendSubEl) {
+      spendSubEl.innerHTML = overallRoas != null
+        ? 'ROAS: ' + fmtRoas(overallRoas) + (totalSpendTarget ? ' · Plan: ' + fmtRevenue(totalSpendTarget) : '')
+        : (totalSpendTarget ? 'Plan: ' + fmtRevenue(totalSpendTarget) : 'No spend data yet');
+    }
+  }
+
   // Platform progress bars
   document.getElementById('dtPlatformProgress').innerHTML = platforms.map(p => {
-    const m        = { ...(PLATFORM_META[p] || { color: '#94a3b8', pillClass: 'pill-amz' }), label: DT_LABELS[p] || p.toUpperCase() };
+    const m        = PLATFORM_META[p] || { label: p.toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
     const tgt      = targets[p]?.target   || 0;
     const ach      = achieved[p]?.revenue || targets[p]?.achieved || 0;
     const pct      = tgt > 0 ? Math.min((ach / tgt * 100), 150) : 0;  // cap bar at 150%
     const pctLabel = tgt > 0 ? (ach / tgt * 100).toFixed(1) : '0';
     const pctCls   = pct >= 100 ? 'over' : pct >= 80 ? 'on' : pct >= 50 ? 'under' : 'low';
-    const tgtLine  = Math.min((1 / (pct > 0 ? pct/100*1.5 : 1)) * 100, 100);
-    return '<div class="progress-wrap"><div class="progress-header"><span class="progress-label"><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></span><div class="progress-vals"><span class="progress-achieved">' + fmtRevenue(ach) + '</span><span style="color:#94a3b8;font-size:11px;">/</span><span class="progress-target">' + fmtRevenue(tgt) + '</span><span class="progress-pct ' + pctCls + '">' + pctLabel + '%</span></div></div><div class="progress-track"><div class="progress-fill" style="width:' + Math.min(pct, 100) + '%;background:' + m.color + ';opacity:' + (pct < 50 ? 0.5 : 1) + ';"></div></div></div>';
+    const spendA   = targets[p]?.spendActual || 0;
+    const spendT   = targets[p]?.spendTarget || 0;
+    const roasP    = targets[p]?.roas;
+    const spendLine = (spendA > 0 || spendT > 0)
+      ? '<div style="font-size:10.5px;color:#94a3b8;margin-top:3px;">Spend: ' + fmtRevenue(spendA) + (spendT ? ' / ' + fmtRevenue(spendT) + ' plan' : '') + (roasP != null ? ' · ROAS ' + fmtRoas(roasP) : '') + '</div>'
+      : '';
+    return '<div class="progress-wrap"><div class="progress-header"><span class="progress-label"><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></span><div class="progress-vals"><span class="progress-achieved">' + fmtRevenue(ach) + '</span><span style="color:#94a3b8;font-size:11px;">/</span><span class="progress-target">' + fmtRevenue(tgt) + '</span><span class="progress-pct ' + pctCls + '">' + pctLabel + '%</span></div></div><div class="progress-track"><div class="progress-fill" style="width:' + Math.min(pct, 100) + '%;background:' + m.color + ';opacity:' + (pct < 50 ? 0.5 : 1) + ';"></div></div>' + spendLine + '</div>';
   }).join('');
 
   // 7-day attainment trend — only render when real achieved data exists
-  const trendCanvas = document.getElementById('dtTrendChart');
-  const emptyState  = document.getElementById('dtTrendEmptyState');
+  const trendCanvas  = document.getElementById('dtTrendChart');
+  const trendWrap    = trendCanvas ? trendCanvas.closest('.chart-wrap') || trendCanvas.parentElement : null;
   // Build trend data only from real achieved values (not mock)
   const trendDays = Object.entries(achieved)
     .map(([plat, a]) => ({ plat, rev: a.revenue || 0 }))
     .filter(d => d.rev > 0);
   const hasRealTrendData = isLive && trendDays.some(d => d.rev > 0);
 
-  if (hasRealTrendData && trendCanvas) {
-    trendCanvas.style.display = '';
-    if (emptyState) emptyState.style.display = 'none';
+  if (hasRealTrendData && trendWrap) {
+    trendWrap.style.display = '';
     const trendLabels = platforms.map(p => (PLATFORM_META[p]?.label || p.toUpperCase()));
     const trendPcts   = platforms.map(p => {
       const tgt = targets[p]?.target || 0;
@@ -4283,13 +4375,14 @@ function renderDT(targets, achieved) {
         }
       }
     });
-  } else {
-    // No real daily data yet — hide the canvas, show the empty state.
-    // Neither element is ever removed from the DOM, so a later render
-    // with real data can always find the canvas again.
+  } else if (trendWrap) {
+    // No real daily data yet — show empty state
     if (state['_dtTrendChart']) { state['_dtTrendChart'].destroy(); state['_dtTrendChart'] = null; }
-    if (trendCanvas) trendCanvas.style.display = 'none';
-    if (emptyState)  emptyState.style.display  = 'flex';
+    trendWrap.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:10px;padding:20px 0;">' +
+      '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/><polyline points="9 15 12 12 15 15 18 12"/></svg>' +
+      '<div style="font-size:12px;font-weight:600;color:#94a3b8;">No attainment data yet</div>' +
+      '<div style="font-size:11px;color:#cbd5e1;text-align:center;max-width:180px;line-height:1.5;">Set daily targets and upload platform data to see your attainment trend here.</div>' +
+    '</div>';
   }
 }
 
@@ -4990,142 +5083,37 @@ function lineChartOptions(prefix, suffix, decimals) {
 
 
 // ─── FILE UPLOAD HANDLER ──────────────────────────────────────────
-const MAX_FILES_PER_UPLOAD = 5;
-let _selectedFiles = [];
-
 function handleFileSelected(input) {
-  addFilesToSelection(input.files);
-  input.value = ''; // allow re-selecting the same file(s) later if needed
-}
+  const file = input.files[0];
+  if (!file) return;
 
-// Drag-and-drop — the drop zone previously only supported click-to-
-// browse despite the UI saying "Drop your file here"; these three
-// handlers are what actually make dropping work.
-function handleDragOver(e) {
-  e.preventDefault();
+  // Show file info
+  const info = document.getElementById('selectedFileInfo');
+  const name = document.getElementById('selectedFileName');
+  const size = document.getElementById('selectedFileSize');
   const zone = document.getElementById('dropZone');
-  zone.style.borderColor = '#0284c7';
-  zone.style.background  = '#eff6ff';
-}
-function handleDragLeave(e) {
-  e.preventDefault();
-  const zone = document.getElementById('dropZone');
-  if (!_selectedFiles.length) { zone.style.borderColor = ''; zone.style.background = ''; }
-}
-function handleDrop(e) {
-  e.preventDefault();
-  handleDragLeave(e);
-  addFilesToSelection(e.dataTransfer.files);
-}
+  const status = document.getElementById('uploadStatus');
 
-function addFilesToSelection(fileList) {
-  const incoming = Array.from(fileList || []).filter(f => /\.(xlsx|csv)$/i.test(f.name));
-  if (!incoming.length) return;
-
-  for (const f of incoming) {
-    if (_selectedFiles.length >= MAX_FILES_PER_UPLOAD) break;
-    // Skip exact duplicates (same name+size already queued)
-    if (_selectedFiles.some(existing => existing.name === f.name && existing.size === f.size)) continue;
-    _selectedFiles.push(f);
-  }
-  renderSelectedFiles();
-}
-
-function removeSelectedFile(index) {
-  _selectedFiles.splice(index, 1);
-  renderSelectedFiles();
-}
-
-function renderSelectedFiles() {
-  const info    = document.getElementById('selectedFileInfo');
-  const list    = document.getElementById('selectedFilesList');
-  const heading = document.getElementById('selectedFilesHeading');
-  const zone    = document.getElementById('dropZone');
-  const status  = document.getElementById('uploadStatus');
-
-  if (!_selectedFiles.length) {
-    info.style.display = 'none';
-    zone.style.borderColor = '';
-    zone.style.background  = '';
-    return;
-  }
-
+  name.textContent = file.name;
+  size.textContent = (file.size / 1024).toFixed(1) + ' KB';
+  info.style.display = 'block';
   status.style.display = 'none';
   zone.style.borderColor = '#059669';
   zone.style.background  = '#f0fdf4';
-  info.style.display = 'block';
-  heading.textContent = _selectedFiles.length === 1
-    ? 'File selected:'
-    : _selectedFiles.length + ' files selected' + (_selectedFiles.length >= MAX_FILES_PER_UPLOAD ? ' (max)' : '') + ':';
-
-  list.innerHTML = _selectedFiles.map((f, i) => (
-    '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">' +
-      '<div style="min-width:0;">' +
-        '<div style="font-size:12px;color:#1e293b;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + f.name + '</div>' +
-        '<div style="font-size:10px;color:#64748b;">' + (f.size / 1024).toFixed(1) + ' KB</div>' +
-      '</div>' +
-      '<button type="button" onclick="removeSelectedFile(' + i + ')" style="flex-shrink:0;background:none;border:none;color:#94a3b8;cursor:pointer;font-size:14px;padding:2px 6px;" title="Remove">✕</button>' +
-    '</div>'
-  )).join('');
-}
-
-// Uploads exactly one file, including the 401-retry-once logic.
-// Returns { ok, file, data, error }.
-async function uploadOneFile(file, clientSlug) {
-  try {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const freshToken = await getFreshToken();
-    if (!freshToken) return { ok: false, file, error: 'Session expired.' };
-
-    let res = await fetch(API_BASE + '/clients/' + clientSlug + '/upload', {
-      method:      'POST',
-      headers:     { 'Authorization': 'Bearer ' + freshToken },
-      credentials: 'include',
-      body:        formData,
-    });
-
-    if (res.status === 401) {
-      console.warn('[upload] 401 received, refreshing token and retrying...');
-      if (window._supabaseClient) {
-        const { data: refreshed } = await window._supabaseClient.auth.refreshSession();
-        if (refreshed?.session?.access_token) {
-          const newToken = refreshed.session.access_token;
-          localStorage.setItem(TOKEN_KEY, newToken);
-          const retryForm = new FormData();
-          retryForm.append('file', file);
-          res = await fetch(API_BASE + '/clients/' + clientSlug + '/upload', {
-            method:      'POST',
-            headers:     { 'Authorization': 'Bearer ' + newToken },
-            credentials: 'include',
-            body:        retryForm,
-          });
-        } else {
-          handleSessionExpiry();
-          return { ok: false, file, error: 'Session expired.' };
-        }
-      }
-    }
-
-    const data = await res.json();
-    if (!res.ok) return { ok: false, file, error: data.error || 'Upload failed' };
-    return { ok: true, file, data };
-  } catch (err) {
-    return { ok: false, file, error: err.message || 'Upload failed. Check filename prefix.' };
-  }
 }
 
 async function handleUpload() {
+  const input  = document.getElementById('fileInput');
+  const file   = input.files[0];
   const btn    = document.getElementById('uploadBtn');
   const status = document.getElementById('uploadStatus');
 
-  if (!_selectedFiles.length) {
+  if (!file) {
     status.style.display = 'block';
     status.style.background = '#fef2f2';
     status.style.border = '1px solid #fecaca';
     status.style.color  = '#dc2626';
-    status.textContent  = 'Please select at least one file first.';
+    status.textContent  = 'Please select a file first.';
     return;
   }
 
@@ -5137,63 +5125,69 @@ async function handleUpload() {
     return;
   }
 
+  // Show loading state
   btn.disabled = true;
+  btn.textContent = 'Uploading...';
   status.style.display = 'block';
   status.style.background = '#eff6ff';
   status.style.border = '1px solid #bfdbfe';
   status.style.color  = '#0284c7';
+  status.textContent  = 'Uploading ' + file.name + '...';
 
-  // Sequential, not parallel — each file's duplicate/updated check
-  // needs to see rows from files already processed in this same
-  // batch, and running 5 large uploads at once would also just
-  // compete for the same backend resources for no real benefit.
-  const results = [];
-  for (let i = 0; i < _selectedFiles.length; i++) {
-    const file = _selectedFiles[i];
-    btn.textContent = 'Uploading ' + (i + 1) + ' of ' + _selectedFiles.length + '...';
-    status.textContent = 'Uploading ' + file.name + ' (' + (i + 1) + ' of ' + _selectedFiles.length + ')...';
-    const result = await uploadOneFile(file, clientSlug);
-    results.push(result);
-  }
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
 
-  const succeeded = results.filter(r => r.ok);
-  const failed    = results.filter(r => !r.ok);
-  const totalNew     = succeeded.reduce((s, r) => s + (r.data.rowsIngested || 0), 0);
-  const totalUpdated = succeeded.reduce((s, r) => s + (r.data.rowsUpdated  || 0), 0);
+    const freshToken = await getFreshToken();
+    if (!freshToken) return; // Session expired, redirecting to login
 
-  if (failed.length === 0) {
+    let res = await fetch(API_BASE + '/clients/' + clientSlug + '/upload', {
+      method:      'POST',
+      headers:     { 'Authorization': 'Bearer ' + freshToken },
+      credentials: 'include',
+      body:        formData,
+    });
+
+    // If 401, try one token refresh and retry
+    if (res.status === 401) {
+      console.warn('[upload] 401 received, refreshing token and retrying...');
+      if (window._supabaseClient) {
+        const { data: refreshed } = await window._supabaseClient.auth.refreshSession();
+        if (refreshed?.session?.access_token) {
+          const newToken = refreshed.session.access_token;
+          localStorage.setItem(TOKEN_KEY, newToken);
+          // Rebuild formData (consumed by first request)
+          const retryForm = new FormData();
+          retryForm.append('file', file);
+          res = await fetch(API_BASE + '/clients/' + clientSlug + '/upload', {
+            method:      'POST',
+            headers:     { 'Authorization': 'Bearer ' + newToken },
+            credentials: 'include',
+            body:        retryForm,
+          });
+        } else {
+          handleSessionExpiry();
+          return;
+        }
+      }
+    }
+
+    const data = await res.json();
+
+    if (!res.ok) throw new Error(data.error || 'Upload failed');
+
+    // Success
     status.style.background = '#f0fdf4';
     status.style.border = '1px solid #bbf7d0';
     status.style.color  = '#059669';
-    const dedupNote = totalUpdated > 0 ? ' (' + totalNew + ' new, ' + totalUpdated + ' updated)' : '';
-    status.textContent = succeeded.length === 1
-      ? '✓ ' + totalNew + ' rows uploaded for ' + succeeded[0].data.platform + dedupNote + '. Dashboard will refresh shortly.'
-      : '✓ All ' + succeeded.length + ' files uploaded — ' + totalNew + ' new rows' + (totalUpdated ? ', ' + totalUpdated + ' updated' : '') + '. Dashboard will refresh shortly.';
-  } else if (succeeded.length === 0) {
-    status.style.background = '#fef2f2';
-    status.style.border = '1px solid #fecaca';
-    status.style.color  = '#dc2626';
-    status.textContent = failed.length === 1
-      ? '✗ ' + failed[0].file.name + ': ' + failed[0].error
-      : '✗ All ' + failed.length + ' files failed. First error (' + failed[0].file.name + '): ' + failed[0].error;
-  } else {
-    // Partial success — be explicit about which files failed rather
-    // than a generic message, since the successful ones already went
-    // in and shouldn't be re-uploaded, only the failed ones need retrying.
-    status.style.background = '#fffbeb';
-    status.style.border = '1px solid #fde68a';
-    status.style.color  = '#92400e';
-    status.textContent = '⚠ ' + succeeded.length + ' of ' + results.length + ' files uploaded (' + totalNew + ' new rows). Failed: ' +
-      failed.map(f => f.file.name + ' (' + f.error + ')').join(', ');
-  }
+    status.textContent  = '✓ ' + data.rowsIngested + ' rows uploaded for ' + data.platform + '. Dashboard will refresh shortly.';
 
-  _selectedFiles = [];
-  document.getElementById('fileInput').value = '';
-  document.getElementById('selectedFileInfo').style.display = 'none';
-  document.getElementById('dropZone').style.borderColor = '';
-  document.getElementById('dropZone').style.background  = '';
+    // Reset file input
+    input.value = '';
+    document.getElementById('selectedFileInfo').style.display = 'none';
+    document.getElementById('dropZone').style.borderColor = '';
+    document.getElementById('dropZone').style.background  = '';
 
-  if (succeeded.length > 0) {
     // Refresh data after 2 seconds
     setTimeout(() => {
       tabCache['platform_sales']      = null;
@@ -5202,13 +5196,19 @@ async function handleUpload() {
       tabCache['geographic_analysis'] = null;
       tabCache['ai_insights']         = null;
       _sidebarCache = {};
-      refreshActiveTab();
-      if (failed.length === 0) closeDrawer(); // leave the drawer open if something needs retrying
+      fetchAndRender();
+      closeDrawer();
     }, 2000);
-  }
 
-  btn.disabled  = false;
-  btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Upload & Merge';
+  } catch(err) {
+    status.style.background = '#fef2f2';
+    status.style.border = '1px solid #fecaca';
+    status.style.color  = '#dc2626';
+    status.textContent  = '✗ ' + (err.message || 'Upload failed. Check filename prefix.');
+  } finally {
+    btn.disabled    = false;
+    btn.innerHTML   = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Upload & Merge';
+  }
 }
 
 // ─── MODAL + DRAWER ───────────────────────────────────────────────
@@ -5258,7 +5258,7 @@ async function switchClient(newSlug) {
   } catch (e) {
     console.warn('[client-switch] failed to load new client config:', e.message);
   }
-  refreshActiveTab();
+  fetchAndRender();
 }
 
 document.getElementById('clientSwitcher')?.addEventListener('change', (e) => switchClient(e.target.value));
@@ -5638,7 +5638,6 @@ async function addSkuCost() {
     document.getElementById('skuCostPrice').value = '';
     loadSkuCosts();
     tabCache['projections_insights'] = null; // pricing changed — profit numbers need recalculating
-    refreshActiveTab();
   } catch (e) {
     alert('Failed to save: ' + e.message);
   }
@@ -5650,7 +5649,6 @@ async function deleteSkuCost(id) {
     await apiFetch('/clients/' + clientSlug + '/sku-costs/' + id, { method: 'DELETE' });
     loadSkuCosts();
     tabCache['projections_insights'] = null;
-    refreshActiveTab();
   } catch (e) { alert('Failed to delete: ' + e.message); }
 }
 
@@ -5688,7 +5686,6 @@ async function savePlatformAssumption(platform) {
       body: JSON.stringify({ platform, commission_percent, shipping_cost_flat }),
     });
     tabCache['projections_insights'] = null;
-    refreshActiveTab();
   } catch (e) {
     alert('Failed to save: ' + e.message);
   }
@@ -5696,7 +5693,7 @@ async function savePlatformAssumption(platform) {
 
 
 // ─── BOOT ─────────────────────────────────────────────────────────
-const FRONTEND_BUILD = 'V50-trend-chart-dom-fix'; // bump alongside backend health version
+const FRONTEND_BUILD = 'V38-onclick-quote-fix'; // bump alongside backend health version
 console.log('[Semya] Frontend build:', FRONTEND_BUILD);
 
 function boot(user) {
@@ -5844,21 +5841,30 @@ function closeDailyTargetsPanel() {
 function populateDtModalInputs() {
   const container = document.getElementById('dtModalInputs');
   if (!container) return;
+  const PLATFORMS_DT = ['amazon', 'flipkart', 'blinkit', 'meta'];
   container.innerHTML = PLATFORMS_DT.map(p => {
-    const m   = { ...(PLATFORM_META[p] || {}), label: DT_LABELS[p] || p.toUpperCase() };
+    const m   = PLATFORM_META[p] || { label: p.toUpperCase() };
     const tgt = dtState.targets[p]?.target || 0;
-    return '<div class="target-input-group"><label class="target-input-label"><span class="platform-pill ' + (PLATFORM_META[p]?.pillClass || '') + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span> Daily Target</label><div class="target-input-wrap"><span class="target-input-prefix">&#8377;</span><input type="number" class="target-input" id="dtModalTarget_' + p + '" value="' + tgt + '" min="0" step="10000" /></div></div>';
+    const spendTgt = dtState.targets[p]?.spendTarget || 0;
+    return '<div class="target-input-group"><label class="target-input-label"><span class="platform-pill ' + (PLATFORM_META[p]?.pillClass || '') + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span> Daily Revenue Target</label><div class="target-input-wrap"><span class="target-input-prefix">&#8377;</span><input type="number" class="target-input" id="dtModalTarget_' + p + '" value="' + tgt + '" min="0" step="10000" /></div>'
+      + '<label class="target-input-label" style="margin-top:8px;">Daily Spend Plan</label><div class="target-input-wrap"><span class="target-input-prefix">&#8377;</span><input type="number" class="target-input" id="dtModalSpendTarget_' + p + '" value="' + spendTgt + '" min="0" step="1000" /></div></div>';
   }).join('');
 }
 async function saveTargetsFromModal() {
   const { clientSlug } = state; if (!clientSlug) return;
   const statusEl = document.getElementById('dtModalStatus');
   if (statusEl) { statusEl.textContent = 'Saving…'; statusEl.style.color = '#64748b'; }
+  const PLATFORMS_DT = ['amazon', 'flipkart', 'blinkit', 'meta'];
   PLATFORMS_DT.forEach(p => {
     const input = document.getElementById('dtModalTarget_' + p);
+    const spendInput = document.getElementById('dtModalSpendTarget_' + p);
     if (input) {
       if (!dtState.targets[p]) dtState.targets[p] = {};
       dtState.targets[p].target = Number(input.value) || 0;
+    }
+    if (spendInput) {
+      if (!dtState.targets[p]) dtState.targets[p] = {};
+      dtState.targets[p].spendTarget = Number(spendInput.value) || 0;
     }
   });
   const dateEl = document.getElementById('dtModalDate');
@@ -5872,7 +5878,6 @@ async function saveTargetsFromModal() {
     if (!res.ok) throw new Error('Server returned ' + res.status);
     if (statusEl) { statusEl.textContent = '✓ Saved'; statusEl.style.color = '#059669'; }
     tabCache['daily_targets'] = null;
-    refreshActiveTab(); // re-render the tab now, not just invalidate the cache for next time
     setTimeout(() => {
       if (statusEl) statusEl.textContent = '';
       closeDailyTargetsPanel();
@@ -6150,8 +6155,7 @@ async function loadUploadHistory() {
         const date = d.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'2-digit' });
         const pm   = PLATFORM_DM_META[u.platform] || { label: u.platform, pillClass: 'pill-amz' };
         const type = u.data_type === 'revenue' ? '📊 Revenue' : '📣 Campaign';
-        const rows = (u.row_count || 0).toLocaleString('en-IN') + (u.rows_updated ? ' <span style="color:#0284c7;font-weight:600;">(+' + u.rows_updated.toLocaleString('en-IN') + ' upd)</span>' : '');
-        const rowsTitle = 'New: ' + (u.row_count||0).toLocaleString('en-IN') + ' · Updated: ' + (u.rows_updated||0).toLocaleString('en-IN') + ' · Skipped: ' + (u.skipped_rows||0).toLocaleString('en-IN') + (u.rows_duplicate_in_file ? ' · Duplicate within file: ' + u.rows_duplicate_in_file.toLocaleString('en-IN') : '');
+        const rows = (u.row_count || 0).toLocaleString('en-IN');
         const file = (u.original_filename || '—').slice(0, 28);
         const statusBadge = u.status === 'error'
           ? '<span style="color:#dc2626;font-size:9px;font-weight:700;">FAILED</span>'
@@ -6160,7 +6164,7 @@ async function loadUploadHistory() {
           '<span style="font-size:11px;color:#374151;">' + date + '</span>' +
           '<span><span class="platform-pill ' + pm.pillClass + '" style="font-size:9px;padding:2px 7px;">' + pm.label + '</span></span>' +
           '<span style="color:#64748b;">' + type + '</span>' +
-          '<span style="font-family:var(--font-mono);color:#0f172a;" title="' + rowsTitle + '">' + rows + '</span>' +
+          '<span style="font-family:var(--font-mono);color:#0f172a;">' + rows + '</span>' +
           '<span style="color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (u.original_filename||'') + '">' + file + '</span>' +
           '<button class="dm-delete-btn"' +
             ' data-uid="' + u.id + '"' +
@@ -6198,7 +6202,6 @@ function confirmDeleteUpload(el) {
       tabCache['geographic_analysis'] = null;
       tabCache['ai_insights']         = null;
       _sidebarCache = {};
-      refreshActiveTab();
     }
   );
 }
@@ -6228,7 +6231,6 @@ async function confirmRangeDelete() {
       closeDmConfirm();
       tabCache = {};
       _sidebarCache = {};
-      refreshActiveTab();
     }
   );
 }
@@ -6294,7 +6296,6 @@ function confirmPlatformDelete(el) {
       tabCache['geographic_analysis'] = null;
       tabCache['ai_insights']         = null;
       _sidebarCache = {};
-      refreshActiveTab();
     }
   );
 }

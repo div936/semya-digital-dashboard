@@ -22,31 +22,14 @@ router.get('/:client_slug/targets', rbacMiddleware, async (req, res) => {
   const { client } = req.semya;
   const date = req.query.date || new Date().toISOString().split('T')[0];
 
-  // 1. Load targets — for EACH platform independently, the most
-  //    recently-set value on or before the requested date is what's
-  //    "in effect" (not an exact match on that exact date). A target
-  //    set once carries forward to every later date until it's
-  //    explicitly changed again, and each platform's own history is
-  //    independent — changing only Flipkart on a later date doesn't
-  //    reset Amazon/Blinkit/Website back to zero.
-  const { data: allTargetRows, error: tErr } = await supabaseAdmin
+  // 1. Load saved targets for this date
+  const { data: targetRows, error: tErr } = await supabaseAdmin
     .from('daily_targets')
-    .select('platform, revenue_target, units_target, target_date')
+    .select('platform, revenue_target, units_target')
     .eq('client_id', client.id)
-    .lte('target_date', date)
-    .order('target_date', { ascending: false });
+    .eq('target_date', date);
 
   if (tErr) return res.status(500).json({ error: 'Failed to load targets.' });
-
-  // Rows are newest-first, so the first row seen for each platform is
-  // the one currently in effect for the requested date.
-  const targetRows = [];
-  const seenPlatforms = new Set();
-  for (const row of (allTargetRows || [])) {
-    if (seenPlatforms.has(row.platform)) continue;
-    seenPlatforms.add(row.platform);
-    targetRows.push(row);
-  }
 
   // 2. Load actual revenue for the same date from revenue_data
   const { data: revenueRows, error: rErr } = await supabaseAdmin
@@ -57,33 +40,54 @@ router.get('/:client_slug/targets', rbacMiddleware, async (req, res) => {
 
   if (rErr) return res.status(500).json({ error: 'Failed to load actuals.' });
 
-  // 3. Aggregate actuals by platform — 'amazon' folds in 'acutas' and
-  //    'meta' folds in 'google', matching the grouped Daily Targets
-  //    concept used throughout the rest of the app (Amazon = Neat
-  //    Amazon + Acutas, Website = Meta + Google combined).
-  const DT_GROUP_OF = { acutas: 'amazon', google: 'meta' };
+  // 2b. Load actual ad spend for the same date from campaign_data, so
+  // Daily Targets can show revenue vs spend vs plan side by side
+  // instead of revenue alone.
+  const { data: spendRows, error: sErr } = await supabaseAdmin
+    .from('campaign_data')
+    .select('platform, standard_spend')
+    .eq('client_id', client.id)
+    .eq('campaign_date', date);
+
+  if (sErr) return res.status(500).json({ error: 'Failed to load spend actuals.' });
+
+  // 3. Aggregate actuals by platform
   const actuals = {};
   for (const row of (revenueRows || [])) {
-    const p = DT_GROUP_OF[row.platform] || row.platform;
-    if (!actuals[p]) actuals[p] = { revenue: 0, units: 0 };
+    const p = row.platform;
+    if (!actuals[p]) actuals[p] = { revenue: 0, units: 0, spend: 0 };
     actuals[p].revenue += Number(row.standard_revenue) || 0;
     actuals[p].units   += Number(row.standard_units)   || 0;
   }
+  for (const row of (spendRows || [])) {
+    const p = row.platform;
+    if (!actuals[p]) actuals[p] = { revenue: 0, units: 0, spend: 0 };
+    actuals[p].spend += Number(row.standard_spend) || 0;
+  }
 
-  // 4. Build response shape: { targets: { amazon: { target, achieved } } }
+  // 4. Build response shape: { targets: { amazon: { target, achieved, spendTarget, spendActual, roas } } }
   const targets = {};
   for (const row of (targetRows || [])) {
+    const a = actuals[row.platform] || { revenue: 0, units: 0, spend: 0 };
+    const spendTarget = Number(row.spend_target) || 0;
     targets[row.platform] = {
-      target:   Number(row.revenue_target),
-      achieved: actuals[row.platform]?.revenue || 0,
-      units:    actuals[row.platform]?.units   || 0,
+      target:      Number(row.revenue_target),
+      achieved:    a.revenue,
+      units:       a.units,
+      spendTarget,
+      spendActual: a.spend,
+      roas:        a.spend > 0 ? +(a.revenue / a.spend).toFixed(2) : null,
     };
   }
 
   // Fill in platforms that have actuals but no saved target
   for (const [plat, vals] of Object.entries(actuals)) {
     if (!targets[plat]) {
-      targets[plat] = { target: 0, achieved: vals.revenue, units: vals.units };
+      targets[plat] = {
+        target: 0, achieved: vals.revenue, units: vals.units,
+        spendTarget: 0, spendActual: vals.spend,
+        roas: vals.spend > 0 ? +(vals.revenue / vals.spend).toFixed(2) : null,
+      };
     }
   }
 
@@ -118,6 +122,7 @@ router.put('/:client_slug/targets', rbacMiddleware, async (req, res) => {
       platform,
       revenue_target: val.target,
       units_target:   val.units_target || null,
+      spend_target:   typeof val.spendTarget === 'number' ? val.spendTarget : null,
       updated_by:     user.id,
       updated_at:     new Date().toISOString(),
     }));

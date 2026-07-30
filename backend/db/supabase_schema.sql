@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS revenue_data (
   standard_city     TEXT,
   standard_state    TEXT,
   standard_status   TEXT,
+  standard_fulfillment_channel TEXT,  -- e.g. 'Amazon' (FBA) vs 'Merchant' — Amazon-only dimension
   raw_extras        JSONB DEFAULT '{}'::JSONB,  -- leftover unmapped columns
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -122,7 +123,7 @@ CREATE TABLE IF NOT EXISTS campaign_data (
   standard_revenue  NUMERIC(14,2),
   standard_impressions  BIGINT,
   standard_clicks   BIGINT,
-  standard_orders   NUMERIC(10,2), -- not INTEGER: Google Ads' "Conversions" is often fractional (attribution-split across touchpoints)
+  standard_orders   INTEGER,
   raw_extras        JSONB DEFAULT '{}'::JSONB,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

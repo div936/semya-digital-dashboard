@@ -75,22 +75,7 @@ app.use('/clients', insightsRouter);
 app.use('/clients', projectionsRouter);
 
 // ─── Health check ─────────────────────────────────────────────────
-app.get('/health', (_req, res) => res.json({
-  ok: true,
-  version: 'V50-trend-chart-dom-fix',
-  // Presence checks only — never the actual values. Lets you verify a
-  // deployment has the right environment variables configured without
-  // needing server log access. A missing ANTHROPIC_API_KEY in
-  // particular fails AI Insights generation completely silently
-  // (caught and only logged server-side) with no visible error
-  // anywhere in the dashboard, which is exactly what this is for.
-  env: {
-    SUPABASE_URL:               !!process.env.SUPABASE_URL,
-    SUPABASE_ANON_KEY:          !!process.env.SUPABASE_ANON_KEY,
-    SUPABASE_SERVICE_ROLE_KEY:  !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-    ANTHROPIC_API_KEY:          !!process.env.ANTHROPIC_API_KEY,
-  },
-}));
+app.get('/health', (_req, res) => res.json({ ok: true, version: 'V38-onclick-quote-fix' }));
 
 // ─── 404 ──────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'Route not found.' }));

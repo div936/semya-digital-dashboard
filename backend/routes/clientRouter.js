@@ -160,7 +160,10 @@ router.get(
     const data = await fetchAllRows((from, to) => {
       let q = supabaseAdmin
         .from('revenue_data')
-        .select('platform, order_date, standard_revenue, standard_units, standard_status')
+        // standard_sku added so Platform Sales can show a real
+        // product-wise breakdown instead of bucketing everything
+        // into "Unknown".
+        .select('platform, order_date, standard_revenue, standard_units, standard_status, standard_sku')
         .eq('client_id', client.id)
         .range(from, to);
       if (req.query.from)      q = q.or(`order_date.gte.${req.query.from},order_date.is.null`);
@@ -169,7 +172,16 @@ router.get(
       return q;
     }).catch(e => { throw e; });
 
-    const summary = aggregatePlatformSales(data);
+    // `excludeStatuses` is an optional comma-separated list, e.g.
+    // ?excludeStatuses=Cancelled,Pending — nothing is excluded unless
+    // the user actively picks statuses to drop. This mirrors the old
+    // dashboard's checkbox behaviour: all statuses count by default so
+    // "Total Orders" reflects everything that was actually placed.
+    const excludeStatuses = req.query.excludeStatuses
+      ? new Set(req.query.excludeStatuses.split(',').map(s => s.trim()).filter(Boolean))
+      : new Set();
+
+    const summary = aggregatePlatformSales(data, excludeStatuses);
     return res.json(summary);
   }
 );
@@ -213,9 +225,14 @@ router.get(
 
     if (res.headersSent) return;
 
-    const filteredRevenue = revenueRows.filter(r =>
-      !r.standard_status || !EXCLUDED_STATUSES.has(r.standard_status)
-    );
+    // Same opt-in exclusion as /platform-sales — nothing dropped
+    // unless the caller passes ?excludeStatuses=...
+    const excludeStatuses = req.query.excludeStatuses
+      ? new Set(req.query.excludeStatuses.split(',').map(s => s.trim()).filter(Boolean))
+      : new Set();
+    const filteredRevenue = excludeStatuses.size
+      ? revenueRows.filter(r => !r.standard_status || !excludeStatuses.has(r.standard_status))
+      : revenueRows;
     return res.json({
       revenue:   filteredRevenue,
       campaigns: campaignRows,
@@ -226,6 +243,22 @@ router.get(
 
 // ═══════════════════════════════════════════════════════════════════
 // CAMPAIGN INSIGHTS
+//
+// Previously returned raw campaign_data rows only, leaving the
+// frontend to compute everything (or not — spend vs revenue, fulfilment
+// channel split, and product breakdown weren't shown anywhere). Now
+// returns three pieces in one response:
+//   - campaigns:            raw rows, unchanged shape, for anyone still
+//                            consuming the old response format
+//   - platformSummary:      spend vs revenue vs ROAS per platform
+//   - fulfillmentBreakdown: Amazon/Acutas FBA vs Merchant split
+//                            (pulled from revenue_data, since fulfilment
+//                            channel is a revenue-side field, not a
+//                            campaign-side field)
+//   - topProducts:          product-wise revenue for the platforms in
+//                            this view, so Campaign Insights can show
+//                            "which SKUs is this ad spend driving" next
+//                            to the spend numbers
 // ═══════════════════════════════════════════════════════════════════
 router.get(
   '/:client_slug/campaign-insights',
@@ -233,6 +266,9 @@ router.get(
   async (req, res) => {
     const { client } = req.semya;
     const { from, to, platform } = req.query;
+    const excludeStatuses = req.query.excludeStatuses
+      ? new Set(req.query.excludeStatuses.split(',').map(s => s.trim()).filter(Boolean))
+      : new Set();
 
     let query = supabaseAdmin
       .from('campaign_data')
@@ -244,12 +280,100 @@ router.get(
     if (to)       query = query.or(`campaign_date.lte.${to},campaign_date.is.null`);
     if (platform) query = query.in('platform', expandPlatform(platform));
 
-    const { data, error } = await query;
+    const { data: campaigns, error } = await query;
     if (error) return res.status(500).json({ error: 'Failed to fetch campaigns.' });
 
-    return res.json(data);
+    // Pull matching revenue-side rows for the same window/platform so we
+    // can compute fulfilment-channel split and product breakdown. This is
+    // a second, smaller query rather than joining in SQL because
+    // revenue_data and campaign_data aren't guaranteed to share a key —
+    // platform + date range is the only reliable overlap.
+    const revenueRows = await fetchAllRows((rangeFrom, rangeTo) => {
+      let q = supabaseAdmin
+        .from('revenue_data')
+        .select('platform, standard_revenue, standard_units, standard_sku, standard_status, standard_fulfillment_channel, order_date')
+        .eq('client_id', client.id)
+        .range(rangeFrom, rangeTo);
+      if (from)     q = q.or(`order_date.gte.${from},order_date.is.null`);
+      if (to)       q = q.or(`order_date.lte.${to},order_date.is.null`);
+      if (platform) q = q.in('platform', expandPlatform(platform));
+      return q;
+    }).catch((e) => { throw e; });
+
+    const revenueFiltered = excludeStatuses.size
+      ? revenueRows.filter(r => !r.standard_status || !excludeStatuses.has(r.standard_status))
+      : revenueRows;
+
+    const insights = aggregateCampaignInsights(campaigns, revenueFiltered);
+
+    return res.json({
+      campaigns,
+      ...insights,
+    });
   }
 );
+
+function aggregateCampaignInsights(campaignRows, revenueRows) {
+  // ── Spend vs revenue vs ROAS, per platform ─────────────────────
+  const byPlatform = {};
+  for (const row of campaignRows) {
+    const p = row.platform;
+    if (!byPlatform[p]) byPlatform[p] = { platform: p, spend: 0, campaignRevenue: 0 };
+    byPlatform[p].spend           += Number(row.standard_spend)   || 0;
+    byPlatform[p].campaignRevenue += Number(row.standard_revenue) || 0;
+  }
+  // Actual (order-level) revenue per platform, from revenue_data —
+  // more trustworthy than a campaign export's self-reported attributed
+  // revenue, and what "revenue vs spend" should really compare against.
+  for (const row of revenueRows) {
+    const p = row.platform;
+    if (!byPlatform[p]) byPlatform[p] = { platform: p, spend: 0, campaignRevenue: 0 };
+    byPlatform[p].actualRevenue = (byPlatform[p].actualRevenue || 0) + (Number(row.standard_revenue) || 0);
+  }
+  const platformSummary = Object.values(byPlatform).map(p => ({
+    ...p,
+    actualRevenue: p.actualRevenue || 0,
+    roas:   p.spend > 0 ? +((p.actualRevenue || p.campaignRevenue) / p.spend).toFixed(2) : null,
+    profit: (p.actualRevenue || p.campaignRevenue) - p.spend,
+  }));
+
+  const totalSpend   = platformSummary.reduce((s, p) => s + p.spend, 0);
+  const totalRevenue = platformSummary.reduce((s, p) => s + (p.actualRevenue || p.campaignRevenue), 0);
+
+  // ── Fulfilment channel split (Amazon FBA vs Merchant) ──────────
+  // Only meaningful for platforms whose export includes it — currently
+  // Amazon/Acutas. Rows without the field are counted separately as
+  // "Not specified" rather than silently dropped.
+  const byFulfillment = {};
+  for (const row of revenueRows) {
+    const ch = row.standard_fulfillment_channel || 'Not specified';
+    if (!byFulfillment[ch]) byFulfillment[ch] = { channel: ch, revenue: 0, units: 0, orders: 0 };
+    byFulfillment[ch].revenue += Number(row.standard_revenue) || 0;
+    byFulfillment[ch].units   += Number(row.standard_units)   || 0;
+    byFulfillment[ch].orders  += 1;
+  }
+  const fulfillmentBreakdown = Object.values(byFulfillment);
+
+  // ── Product-wise revenue, for the platforms in this view ───────
+  const byProduct = {};
+  for (const row of revenueRows) {
+    const sku = row.standard_sku || 'Unknown';
+    const key = row.platform + '|' + sku;
+    if (!byProduct[key]) byProduct[key] = { sku, platform: row.platform, revenue: 0, units: 0 };
+    byProduct[key].revenue += Number(row.standard_revenue) || 0;
+    byProduct[key].units   += Number(row.standard_units)   || 0;
+  }
+  const topProducts = Object.values(byProduct).sort((a, b) => b.revenue - a.revenue).slice(0, 15);
+
+  return {
+    platformSummary,
+    totalSpend,
+    totalRevenue,
+    overallRoas: totalSpend > 0 ? +(totalRevenue / totalSpend).toFixed(2) : null,
+    fulfillmentBreakdown,
+    topProducts,
+  };
+}
 
 
 // ═══════════════════════════════════════════════════════════════════
@@ -292,9 +416,12 @@ router.get(
     backfillLocationByOrder(geoRows);
     for (const r of geoRows) delete r.raw_extras;
 
-    const filteredGeo = geoRows.filter(r =>
-      !r.standard_status || !EXCLUDED_STATUSES.has(r.standard_status)
-    );
+    const excludeStatusesGeo = req.query.excludeStatuses
+      ? new Set(req.query.excludeStatuses.split(',').map(s => s.trim()).filter(Boolean))
+      : new Set();
+    const filteredGeo = excludeStatusesGeo.size
+      ? geoRows.filter(r => !r.standard_status || !excludeStatusesGeo.has(r.standard_status))
+      : geoRows;
     return res.json(filteredGeo);
   }
 );
@@ -378,9 +505,14 @@ router.get(
 // ═══════════════════════════════════════════════════════════════════
 // HELPER — platform sales aggregator
 // ═══════════════════════════════════════════════════════════════════
-const EXCLUDED_STATUSES = new Set(['Cancelled','Pending','Unshipped','Shipped - Returned to Seller','Shipped - Returning to Seller']);
+// No longer a hardcoded server-side exclusion. Kept here only as the
+// suggested preset the frontend can offer under a "Hide cancelled/
+// returned" filter — the user opts in via ?excludeStatuses=... on each
+// endpoint. Default behaviour (no param) now includes every status,
+// matching the old dashboard's checkboxes-all-checked default.
+const SUGGESTED_EXCLUDABLE_STATUSES = ['Cancelled','Pending','Unshipped','Shipped - Returned to Seller','Shipped - Returning to Seller'];
 
-function aggregatePlatformSales(rows) {
+function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
   const byPlatform = {};
   const byDay      = {};
   const byWeek     = {};
@@ -391,8 +523,12 @@ function aggregatePlatformSales(rows) {
   const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
   for (const row of rows) {
-    // Skip cancelled / returned / pending rows in JS (avoids SQL NULL edge cases)
-    if (row.standard_status && EXCLUDED_STATUSES.has(row.standard_status)) continue;
+    // Only skip a status if the caller explicitly asked to exclude it
+    // (via ?excludeStatuses=...). Default is empty — every row counts,
+    // matching the old dashboard where all status checkboxes start
+    // checked. Cancelled/Pending/Returned rows stay visible by default
+    // so the team can see the full picture, not just fulfilled orders.
+    if (row.standard_status && excludeStatuses.has(row.standard_status)) continue;
 
     const p   = row.platform;
     const rev = Number(row.standard_revenue ?? 0);

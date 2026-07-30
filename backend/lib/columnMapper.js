@@ -22,8 +22,6 @@
 // key   = raw column header (lowercased + trimmed for matching)
 // value = standard target field name
 // ═══════════════════════════════════════════════════════════════════
-import crypto from 'crypto';
-
 export const REVENUE_MAP = {
 
   // ── SKU / Product identifier ──────────────────────────────────
@@ -131,6 +129,17 @@ export const REVENUE_MAP = {
   'delivery status':            'standard_status',
   'shipment status':            'standard_status',
   'status':                     'standard_status',
+
+  // ── Fulfillment channel (Amazon: FBA vs Merchant-fulfilled) ────
+  // NOTE: deliberately NOT mapped to standard_status or any platform
+  // grouping field. It's a separate dimension — an order can be
+  // Amazon-platform + Merchant-fulfilled, or Amazon-platform +
+  // FBA-fulfilled. Surfaced in Campaign Insights, not the top-level
+  // platform split.
+  'fulfillment channel':        'standard_fulfillment_channel',
+  'fulfilment channel':         'standard_fulfillment_channel',
+  'fulfillment-channel':        'standard_fulfillment_channel',
+  'fulfilled-by':               'standard_fulfillment_channel',
 };
 
 
@@ -178,18 +187,7 @@ export const CAMPAIGN_MAP = {
   '14 day total sales':         'standard_revenue',
   '7 day total sales':          'standard_revenue',
   'purchase value':             'standard_revenue',
-  // NOTE: 'purchase roas' / 'website purchase roas' are intentionally
-  // NOT mapped here. ROAS is a RATIO (e.g. "3.5" meaning 3.5x return),
-  // not a currency amount — mapping it directly to standard_revenue
-  // silently corrupted every row's revenue with a tiny ratio value
-  // instead of a real rupee amount (this is exactly what caused
-  // near-zero RoAS to show for Meta on the Platform Health widget,
-  // despite Meta being the highest-revenue platform). When a real
-  // Meta export has no direct currency revenue column at all (common
-  // — confirmed against an actual file), revenue is instead derived
-  // as spend × ROAS in normaliseBatch() below, which is what ROAS
-  // mathematically means, rather than treating the ratio as if it
-  // were currency.
+  'purchase roas':              'standard_revenue',   // Meta uses this key
   'campaign revenue':           'standard_revenue',
   'total revenue':              'standard_revenue',   // Flipkart ads export
   'conversion value':           'standard_revenue',
@@ -348,7 +346,7 @@ export function extractIdentity(rawExtras) {
 // from a sibling row of the same order that does have it.
 // ═══════════════════════════════════════════════════════════════════
 const ORDER_ID_KEYS = [
-  'Order Id', 'Order ID', 'order id', 'Order Number',
+  'Order Id', 'Order ID', 'order id', 'Order Number', 'ORDER ITEM ID',
   'amazon-order-id', 'merchant-order-id', 'Name', 'Id',
 ];
 
@@ -359,79 +357,6 @@ export function extractOrderId(rawExtras) {
     if (v !== undefined && v !== '' && v !== null) return String(v).trim();
   }
   return null;
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// DEDUPLICATION  (ported from the previous dashboard's proven design)
-//
-// 3-tier dedup key, most to least reliable:
-//   1. order_item_id — unique per LINE ITEM. An order with 3 different
-//      products has 1 order_id but 3 different order_item_ids — this
-//      is what correctly keeps all 3 instead of treating the 2nd and
-//      3rd as false duplicates of the 1st.
-//   2. order_id + sku — used when there's an order ID but no native
-//      line-item-level ID (most platforms). Distinguishes different
-//      products within the same order.
-//   3. composite (date + sku + state + units + revenue) — last resort
-//      when neither ID is present at all. Can rarely produce a false-
-//      positive collision (two different customers buying the same
-//      cheap SKU, same state, same day, same price) — platforms that
-//      expose a real order ID should always be preferred.
-//
-// Re-uploading the same file (or an overlapping export) is then safe:
-// matching rows get their mutable fields (status/revenue/units)
-// replaced with the newest values via upsert, rather than creating a
-// duplicate — e.g. an order that shows as "Cancelled" in a later
-// export correctly overwrites the earlier "Pending" row instead of
-// both existing side by side.
-// ═══════════════════════════════════════════════════════════════════
-const ORDER_ITEM_ID_KEYS = ['order-item-id', 'Order Item Id', 'ORDER ITEM ID'];
-
-export function extractOrderItemId(rawExtras) {
-  if (!rawExtras) return null;
-  for (const k of ORDER_ITEM_ID_KEYS) {
-    let v = rawExtras[k];
-    if (v === undefined || v === '' || v === null) continue;
-    v = String(v).trim().replace(/^'/, ''); // Flipkart prefixes a ' to force-text in Excel
-    // Amazon uses "0" as a placeholder order-item-id on some zero-
-    // revenue adjustment rows — treat that as "not present", or every
-    // such row across every order would collide as false duplicates.
-    if (v === '0') continue;
-    return v;
-  }
-  return null;
-}
-
-function sha256Hex(str) {
-  return crypto.createHash('sha256').update(str).digest('hex');
-}
-
-// Returns { rowHash, orderId, orderItemId, dedupMethod } for one
-// normalised revenue row. Call after normaliseRow() so standardFields
-// (date/sku/state/units/revenue) are already resolved.
-export function computeDedupKey(rawExtras, standardFields) {
-  const orderId     = extractOrderId(rawExtras);
-  const orderItemId = extractOrderItemId(rawExtras);
-  const date    = standardFields.order_date || '';
-  const sku     = standardFields.standard_sku || '';
-  const state   = standardFields.standard_state || '';
-  const units   = standardFields.standard_units ?? '';
-  const revenue = standardFields.standard_revenue ?? '';
-
-  if (orderItemId) {
-    return { rowHash: sha256Hex('order_item_id:' + orderItemId), orderId, orderItemId, dedupMethod: 'order_item_id' };
-  }
-  if (orderId) {
-    // Synthesise a line-item-level key the same way the reference
-    // system does for platforms with no native item-level ID (e.g.
-    // Shopify): order + sku + revenue, so two different products (or
-    // the same product at two different prices) in one order don't
-    // collide into a single row.
-    const synthetic = orderId + '::' + sku + '::' + revenue;
-    return { rowHash: sha256Hex('order_id_sku:' + orderId + '|' + sku), orderId, orderItemId: synthetic, dedupMethod: 'order_id_sku' };
-  }
-  const composite = `composite:${date}|${sku}|${state}|${units}|${revenue}`;
-  return { rowHash: sha256Hex(composite), orderId: null, orderItemId: null, dedupMethod: 'composite' };
 }
 
 // Groups rows by platform+orderId and fills in a blank standard_city /
@@ -552,23 +477,6 @@ export function normaliseRow(rawRow, map) {
 // Returns:
 //   { rows: Array<normalised_record>, skipped: number }
 // ═══════════════════════════════════════════════════════════════════
-const ROAS_KEYS = [
-  'Purchase ROAS (return on ad spend)',
-  'Website purchase ROAS (return on ad spend)',
-  'ROAS', 'Total ROAS', 'Direct RoAS',
-];
-
-function extractRoasRatio(rawExtras) {
-  if (!rawExtras) return null;
-  for (const k of ROAS_KEYS) {
-    const v = rawExtras[k];
-    if (v === undefined || v === '' || v === null) continue;
-    const n = Number(String(v).replace(/[^0-9.\-]/g, ''));
-    if (!isNaN(n) && n >= 0) return n;
-  }
-  return null;
-}
-
 export function normaliseBatch(rawRows, map, { clientId, platform, uploadId, defaultDate } = {}) {
   const rows = [];
   let skipped = 0;
@@ -581,18 +489,6 @@ export function normaliseBatch(rawRows, map, { clientId, platform, uploadId, def
     // file rather than a per-row date column — fall back to it here.
     if (!standardFields[dateField] && defaultDate) {
       standardFields[dateField] = defaultDate;
-    }
-
-    // Campaign rows: some platforms' exports (confirmed against a real
-    // Meta Ads export) have no direct currency revenue column at all —
-    // only a ROAS ratio (e.g. "3.5" meaning 3.5x return) and a spend
-    // figure. Revenue = spend × ROAS is what that ratio mathematically
-    // means, so derive it here rather than leaving revenue null (or,
-    // as a previous version of this code did, wrongly treating the
-    // ratio itself as if it were a currency amount).
-    if (map === CAMPAIGN_MAP && standardFields.standard_revenue == null && standardFields.standard_spend != null) {
-      const roas = extractRoasRatio(rawExtras);
-      if (roas != null) standardFields.standard_revenue = +(standardFields.standard_spend * roas).toFixed(2);
     }
 
     // Skip rows with no identifiable revenue or SKU at all (i.e. the

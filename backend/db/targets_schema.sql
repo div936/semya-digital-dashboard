@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS daily_targets (
   platform    TEXT NOT NULL,
   revenue_target  NUMERIC(14,2) NOT NULL DEFAULT 0,
   units_target    INTEGER,
+  spend_target    NUMERIC(14,2) DEFAULT 0,  -- planned ad spend for the day, so Daily Targets can show revenue vs spend vs plan together
   updated_by  UUID REFERENCES users(id),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (client_id, target_date, platform)

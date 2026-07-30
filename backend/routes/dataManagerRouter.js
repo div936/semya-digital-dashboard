@@ -28,7 +28,7 @@ router.get('/:client_slug/uploads', rbacMiddleware, adminOnly, async (req, res) 
   const { client } = req.semya;
   const { data, error } = await supabaseAdmin
     .from('uploads')
-    .select('id, detected_platform, detected_data_type, status, row_count, skipped_rows, rows_updated, rows_duplicate_in_file, error_message, created_at, original_name')
+    .select('id, detected_platform, detected_data_type, status, row_count, skipped_rows, error_message, created_at, original_name')
     .eq('client_id', client.id)
     .order('created_at', { ascending: false })
     .limit(200);
@@ -43,8 +43,6 @@ router.get('/:client_slug/uploads', rbacMiddleware, adminOnly, async (req, res) 
     status: u.status,
     row_count: u.row_count,
     skipped_rows: u.skipped_rows,
-    rows_updated: u.rows_updated || 0,
-    rows_duplicate_in_file: u.rows_duplicate_in_file || 0,
     error_message: u.error_message,
     created_at: u.created_at,
     original_filename: u.original_name,
@@ -57,22 +55,16 @@ router.get('/:client_slug/uploads', rbacMiddleware, adminOnly, async (req, res) 
 router.get('/:client_slug/data/summary', rbacMiddleware, adminOnly, async (req, res) => {
   const { client } = req.semya;
 
-  const [{ data: rev, error: e1 }, { data: camp, error: e2 }, { data: uploads, error: e3 }] = await Promise.all([
+  const [{ data: rev, error: e1 }, { data: camp, error: e2 }] = await Promise.all([
     supabaseAdmin.from('revenue_data').select('platform').eq('client_id', client.id),
     supabaseAdmin.from('campaign_data').select('platform').eq('client_id', client.id),
-    supabaseAdmin.from('uploads').select('detected_platform').eq('client_id', client.id),
   ]);
 
-  if (e1 || e2 || e3) return res.status(500).json({ error: 'Failed to fetch data summary.' });
+  if (e1 || e2) return res.status(500).json({ error: 'Failed to fetch data summary.' });
 
   const summary = {};
   (rev  || []).forEach(r => { if (!summary[r.platform]) summary[r.platform] = { revenue: 0, campaign: 0 }; summary[r.platform].revenue++; });
   (camp || []).forEach(c => { if (!summary[c.platform]) summary[c.platform] = { revenue: 0, campaign: 0 }; summary[c.platform].campaign++; });
-  // Also surface platforms that have Upload History records but zero
-  // current data rows (e.g. the data was already cleared but old
-  // upload entries are still lingering) — otherwise there's no way to
-  // reach those stale records from this screen at all.
-  (uploads || []).forEach(u => { if (u.detected_platform && !summary[u.detected_platform]) summary[u.detected_platform] = { revenue: 0, campaign: 0 }; });
 
   return res.json({ summary });
 });
@@ -149,18 +141,6 @@ router.delete('/:client_slug/data/platform', rbacMiddleware, adminOnly, async (r
 
   if (dataType === 'all' || dataType === 'revenue')  await deleteFromTable('revenue_data');
   if (dataType === 'all' || dataType === 'campaign') await deleteFromTable('campaign_data');
-
-  // Also clear the matching Upload History records — this is an
-  // all-or-nothing wipe for this platform (unlike a date-range
-  // delete, which can remove only part of an upload's rows), so
-  // every upload event for it is now stale and should disappear
-  // along with the data, not linger showing row counts that no
-  // longer exist anywhere.
-  let uploadsQuery = supabaseAdmin.from('uploads').delete().eq('client_id', client.id);
-  if (platform !== 'all') uploadsQuery = uploadsQuery.eq('detected_platform', platform.toLowerCase());
-  if (dataType !== 'all') uploadsQuery = uploadsQuery.eq('detected_data_type', dataType);
-  const { error: uploadsErr } = await uploadsQuery;
-  if (uploadsErr) errors.push('uploads: ' + uploadsErr.message);
 
   if (errors.length) return res.status(500).json({ error: errors.join('; ') });
   return res.json({ ok: true, rowsDeleted: totalDeleted, platform });
