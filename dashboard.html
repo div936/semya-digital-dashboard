@@ -1233,6 +1233,29 @@
             <div class="sku-pill" data-ps-platform="blinkit">Blinkit</div>
             <div class="sku-pill" data-ps-platform="website">Website</div>
           </div>
+          <div class="status-filter-wrap" style="position:relative;">
+            <button type="button" class="trend-period-btn" id="psStatusFilterBtn" onclick="togglePsStatusMenu()">
+              Order status <span id="psStatusFilterCount"></span> ▾
+            </button>
+            <div id="psStatusFilterMenu" style="display:none;position:absolute;top:110%;left:0;z-index:20;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:10px 12px;min-width:230px;">
+              <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">Uncheck a status to exclude it from every number below. Everything is included by default.</div>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-status-cb" value="Cancelled" checked onchange="onPsStatusChange()"> Cancelled
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-status-cb" value="Pending" checked onchange="onPsStatusChange()"> Pending
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-status-cb" value="Unshipped" checked onchange="onPsStatusChange()"> Unshipped
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-status-cb" value="Shipped - Returned to Seller" checked onchange="onPsStatusChange()"> Returned to Seller
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-status-cb" value="Shipped - Returning to Seller" checked onchange="onPsStatusChange()"> Returning to Seller
+              </label>
+            </div>
+          </div>
           <span class="fetch-badge loading" id="psFetchBadge" style="margin-left:auto;">
             <span class="fetch-dot"></span><span id="psFetchText">Loading</span>
           </span>
@@ -1507,7 +1530,7 @@
         </div>
         <div class="kpi-card">
           <div class="kpi-icon">📈</div>
-          <div class="kpi-label">Campaign Revenue</div>
+          <div class="kpi-label">Revenue (Actual Orders)</div>
           <div class="kpi-value" id="ciKpiRev"><span class="skel skel-val"></span></div>
           <div><span class="kpi-delta" id="ciKpiRevDelta"><span class="skel skel-delta"></span></span></div>
           <div class="kpi-sub" id="ciKpiRevSub"><span class="skel skel-sub"></span></div>
@@ -1549,6 +1572,31 @@
           </div>
           <div id="ciSpendLegend" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;">
             <span class="skel skel-delta"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Fulfilment Channel + Product Breakdown -->
+      <div class="mid-grid" id="ciFulfillmentCard" style="display:none;">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Fulfilment Channel</span>
+            <span class="card-badge">Amazon: FBA vs Merchant</span>
+          </div>
+          <div class="stat-bar-list" id="ciFulfillmentList"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Top Products (this view)</span>
+            <span class="card-badge">By revenue</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>SKU</th><th>Platform</th><th>Revenue</th></tr></thead>
+              <tbody id="ciProductTbody">
+                <tr><td colspan="4"><span class="skel skel-row" style="display:block"></span></td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -1719,7 +1767,7 @@
       </div>
 
       <!-- KPIs -->
-      <div class="kpi-grid">
+      <div class="kpi-grid-4">
         <div class="kpi-card">
           <div class="kpi-icon">₹</div>
           <div class="kpi-label">Today's Revenue</div>
@@ -1740,6 +1788,13 @@
           <div class="kpi-value" id="dtKpiAttainment"><span class="skel skel-val"></span></div>
           <div><span class="kpi-delta" id="dtKpiAttainmentDelta"><span class="skel skel-delta"></span></span></div>
           <div class="kpi-sub" id="dtKpiAttainmentSub"><span class="skel skel-sub"></span></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon">💸</div>
+          <div class="kpi-label">Today's Ad Spend</div>
+          <div class="kpi-value" id="dtKpiSpend"><span class="skel skel-val"></span></div>
+          <div><span class="kpi-delta" id="dtKpiSpendDelta"><span class="skel skel-delta"></span></span></div>
+          <div class="kpi-sub" id="dtKpiSpendSub"><span class="skel skel-sub"></span></div>
         </div>
       </div>
 
@@ -3538,7 +3593,7 @@ function updateSidebarForTab(tabKey) {
 // ═══════════════════════════════════════════════════════════════════
 // PLATFORM SALES
 // ═══════════════════════════════════════════════════════════════════
-const psState = { platform: '', dateFrom: '', dateTo: '', trendPeriod: 'week', _lastData: null };
+const psState = { platform: '', dateFrom: '', dateTo: '', trendPeriod: 'week', excludeStatuses: [], _lastData: null };
 
 const MOCK_PS = {
   platforms: [
@@ -3561,6 +3616,28 @@ const MOCK_PS = {
   ],
 };
 
+function togglePsStatusMenu() {
+  const m = document.getElementById('psStatusFilterMenu');
+  if (m) m.style.display = m.style.display === 'none' ? 'block' : 'none';
+}
+document.addEventListener('click', function(e) {
+  const wrap = document.querySelector('.status-filter-wrap');
+  const menu = document.getElementById('psStatusFilterMenu');
+  if (wrap && menu && !wrap.contains(e.target)) menu.style.display = 'none';
+});
+function onPsStatusChange() {
+  // Unchecked box = excluded status. Checked (default) = included, same
+  // sense as the old dashboard's "all checked by default" filter.
+  const unchecked = Array.from(document.querySelectorAll('.ps-status-cb'))
+    .filter(cb => !cb.checked)
+    .map(cb => cb.value);
+  psState.excludeStatuses = unchecked;
+  const countEl = document.getElementById('psStatusFilterCount');
+  if (countEl) countEl.textContent = unchecked.length ? `(${unchecked.length} hidden)` : '';
+  tabCache['platform_sales'] = null;
+  fetchAndRenderPS();
+}
+
 function setBadgePS(mode) {
   const b = document.getElementById('psFetchBadge'); const t = document.getElementById('psFetchText');
   if (b) b.className = 'fetch-badge ' + mode;
@@ -3574,6 +3651,7 @@ async function fetchAndRenderPS() {
   if (psState.platform) qp.set('platform', psState.platform);
   if (psState.dateFrom) qp.set('from', psState.dateFrom);
   if (psState.dateTo)   qp.set('to',   psState.dateTo);
+  if (psState.excludeStatuses.length) qp.set('excludeStatuses', psState.excludeStatuses.join(','));
   const q = qp.toString() ? '?' + qp.toString() : '';
   let data = null; let isLive = false;
   try {
@@ -3593,6 +3671,7 @@ async function fetchAndRenderPS() {
       if (psState.platform) skuQ.set('platform', psState.platform);
       if (psState.dateFrom) skuQ.set('from', psState.dateFrom);
       if (psState.dateTo)   skuQ.set('to',   psState.dateTo);
+      if (psState.excludeStatuses.length) skuQ.set('excludeStatuses', psState.excludeStatuses.join(','));
       const skuR = await apiFetch('/clients/' + clientSlug + '/sku-performance?' + skuQ.toString());
       if (skuR && skuR.revenue && skuR.revenue.length) {
         // Aggregate by platform from raw revenue rows
@@ -3768,24 +3847,38 @@ async function fetchAndRenderCI() {
   if (ciState.platform) qp.set('platform', ciState.platform);
   if (ciState.dateFrom) qp.set('from', ciState.dateFrom);
   if (ciState.dateTo)   qp.set('to',   ciState.dateTo);
+  if (psState.excludeStatuses.length) qp.set('excludeStatuses', psState.excludeStatuses.join(','));
   const q = qp.toString() ? '?' + qp.toString() : '';
-  let campaigns = null; let isLive = false;
+  // Backend now returns an object: { campaigns, platformSummary, totalSpend,
+  // totalRevenue, overallRoas, fulfillmentBreakdown, topProducts } — not a
+  // bare array. Keep a safe fallback for the old shape in case a stale
+  // deploy is still serving it.
+  let payload = null; let isLive = false;
   try {
     const resp = await apiFetch('/clients/' + clientSlug + '/campaign-insights' + q);
-    if (Array.isArray(resp) && resp.length) { campaigns = resp; isLive = true; }
+    if (Array.isArray(resp)) {
+      // Old shape fallback
+      if (resp.length) { payload = { campaigns: resp, platformSummary: [], fulfillmentBreakdown: [], topProducts: [] }; isLive = true; }
+    } else if (resp && Array.isArray(resp.campaigns)) {
+      if (resp.campaigns.length) isLive = true;
+      payload = resp;
+    }
   } catch(e) { console.warn('[CI]', e.message); }
-  if (!campaigns) campaigns = [];
-  renderCI(campaigns);
-  tabCache['campaign_insights'] = { data: campaigns, timestamp: Date.now() };
+  if (!payload) payload = { campaigns: [], platformSummary: [], fulfillmentBreakdown: [], topProducts: [] };
+  renderCI(payload);
+  tabCache['campaign_insights'] = { data: payload, timestamp: Date.now() };
   setBadgeCI(isLive ? 'live' : 'empty');
 }
 
-function renderCI(campaigns) {
-  const totalSpend  = campaigns.reduce((s, c) => s + (c.standard_spend || 0), 0);
-  const totalRev    = campaigns.reduce((s, c) => s + (c.standard_revenue || 0), 0);
+function renderCI(payload) {
+  const campaigns = payload.campaigns || [];
+  const totalSpend  = payload.totalSpend  != null ? payload.totalSpend  : campaigns.reduce((s, c) => s + (c.standard_spend || 0), 0);
+  // totalRevenue from the backend is real order-level revenue (revenue_data),
+  // more trustworthy than a campaign export's self-attributed revenue.
+  const totalRev    = payload.totalRevenue != null ? payload.totalRevenue : campaigns.reduce((s, c) => s + (c.standard_revenue || 0), 0);
   const totalClicks = campaigns.reduce((s, c) => s + (c.standard_clicks || 0), 0);
   const totalImpr   = campaigns.reduce((s, c) => s + (c.standard_impressions || 0), 0);
-  const blendedRoas = totalSpend > 0 ? totalRev / totalSpend : 0;
+  const blendedRoas = payload.overallRoas != null ? payload.overallRoas : (totalSpend > 0 ? totalRev / totalSpend : 0);
   const avgCTR      = totalImpr  > 0 ? (totalClicks / totalImpr * 100) : 0;
 
   document.getElementById('ciKpiSpend').innerHTML    = fmtRevenue(totalSpend);
@@ -3845,6 +3938,41 @@ function renderCI(campaigns) {
     const ctr  = c.standard_impressions > 0 ? (c.standard_clicks/c.standard_impressions*100) : 0;
     return '<tr><td><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></td><td style="font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (c.campaign_name||'—') + '</td><td style="font-family:var(--font-mono);font-size:11px;">' + fmtRevenue(c.standard_spend||0) + '</td><td style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--theme-primary);">' + fmtRevenue(c.standard_revenue||0) + '</td><td><span style="font-weight:700;color:' + roasColor(roas) + ';font-family:var(--font-mono);font-size:11px;">' + (roas > 0 ? fmtRoas(roas) : '—') + '</span></td><td style="font-family:var(--font-mono);font-size:11px;">' + (c.standard_clicks||0).toLocaleString('en-IN') + '</td><td style="font-family:var(--font-mono);font-size:11px;color:#94a3b8;">' + (c.standard_impressions||0).toLocaleString('en-IN') + '</td><td style="font-family:var(--font-mono);font-size:11px;">' + ctr.toFixed(2) + '%</td></tr>';
   }).join('');
+
+  // ── Fulfilment channel split (Amazon FBA vs Merchant) ──────────
+  // Only meaningful when the revenue-side data actually carries the
+  // field (Amazon/Acutas exports). Hide the card entirely rather than
+  // show an empty/misleading chart for platforms that don't have it.
+  const fbEl = document.getElementById('ciFulfillmentCard');
+  const fb = payload.fulfillmentBreakdown || [];
+  const fbReal = fb.filter(f => f.channel !== 'Not specified');
+  if (fbEl) {
+    if (!fbReal.length) {
+      fbEl.style.display = 'none';
+    } else {
+      fbEl.style.display = '';
+      const fbTotal = fb.reduce((s, f) => s + f.revenue, 0);
+      document.getElementById('ciFulfillmentList').innerHTML = fb.map(f => {
+        const pct = fbTotal > 0 ? (f.revenue / fbTotal * 100).toFixed(1) : 0;
+        const color = f.channel === 'Amazon' ? '#ff9900' : f.channel === 'Merchant' ? '#0284c7' : '#94a3b8';
+        return '<div class="stat-bar-row"><div class="stat-bar-meta"><span class="stat-bar-name">' + f.channel + ' <span style="color:#94a3b8;font-weight:400;">(' + f.orders.toLocaleString('en-IN') + ' orders)</span></span><div class="stat-bar-vals"><span class="stat-bar-rev">' + fmtRevenue(f.revenue) + '</span><span class="stat-bar-pct">' + pct + '%</span></div></div><div class="stat-bar-bg"><div class="stat-bar-fill" style="width:' + pct + '%;background:' + color + ';"></div></div></div>';
+      }).join('');
+    }
+  }
+
+  // ── Product-wise revenue for platforms in view ──────────────────
+  const ciProdTbody = document.getElementById('ciProductTbody');
+  if (ciProdTbody) {
+    const prods = payload.topProducts || [];
+    if (!prods.length) {
+      ciProdTbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#94a3b8;font-size:12px;padding:20px 0;">No product data for this selection.</td></tr>';
+    } else {
+      ciProdTbody.innerHTML = prods.slice(0, 10).map((p, i) => {
+        const m = PLATFORM_META[p.platform] || { label: (p.platform||'').toUpperCase(), pillClass: 'pill-amz' };
+        return '<tr><td style="color:#94a3b8;font-size:11px;font-weight:700;">' + (i+1) + '</td><td style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#1e293b;">' + (p.sku||'—') + '</td><td><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></td><td style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--theme-primary);">' + fmtRevenue(p.revenue||0) + '</td></tr>';
+      }).join('');
+    }
+  }
 }
 
 document.querySelectorAll('[data-ci-platform]').forEach(pill => {
@@ -4136,15 +4264,23 @@ async function fetchAndRenderDT() {
 function renderDT(targets, achieved) {
   const platforms = PLATFORMS_DT;
   let totalTarget   = 0, totalAchieved = 0, totalUnits = 0;
+  let totalSpendTarget = 0, totalSpendActual = 0;
 
   platforms.forEach(p => {
     totalTarget   += (targets[p]?.target   || 0);
     totalAchieved += (achieved[p]?.revenue || targets[p]?.achieved || 0);
     totalUnits    += (achieved[p]?.units   || 0);
+    // Spend comes straight from the /targets endpoint (it already joins
+    // campaign_data for actual spend + computes ROAS) — not from
+    // platform-sales, which only knows revenue_data.
+    totalSpendTarget += (targets[p]?.spendTarget || 0);
+    totalSpendActual += (targets[p]?.spendActual || 0);
   });
 
   const attainPct = totalTarget > 0 ? (totalAchieved / totalTarget * 100) : 0;
   const attainCls = attainPct >= 100 ? 'up' : attainPct >= 80 ? '' : 'down';
+  const overallRoas = totalSpendActual > 0 ? (totalAchieved / totalSpendActual) : null;
+  const spendVsPlanPct = totalSpendTarget > 0 ? (totalSpendActual / totalSpendTarget * 100) : null;
 
   // KPIs
   document.getElementById('dtKpiRevenue').innerHTML    = fmtRevenue(totalAchieved);
@@ -4159,6 +4295,23 @@ function renderDT(targets, achieved) {
     : '<span class="kpi-delta down">' + fmtRevenue(totalTarget - totalAchieved) + ' remaining</span>';
   document.getElementById('dtKpiAttainmentSub').innerHTML = attainPct.toFixed(0) + '% overall attainment';
 
+  const dtSpendEl = document.getElementById('dtKpiSpend');
+  if (dtSpendEl) {
+    dtSpendEl.innerHTML = fmtRevenue(totalSpendActual);
+    const spendDeltaEl = document.getElementById('dtKpiSpendDelta');
+    if (spendDeltaEl) {
+      spendDeltaEl.innerHTML = spendVsPlanPct != null
+        ? '<span class="kpi-delta ' + (spendVsPlanPct <= 100 ? '' : 'down') + '">' + spendVsPlanPct.toFixed(0) + '% of plan</span>'
+        : '';
+    }
+    const spendSubEl = document.getElementById('dtKpiSpendSub');
+    if (spendSubEl) {
+      spendSubEl.innerHTML = overallRoas != null
+        ? 'ROAS: ' + fmtRoas(overallRoas) + (totalSpendTarget ? ' · Plan: ' + fmtRevenue(totalSpendTarget) : '')
+        : (totalSpendTarget ? 'Plan: ' + fmtRevenue(totalSpendTarget) : 'No spend data yet');
+    }
+  }
+
   // Platform progress bars
   document.getElementById('dtPlatformProgress').innerHTML = platforms.map(p => {
     const m        = PLATFORM_META[p] || { label: p.toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
@@ -4167,8 +4320,13 @@ function renderDT(targets, achieved) {
     const pct      = tgt > 0 ? Math.min((ach / tgt * 100), 150) : 0;  // cap bar at 150%
     const pctLabel = tgt > 0 ? (ach / tgt * 100).toFixed(1) : '0';
     const pctCls   = pct >= 100 ? 'over' : pct >= 80 ? 'on' : pct >= 50 ? 'under' : 'low';
-    const tgtLine  = Math.min((1 / (pct > 0 ? pct/100*1.5 : 1)) * 100, 100);
-    return '<div class="progress-wrap"><div class="progress-header"><span class="progress-label"><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></span><div class="progress-vals"><span class="progress-achieved">' + fmtRevenue(ach) + '</span><span style="color:#94a3b8;font-size:11px;">/</span><span class="progress-target">' + fmtRevenue(tgt) + '</span><span class="progress-pct ' + pctCls + '">' + pctLabel + '%</span></div></div><div class="progress-track"><div class="progress-fill" style="width:' + Math.min(pct, 100) + '%;background:' + m.color + ';opacity:' + (pct < 50 ? 0.5 : 1) + ';"></div></div></div>';
+    const spendA   = targets[p]?.spendActual || 0;
+    const spendT   = targets[p]?.spendTarget || 0;
+    const roasP    = targets[p]?.roas;
+    const spendLine = (spendA > 0 || spendT > 0)
+      ? '<div style="font-size:10.5px;color:#94a3b8;margin-top:3px;">Spend: ' + fmtRevenue(spendA) + (spendT ? ' / ' + fmtRevenue(spendT) + ' plan' : '') + (roasP != null ? ' · ROAS ' + fmtRoas(roasP) : '') + '</div>'
+      : '';
+    return '<div class="progress-wrap"><div class="progress-header"><span class="progress-label"><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></span><div class="progress-vals"><span class="progress-achieved">' + fmtRevenue(ach) + '</span><span style="color:#94a3b8;font-size:11px;">/</span><span class="progress-target">' + fmtRevenue(tgt) + '</span><span class="progress-pct ' + pctCls + '">' + pctLabel + '%</span></div></div><div class="progress-track"><div class="progress-fill" style="width:' + Math.min(pct, 100) + '%;background:' + m.color + ';opacity:' + (pct < 50 ? 0.5 : 1) + ';"></div></div>' + spendLine + '</div>';
   }).join('');
 
   // 7-day attainment trend — only render when real achieved data exists
@@ -5687,7 +5845,9 @@ function populateDtModalInputs() {
   container.innerHTML = PLATFORMS_DT.map(p => {
     const m   = PLATFORM_META[p] || { label: p.toUpperCase() };
     const tgt = dtState.targets[p]?.target || 0;
-    return '<div class="target-input-group"><label class="target-input-label"><span class="platform-pill ' + (PLATFORM_META[p]?.pillClass || '') + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span> Daily Target</label><div class="target-input-wrap"><span class="target-input-prefix">&#8377;</span><input type="number" class="target-input" id="dtModalTarget_' + p + '" value="' + tgt + '" min="0" step="10000" /></div></div>';
+    const spendTgt = dtState.targets[p]?.spendTarget || 0;
+    return '<div class="target-input-group"><label class="target-input-label"><span class="platform-pill ' + (PLATFORM_META[p]?.pillClass || '') + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span> Daily Revenue Target</label><div class="target-input-wrap"><span class="target-input-prefix">&#8377;</span><input type="number" class="target-input" id="dtModalTarget_' + p + '" value="' + tgt + '" min="0" step="10000" /></div>'
+      + '<label class="target-input-label" style="margin-top:8px;">Daily Spend Plan</label><div class="target-input-wrap"><span class="target-input-prefix">&#8377;</span><input type="number" class="target-input" id="dtModalSpendTarget_' + p + '" value="' + spendTgt + '" min="0" step="1000" /></div></div>';
   }).join('');
 }
 async function saveTargetsFromModal() {
@@ -5697,9 +5857,14 @@ async function saveTargetsFromModal() {
   const PLATFORMS_DT = ['amazon', 'flipkart', 'blinkit', 'meta'];
   PLATFORMS_DT.forEach(p => {
     const input = document.getElementById('dtModalTarget_' + p);
+    const spendInput = document.getElementById('dtModalSpendTarget_' + p);
     if (input) {
       if (!dtState.targets[p]) dtState.targets[p] = {};
       dtState.targets[p].target = Number(input.value) || 0;
+    }
+    if (spendInput) {
+      if (!dtState.targets[p]) dtState.targets[p] = {};
+      dtState.targets[p].spendTarget = Number(spendInput.value) || 0;
     }
   });
   const dateEl = document.getElementById('dtModalDate');
