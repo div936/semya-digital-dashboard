@@ -250,6 +250,42 @@ function extractDateFromPreamble(preambleLines) {
 const CHUNK_SIZE   = 500;
 const CONCURRENCY  = 5; // number of chunk inserts in flight at once
 
+// ═══════════════════════════════════════════════════════════════════
+// MERGE DUPLICATE CAMPAIGN ROWS
+// Sums numeric fields (spend, revenue, impressions, clicks, orders) for
+// any rows that share the same (platform, campaign_date, campaign_name)
+// — the exact key campaign_data upserts on. Keeps the first row's
+// raw_extras/client_id/upload_id. Rows with a missing campaign_name are
+// left unmerged (each treated as its own key) since NULL never conflicts
+// with NULL in a unique constraint, so they wouldn't collide anyway.
+// ═══════════════════════════════════════════════════════════════════
+function mergeDuplicateCampaignRows(rows) {
+  const merged = new Map();
+  let nullNameCounter = 0;
+
+  for (const row of rows) {
+    const key = row.campaign_name
+      ? `${row.platform}|${row.campaign_date}|${row.campaign_name}`
+      : `__no_name_${nullNameCounter++}`; // never collides — matches Postgres NULL-never-equals-NULL behaviour
+
+    if (!merged.has(key)) {
+      merged.set(key, { ...row });
+    } else {
+      const existing = merged.get(key);
+      existing.standard_spend       = (Number(existing.standard_spend)       || 0) + (Number(row.standard_spend)       || 0);
+      existing.standard_revenue     = (Number(existing.standard_revenue)     || 0) + (Number(row.standard_revenue)     || 0);
+      existing.standard_impressions = (Number(existing.standard_impressions) || 0) + (Number(row.standard_impressions) || 0);
+      existing.standard_clicks      = (Number(existing.standard_clicks)      || 0) + (Number(row.standard_clicks)      || 0);
+      existing.standard_orders      = (Number(existing.standard_orders)      || 0) + (Number(row.standard_orders)      || 0);
+      // raw_extras from the first-seen row is kept as-is (merging JSON
+      // blobs meaningfully isn't well-defined here, and the summed
+      // numeric fields are what actually matters for the dashboard).
+    }
+  }
+
+  return Array.from(merged.values());
+}
+
 async function bulkInsert(table, rows) {
   const chunks = [];
   for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
@@ -361,12 +397,23 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
 
     // 4. Normalise via column mapper
     const map = dataType === 'revenue' ? REVENUE_MAP : CAMPAIGN_MAP;
-    const { rows, skipped } = normaliseBatch(rawRows, map, {
+    const { rows: normalisedRows, skipped } = normaliseBatch(rawRows, map, {
       clientId,
       platform,
       uploadId,
       defaultDate,
     });
+
+    // Campaign exports frequently have multiple line items for the same
+    // campaign on the same day (per ad set, per age group, per placement,
+    // etc.) — same platform+date+campaign_name, different spend/revenue
+    // split across rows. Since campaign_data now upserts on
+    // (client_id, platform, campaign_date, campaign_name), a single
+    // Postgres statement is not allowed to touch the same target row
+    // twice ("ON CONFLICT DO UPDATE command cannot affect row a second
+    // time"), so these must be summed into ONE row per key before we
+    // ever call bulkInsert — otherwise the whole chunk is rejected.
+    const rows = dataType === 'campaign' ? mergeDuplicateCampaignRows(normalisedRows) : normalisedRows;
 
     // 5. Bulk insert into the correct table
     const table     = dataType === 'revenue' ? 'revenue_data' : 'campaign_data';
