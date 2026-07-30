@@ -256,14 +256,29 @@ async function bulkInsert(table, rows) {
     chunks.push(rows.slice(i, i + CHUNK_SIZE));
   }
 
+  // campaign_data uses upsert, not insert: a daily campaign export very
+  // often re-includes campaigns/dates from a prior upload (same
+  // campaign running multiple days, or a corrected re-upload of the
+  // same file). Previously a single conflicting row anywhere in a
+  // 500-row chunk failed the ENTIRE chunk (see "0 succeeded, 5 failed"
+  // reports) even when the other 499 rows were perfectly fine. Upsert
+  // updates the conflicting row instead of rejecting the whole batch.
+  // Requires the unique constraint from the migration below to exist —
+  // falls back to a clear error if it's missing rather than silently
+  // behaving like a plain insert.
+  const isCampaignTable = table === 'campaign_data';
+
   let inserted = 0;
   for (let i = 0; i < chunks.length; i += CONCURRENCY) {
     const batch = chunks.slice(i, i + CONCURRENCY);
     const results = await Promise.all(
-      batch.map((chunk) => supabaseAdmin.from(table).insert(chunk))
+      batch.map((chunk) => isCampaignTable
+        ? supabaseAdmin.from(table).upsert(chunk, { onConflict: 'client_id,platform,campaign_date,campaign_name' })
+        : supabaseAdmin.from(table).insert(chunk)
+      )
     );
     for (const { error } of results) {
-      if (error) throw new Error(`Supabase insert error on ${table}: ${error.message}`);
+      if (error) throw new Error(`Supabase ${isCampaignTable ? 'upsert' : 'insert'} error on ${table}: ${error.message}`);
     }
     inserted += batch.reduce((sum, c) => sum + c.length, 0);
   }
