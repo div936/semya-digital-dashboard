@@ -1345,6 +1345,19 @@
         </div>
       </div>
 
+      <!-- Revenue by Category (all product lines, like the old dashboard) -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Revenue by Category</span>
+          <span class="card-badge">All product lines in the current selection</span>
+        </div>
+        <div id="psCategoryList" style="display:flex;flex-direction:column;gap:2px;max-height:640px;overflow-y:auto;">
+          <div class="skel skel-row" style="height:22px;"></div>
+          <div class="skel skel-row" style="height:22px;"></div>
+          <div class="skel skel-row" style="height:22px;"></div>
+        </div>
+      </div>
+
     </div><!-- /tab-platform_sales -->
 
     <!-- ── SKU PERFORMANCE TAB ─────────────────────────────────── -->
@@ -2571,7 +2584,7 @@
     </div>
 
     <!-- Selected files list (up to 5) -->
-    <div id="selectedFileInfo" style="display:none;display:flex;flex-direction:column;gap:6px;"></div>
+    <div id="selectedFileInfo" style="display:none;flex-direction:column;gap:6px;"></div>
 
     <!-- Upload status -->
     <div id="uploadStatus" style="display:none;padding:10px 14px;border-radius:8px;font-size:12px;font-weight:600;"></div>
@@ -2591,7 +2604,7 @@
     </div>
 
     <!-- Per-file upload progress (populated during handleUploadAll) -->
-    <div id="uploadProgressList" style="display:none;display:flex;flex-direction:column;gap:6px;"></div>
+    <div id="uploadProgressList" style="display:none;flex-direction:column;gap:6px;"></div>
 
     <button class="btn btn-primary" id="uploadBtn" onclick="handleUploadAll()" style="width:100%;justify-content:center;padding:12px;margin-top:auto;">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -3770,7 +3783,7 @@ function setPsTrendPeriod(period) {
 }
 
 function renderPS(data) {
-  const { platforms, grandTotal, prevGrandTotal, prevUnits, prevOrders, topProducts } = data;
+  const { platforms, grandTotal, prevGrandTotal, prevUnits, prevOrders, topProducts, categories } = data;
   const totalUnits  = platforms.reduce((s, p) => s + (p.totalUnits  || 0), 0);
   const totalOrders = platforms.reduce((s, p) => s + (p.orderCount  || 0), 0);
   psState._lastData = data; // so the period toggle can re-render without a re-fetch
@@ -3799,13 +3812,42 @@ function renderPS(data) {
   const badgeEl = document.getElementById('psProductBadge');
   if (badgeEl) badgeEl.textContent = psState.platform ? (PLATFORM_META[psState.platform]?.label || psState.platform) : 'All platforms';
   const tbody = document.getElementById('psProductTbody');
-  if (!topProducts || !topProducts.length) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#94a3b8;font-size:12px;padding:20px 0;">No product data.</td></tr>'; return; }
-  const sortedProds = [...topProducts].sort((a, b) => b.revenue - a.revenue);
-  tbody.innerHTML = sortedProds.slice(0, 8).map((p, i) => {
-    const share = grandTotal > 0 ? (p.revenue / grandTotal * 100).toFixed(1) : 0;
-    const m = PLATFORM_META[p.platform] || { label: (p.platform||'').toUpperCase(), pillClass: 'pill-amz' };
-    return '<tr><td style="color:#94a3b8;font-size:11px;font-weight:700;">' + (i+1) + '</td><td style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#1e293b;">' + (p.sku||'—') + '</td><td><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></td><td style="font-family:var(--font-mono);">' + fmtUnits(p.units||0) + '</td><td style="font-family:var(--font-mono);font-weight:700;color:var(--theme-primary);">' + fmtRevenue(p.revenue||0) + '</td><td><div style="display:flex;align-items:center;gap:6px;"><div style="width:40px;height:4px;background:#e2eaf2;border-radius:99px;overflow:hidden;"><div style="width:' + share + '%;height:100%;background:var(--theme-primary);border-radius:99px;"></div></div><span style="font-size:10px;color:#94a3b8;">' + share + '%</span></div></td></tr>';
-  }).join('');
+  if (!topProducts || !topProducts.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#94a3b8;font-size:12px;padding:20px 0;">No product data.</td></tr>';
+  } else {
+    const sortedProds = [...topProducts].sort((a, b) => b.revenue - a.revenue);
+    tbody.innerHTML = sortedProds.slice(0, 8).map((p, i) => {
+      const share = grandTotal > 0 ? (p.revenue / grandTotal * 100).toFixed(1) : 0;
+      const m = PLATFORM_META[p.platform] || { label: (p.platform||'').toUpperCase(), pillClass: 'pill-amz' };
+      return '<tr><td style="color:#94a3b8;font-size:11px;font-weight:700;">' + (i+1) + '</td><td style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#1e293b;">' + (p.sku||'—') + '</td><td><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></td><td style="font-family:var(--font-mono);">' + fmtUnits(p.units||0) + '</td><td style="font-family:var(--font-mono);font-weight:700;color:var(--theme-primary);">' + fmtRevenue(p.revenue||0) + '</td><td><div style="display:flex;align-items:center;gap:6px;"><div style="width:40px;height:4px;background:#e2eaf2;border-radius:99px;overflow:hidden;"><div style="width:' + share + '%;height:100%;background:var(--theme-primary);border-radius:99px;"></div></div><span style="font-size:10px;color:#94a3b8;">' + share + '%</span></div></td></tr>';
+    }).join('');
+  }
+
+  // ── Revenue by Category ──────────────────────────────────────────
+  // Horizontal bar list, same shape as the old dashboard's category
+  // chart — one row per inferred category, sorted by revenue, bar
+  // width relative to the top category so the ranking is visually
+  // obvious at a glance.
+  const catEl = document.getElementById('psCategoryList');
+  if (catEl) {
+    if (!categories || !categories.length) {
+      catEl.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:12px;padding:20px 0;">No category data.</div>';
+    } else {
+      const maxCatRev = Math.max(...categories.map(c => c.revenue));
+      const CAT_COLORS = ['#3b5bdb','#d4a72c','#2f9e44','#4c6ef5','#1098ad','#a67c1e','#1864ab','#0ca678','#748ffc','#12b886','#7048e8','#15aabf','#495057','#364fc7','#087f5b','#5c940d','#e8590c','#9c36b5','#0b7285','#c92a2a'];
+      catEl.innerHTML = categories.map((c, i) => {
+        const pct = maxCatRev > 0 ? (c.revenue / maxCatRev * 100).toFixed(1) : 0;
+        const color = CAT_COLORS[i % CAT_COLORS.length];
+        return '<div style="display:grid;grid-template-columns:160px 1fr;align-items:center;gap:10px;padding:3px 0;">' +
+          '<span style="font-size:11px;color:#475569;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + c.category + '">' + c.category + '</span>' +
+          '<div style="display:flex;align-items:center;gap:8px;">' +
+            '<div style="height:16px;border-radius:3px;background:' + color + ';width:' + pct + '%;min-width:2px;"></div>' +
+            '<span style="font-size:10.5px;color:#64748b;flex-shrink:0;">' + fmtRevenue(c.revenue) + '</span>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+    }
+  }
 }
 
 document.querySelectorAll('[data-ps-platform]').forEach(pill => {
@@ -5126,12 +5168,12 @@ function setSelectedFiles(files) {
   zone.style.borderColor = '#059669';
   zone.style.background  = '#f0fdf4';
   info.innerHTML = files.map((f, i) =>
-    '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">' +
-      '<div style="min-width:0;">' +
-        '<div style="font-size:12px;color:#1e293b;font-weight:600;word-break:break-all;">' + f.name + '</div>' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">' +
+      '<div style="min-width:0;flex:1 1 auto;overflow:hidden;">' +
+        '<div style="font-size:12px;color:#1e293b;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + f.name + '</div>' +
         '<div style="font-size:10px;color:#64748b;margin-top:1px;">' + (f.size / 1024).toFixed(1) + ' KB</div>' +
       '</div>' +
-      '<button type="button" onclick="removeSelectedFile(' + i + ')" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:14px;padding:2px 6px;">✕</button>' +
+      '<button type="button" onclick="removeSelectedFile(' + i + ')" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:14px;padding:2px 6px;flex-shrink:0;">✕</button>' +
     '</div>'
   ).join('');
   document.getElementById('uploadBtnLabel').textContent =
@@ -5215,8 +5257,8 @@ async function handleUploadAll() {
   status.style.display = 'none';
   progressList.style.display = 'flex';
   progressList.innerHTML = selectedFiles.map((f, i) =>
-    '<div id="uploadRow_' + i + '" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:11.5px;">' +
-      '<span style="word-break:break-all;">' + f.name + '</span>' +
+    '<div id="uploadRow_' + i + '" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:11.5px;">' +
+      '<span style="min-width:0;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + f.name + '</span>' +
       '<span id="uploadRowStatus_' + i + '" style="color:#94a3b8;flex-shrink:0;margin-left:8px;">Waiting…</span>' +
     '</div>'
   ).join('');
