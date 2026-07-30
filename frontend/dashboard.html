@@ -1234,9 +1234,7 @@
             <div class="sku-pill" data-ps-platform="website">Website</div>
           </div>
           <div class="status-filter-wrap" style="position:relative;">
-            <button type="button" class="trend-period-btn" id="psStatusFilterBtn" onclick="togglePsStatusMenu()">
-              Order status <span id="psStatusFilterCount"></span> ▾
-            </button>
+            <button type="button" class="sku-pill" id="psStatusFilterBtn" onclick="togglePsStatusMenu()" style="cursor:pointer;">Order status <span id="psStatusFilterCount"></span> ▾</button>
             <div id="psStatusFilterMenu" style="display:none;position:absolute;top:110%;left:0;z-index:20;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:10px 12px;min-width:230px;">
               <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">Uncheck a status to exclude it from every number below. Everything is included by default.</div>
               <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
@@ -1481,7 +1479,7 @@
       <div class="card">
         <div class="card-header">
           <span class="card-title">Campaign Performance</span>
-          <span class="card-badge">Active</span>
+          <span id="campaignCardBadge"><span class="card-badge">Active</span></span>
         </div>
         <div class="table-wrap">
           <table>
@@ -3224,13 +3222,56 @@ function renderLineChart(weekly) {
 }
 
 // ─── RENDER CAMPAIGN TABLE ────────────────────────────────────────
-function renderCampaigns(campaigns) {
-  const tbody = document.getElementById('campaignTbody');
-  if (!campaigns || !campaigns.length) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#94a3b8;font-size:12px;padding:20px 0;">No campaign data for this selection.</td></tr>';
+let _campaignViewState = { all: [], matched: [], category: null, showingAll: false };
+
+function renderCampaigns(campaigns, productCategory, matchedCampaigns, selectedSku) {
+  _campaignViewState = {
+    all: campaigns || [],
+    matched: matchedCampaigns || [],
+    category: productCategory,
+    showingAll: !selectedSku, // no SKU selected → nothing to match against, just show everything
+  };
+  renderCampaignBadge();
+  renderCampaignRows();
+}
+
+function renderCampaignBadge() {
+  const badge = document.getElementById('campaignCardBadge');
+  if (!badge) return;
+  const { category, matched, showingAll } = _campaignViewState;
+  if (!category) {
+    badge.innerHTML = '<span class="card-badge">Active</span>';
     return;
   }
-  tbody.innerHTML = campaigns.slice(0, 6).map(c => {
+  if (showingAll) {
+    badge.innerHTML = '<span class="card-badge">All campaigns</span>' +
+      '<button type="button" onclick="toggleCampaignView()" style="margin-left:6px;font-size:10px;color:#0284c7;background:none;border:none;cursor:pointer;text-decoration:underline;">Show only "' + category + '" matches</button>';
+  } else {
+    badge.innerHTML = '<span class="card-badge" title="Best-effort text match against campaign names — ad platforms don\'t tag campaigns with a SKU directly">Matched to "' + category + '"</span>' +
+      (matched.length ? '<button type="button" onclick="toggleCampaignView()" style="margin-left:6px;font-size:10px;color:#0284c7;background:none;border:none;cursor:pointer;text-decoration:underline;">Show all campaigns</button>' : '');
+  }
+}
+
+function toggleCampaignView() {
+  _campaignViewState.showingAll = !_campaignViewState.showingAll;
+  renderCampaignBadge();
+  renderCampaignRows();
+}
+
+function renderCampaignRows() {
+  const tbody = document.getElementById('campaignTbody');
+  const { all, matched, category, showingAll } = _campaignViewState;
+  const list = (category && !showingAll) ? matched : all;
+
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#94a3b8;font-size:12px;padding:20px 0;">' +
+      (category && !showingAll
+        ? 'No campaign names matched "' + category + '" — try "Show all campaigns" above.'
+        : 'No campaign data for this selection.') +
+      '</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.slice(0, 6).map(c => {
     const spend = c.standard_spend || 0;
     const rev   = c.standard_revenue || 0;
     const roas  = spend > 0 ? rev / spend : 0;
@@ -3431,21 +3472,30 @@ async function fetchAndRender() {
 
   let revenueData  = null;
   let campaignRows = null;
+  let productCategory = null;
+  let campaignsMatchedToProduct = [];
   let isLive       = false;
 
   try {
-    const [skuResp, campaignResp] = await Promise.all([
-      apiFetch(`/clients/${clientSlug}/sku-performance${q}`),
-      apiFetch(`/clients/${clientSlug}/campaign-insights${q}`),
-    ]);
+    // Uses /sku-performance alone now — it already returns a
+    // platform-filtered campaigns array, plus (when a SKU is selected)
+    // a category-matched subset in campaignsMatchedToProduct. Previously
+    // this also called /campaign-insights, but that endpoint now returns
+    // an object shape ({campaigns, platformSummary, ...}), not a bare
+    // array, which silently broke this fetch (campaignResp?.length was
+    // always undefined). Dropping the redundant call fixes that and
+    // saves a request.
+    const skuResp = await apiFetch(`/clients/${clientSlug}/sku-performance${q}`);
 
-    if (skuResp.revenue?.length || campaignResp?.length) {
-      revenueData  = aggregateRevenue(skuResp.revenue);
-      campaignRows = campaignResp;
+    if (skuResp?.revenue?.length || skuResp?.campaigns?.length) {
+      revenueData  = aggregateRevenue(skuResp.revenue || []);
+      campaignRows = skuResp.campaigns || [];
+      productCategory = skuResp.productCategory || null;
+      campaignsMatchedToProduct = skuResp.campaignsMatchedToProduct || [];
       isLive       = true;
 
       // Populate SKU dropdown from live distinct SKUs (only add new ones)
-      const skuSet = [...new Set(skuResp.revenue.map(r => r.standard_sku).filter(Boolean))];
+      const skuSet = [...new Set((skuResp.revenue || []).map(r => r.standard_sku).filter(Boolean))];
       if (skuSet.length) {
         const newSkus = skuSet
           .filter(v => !_skuOptions.some(o => o.value === v))
@@ -3474,7 +3524,7 @@ async function fetchAndRender() {
   renderCities(revenueData.cities);
   renderDoughnut(revenueData.byPlatform);
   renderLineChartForPeriod(state._trendPeriod || 'week', revenueData);
-  renderCampaigns(campaignRows);
+  renderCampaigns(campaignRows, productCategory, campaignsMatchedToProduct, sku);
   renderPlatformHealth(revenueData.byPlatform, campaignRows);
 
   document.getElementById('cityBadge').textContent = currentSku;

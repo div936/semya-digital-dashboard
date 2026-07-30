@@ -14,7 +14,7 @@ import { Router } from 'express';
 import { rbacMiddleware, requireTab } from '../middleware/rbac.js';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { detectSuspiciousPatterns } from '../lib/fraudDetector.js';
-import { backfillLocationByOrder, normaliseStateName, inferCategory } from '../lib/columnMapper.js';
+import { backfillLocationByOrder, normaliseStateName, inferCategory, CATEGORY_KEYWORDS } from '../lib/columnMapper.js';
 
 const router = Router({ mergeParams: true });
 
@@ -201,7 +201,7 @@ router.get(
       fetchAllRows((rangeFrom, rangeTo) => {
         let q = supabaseAdmin
           .from('revenue_data')
-          .select('standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status')
+          .select('standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status, standard_product_name')
           .eq('client_id', client.id)
           .range(rangeFrom, rangeTo);
         if (sku)      q = q.eq('standard_sku', sku);
@@ -233,9 +233,36 @@ router.get(
     const filteredRevenue = excludeStatuses.size
       ? revenueRows.filter(r => !r.standard_status || !excludeStatuses.has(r.standard_status))
       : revenueRows;
+
+    // ── Product → Campaign matching ─────────────────────────────
+    // Ad platforms (Meta/Google/most Amazon exports) don't tag a
+    // campaign with a SKU, so there's no direct join available. This
+    // is a best-effort text match: infer the selected SKU's category
+    // (same keyword logic as Revenue by Category), then flag any
+    // campaign whose name contains one of that category's keywords.
+    // Always returns the full campaign list too, so the frontend can
+    // fall back to "show everything" if the match comes back empty —
+    // never silently hides data behind a match that missed.
+    let productCategory = null;
+    let campaignsMatchedToProduct = [];
+    if (sku) {
+      const skuRow = filteredRevenue.find(r => r.standard_sku === sku);
+      productCategory = inferCategory(skuRow?.standard_product_name, sku);
+      const catEntry = CATEGORY_KEYWORDS.find(([cat]) => cat === productCategory);
+      const keywords = catEntry ? catEntry[1] : [];
+      if (keywords.length) {
+        campaignsMatchedToProduct = campaignRows.filter(c => {
+          const name = (c.campaign_name || '').toLowerCase();
+          return keywords.some(kw => name.includes(kw));
+        });
+      }
+    }
+
     return res.json({
       revenue:   filteredRevenue,
       campaigns: campaignRows,
+      productCategory,
+      campaignsMatchedToProduct,
     });
   }
 );
