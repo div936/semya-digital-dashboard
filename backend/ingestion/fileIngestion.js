@@ -36,6 +36,7 @@
 // ─────────────────────────────────────────────────────────────────
 import xlsx from 'xlsx';
 import path from 'path';
+import crypto from 'crypto';
 import { parse as parseCsv } from 'csv-parse/sync';
 import { supabaseAdmin }  from '../lib/supabase.js';
 import { REVENUE_MAP, CAMPAIGN_MAP, normaliseBatch, classifyDataType, scoreHeaderRow, detectFallbackMapping } from '../lib/columnMapper.js';
@@ -286,35 +287,81 @@ function mergeDuplicateCampaignRows(rows) {
   return Array.from(merged.values());
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// REVENUE ROW FINGERPRINT
+// Content-based de-dup key for revenue_data, since standard_order_id
+// isn't present on every platform's export and can't be relied on
+// alone. This MUST produce byte-identical output to the SQL backfill
+// in db/migrations/2026-08_revenue_data_dedup.sql — same field order,
+// same empty-string-for-null handling, same two-decimal formatting
+// for the revenue amount — or newly-ingested rows won't collide with
+// rows the migration already fingerprinted, silently reopening the
+// duplicate-counting bug for anything uploaded before vs after this
+// deploy.
+// ═══════════════════════════════════════════════════════════════════
+function computeRevenueFingerprint(row) {
+  const revenueStr = row.standard_revenue != null && row.standard_revenue !== ''
+    ? Number(row.standard_revenue).toFixed(2)
+    : '';
+  const parts = [
+    row.platform ?? '',
+    row.order_date ?? '',
+    row.standard_sku ?? '',
+    row.standard_order_id ?? '',
+    revenueStr,
+    row.standard_units != null && row.standard_units !== '' ? String(row.standard_units) : '',
+    row.standard_city ?? '',
+    row.standard_state ?? '',
+    row.standard_status ?? '',
+  ];
+  return crypto.createHash('md5').update(parts.join('|')).digest('hex');
+}
+
 async function bulkInsert(table, rows) {
   const chunks = [];
   for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
     chunks.push(rows.slice(i, i + CHUNK_SIZE));
   }
 
-  // campaign_data uses upsert, not insert: a daily campaign export very
-  // often re-includes campaigns/dates from a prior upload (same
-  // campaign running multiple days, or a corrected re-upload of the
-  // same file). Previously a single conflicting row anywhere in a
-  // 500-row chunk failed the ENTIRE chunk (see "0 succeeded, 5 failed"
-  // reports) even when the other 499 rows were perfectly fine. Upsert
-  // updates the conflicting row instead of rejecting the whole batch.
-  // Requires the unique constraint from the migration below to exist —
-  // falls back to a clear error if it's missing rather than silently
-  // behaving like a plain insert.
+  // Both tables upsert now, not insert — each for its own reason:
+  //
+  // campaign_data upserts-and-sums (see mergeDuplicateCampaignRows
+  // above) because a daily campaign export very often legitimately
+  // re-includes the same campaign/date from a prior upload (same
+  // campaign running multiple days, or a corrected re-upload). Upsert
+  // updates the conflicting row instead of rejecting the whole 500-row
+  // chunk over one collision.
+  //
+  // revenue_data upserts-and-ignores: unlike campaign rows, two
+  // revenue rows with an identical fingerprint (see
+  // computeRevenueFingerprint) really are the exact same line item —
+  // there's nothing to sum, re-inserting it should be a no-op. Before
+  // this change revenue_data had NO unique constraint at all, so
+  // re-uploading a file (or uploading two files with overlapping date
+  // ranges) silently double-counted revenue/units with no protection.
+  // Requires the migration in
+  // db/migrations/2026-08_revenue_data_dedup.sql to have been applied
+  // first — falls back to a clear error if the constraint is missing
+  // rather than silently behaving like a plain insert.
   const isCampaignTable = table === 'campaign_data';
+  const isRevenueTable  = table === 'revenue_data';
 
   let inserted = 0;
   for (let i = 0; i < chunks.length; i += CONCURRENCY) {
     const batch = chunks.slice(i, i + CONCURRENCY);
     const results = await Promise.all(
-      batch.map((chunk) => isCampaignTable
-        ? supabaseAdmin.from(table).upsert(chunk, { onConflict: 'client_id,platform,campaign_date,campaign_name' })
-        : supabaseAdmin.from(table).insert(chunk)
-      )
+      batch.map((chunk) => {
+        if (isCampaignTable) {
+          return supabaseAdmin.from(table).upsert(chunk, { onConflict: 'client_id,platform,campaign_date,campaign_name' });
+        }
+        if (isRevenueTable) {
+          return supabaseAdmin.from(table).upsert(chunk, { onConflict: 'client_id,row_fingerprint', ignoreDuplicates: true });
+        }
+        return supabaseAdmin.from(table).insert(chunk);
+      })
     );
     for (const { error } of results) {
-      if (error) throw new Error(`Supabase ${isCampaignTable ? 'upsert' : 'insert'} error on ${table}: ${error.message}`);
+      if (error) throw new Error(`Supabase upsert error on ${table}: ${error.message}`);
     }
     inserted += batch.reduce((sum, c) => sum + c.length, 0);
   }
@@ -439,7 +486,13 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
     // twice ("ON CONFLICT DO UPDATE command cannot affect row a second
     // time"), so these must be summed into ONE row per key before we
     // ever call bulkInsert — otherwise the whole chunk is rejected.
-    const rows = dataType === 'campaign' ? mergeDuplicateCampaignRows(normalisedRows) : normalisedRows;
+    // Revenue rows get a content fingerprint so bulkInsert can upsert
+    // instead of blind-insert — see computeRevenueFingerprint() for
+    // why this exists (revenue_data previously had zero duplicate
+    // protection, unlike campaign_data below).
+    const rows = dataType === 'campaign'
+      ? mergeDuplicateCampaignRows(normalisedRows)
+      : normalisedRows.map(row => ({ ...row, row_fingerprint: computeRevenueFingerprint(row) }));
 
     // 5. Bulk insert into the correct table
     const table     = dataType === 'revenue' ? 'revenue_data' : 'campaign_data';
