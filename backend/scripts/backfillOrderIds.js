@@ -83,15 +83,33 @@ export async function backfillOrderIds({ log = () => {} } = {}) {
       }
     }
 
-    for (let i = 0; i < updates.length; i += CHUNK_SIZE) {
-      const chunk = updates.slice(i, i + CHUNK_SIZE);
-      const { error: upErr } = await supabaseAdmin
-        .from('revenue_data')
-        .upsert(chunk, { onConflict: 'id' });
-      if (upErr) {
-        throw new Error(`[backfill] Upsert error: ${upErr.message}`);
+    // IMPORTANT: this used to be a single upsert(chunk, {onConflict:'id'})
+    // call — but that fails with "null value in column client_id violates
+    // not-null constraint", even though the row always already exists and
+    // this should only ever hit the UPDATE branch. Postgres validates NOT
+    // NULL constraints against the full proposed INSERT row BEFORE
+    // evaluating ON CONFLICT, regardless of whether an insert or update
+    // ultimately happens — a well-known upsert gotcha for partial-column
+    // payloads against tables with required columns. A genuine UPDATE
+    // statement doesn't have this problem, since it never constructs a
+    // fresh row at all. Slower (one request per row, not one per chunk),
+    // so it's run with limited concurrency rather than serially.
+    const UPDATE_CONCURRENCY = 20;
+    for (let i = 0; i < updates.length; i += UPDATE_CONCURRENCY) {
+      const slice = updates.slice(i, i + UPDATE_CONCURRENCY);
+      const results = await Promise.all(
+        slice.map(u => supabaseAdmin
+          .from('revenue_data')
+          .update({ standard_order_id: u.standard_order_id })
+          .eq('id', u.id)
+        )
+      );
+      for (const { error: upErr } of results) {
+        if (upErr) {
+          throw new Error(`[backfill] Update error: ${upErr.message}`);
+        }
       }
-      totalUpdated += chunk.length;
+      totalUpdated += slice.length;
     }
 
     const noIdInBatch = rows.length - updates.length - skippedAlreadySet;
