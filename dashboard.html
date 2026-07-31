@@ -2871,6 +2871,50 @@ function warmServer() {
     .catch(() => {});
 }
 
+// --- Auto-refresh + keep-alive -------------------------------------
+// Two independent timers:
+//  1. A lightweight ping to /health every 8 minutes, always running
+//     (even if the tab is hidden), to stop the Render free-tier
+//     backend from going to sleep while someone has the dashboard
+//     open in a background tab.
+//  2. A full data refresh every 5 minutes, but ONLY while the tab is
+//     visible — no point re-fetching and re-rendering a chart nobody
+//     is looking at, and it avoids piling up API calls across many
+//     idle background tabs.
+let _keepAliveInterval = null;
+let _autoRefreshInterval = null;
+const AUTO_REFRESH_MS = 5 * 60 * 1000;   // 5 minutes
+const KEEP_ALIVE_MS   = 8 * 60 * 1000;   // 8 minutes
+
+function startAutoRefresh() {
+  if (_keepAliveInterval || _autoRefreshInterval) return; // already running
+
+  _keepAliveInterval = setInterval(() => {
+    fetch(API_BASE + '/health').catch(() => {});
+  }, KEEP_ALIVE_MS);
+
+  _autoRefreshInterval = setInterval(() => {
+    if (document.hidden) return; // skip while tab is in the background
+    if (!state.clientSlug) return;
+    tabCache = {}; // force fresh data instead of serving stale cached tabs
+    fetchAndRender().catch(err => console.warn('[auto-refresh] failed:', err.message));
+  }, AUTO_REFRESH_MS);
+
+  // If the tab was hidden and becomes visible again after more than
+  // one refresh interval has elapsed, refresh immediately rather than
+  // waiting for the next tick.
+  let hiddenAt = null;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      hiddenAt = Date.now();
+    } else if (hiddenAt && Date.now() - hiddenAt > AUTO_REFRESH_MS && state.clientSlug) {
+      tabCache = {};
+      fetchAndRender().catch(() => {});
+      hiddenAt = null;
+    }
+  });
+}
+
 function fetchWithTimeout(url, opts, ms) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('timeout')), ms);
@@ -6074,6 +6118,7 @@ function boot(user) {
   warmServer();
   loadClientSwitcher();
   loadTabPermissions();
+  startAutoRefresh();
   showTab('platform_sales'); // Start on Platform Sales
 }
 
