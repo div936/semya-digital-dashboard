@@ -97,10 +97,20 @@ CREATE TABLE IF NOT EXISTS revenue_data (
   standard_city     TEXT,
   standard_state    TEXT,
   standard_status   TEXT,
-  standard_order_id TEXT,  -- for counting DISTINCT orders, not rows/line-items — an order with 2 products is 1 order, not 2
+  standard_order_id TEXT,  -- order-level ID, for counting DISTINCT orders, not rows/line-items — an order with 2 products is 1 order, not 2
+  standard_order_item_id TEXT,  -- LINE-ITEM-level ID — deliberately separate from standard_order_id (see columnMapper.js).
+                                 -- An order with 3 products has 1 order_id but 3 different order_item_ids; merging the two
+                                 -- back into one field silently re-inflates the order count for any platform export that
+                                 -- only supplies an Order Item ID column.
   standard_fulfillment_channel TEXT,  -- e.g. 'Amazon' (FBA) vs 'Merchant' — Amazon-only dimension
   standard_product_name TEXT,  -- full product name/title, kept separate from standard_sku; used for category inference
   raw_extras        JSONB DEFAULT '{}'::JSONB,  -- leftover unmapped columns
+  row_hash          TEXT NOT NULL,  -- 3-tier dedup key computed in fileIngestion.js (computeRevenueDedupKey), ported from
+                                     -- the old dashboard's backend: order_item_id, then order_id+sku, then a composite of
+                                     -- date+sku+state+units+revenue as a last resort. Lets bulkInsert upsert-and-UPDATE
+                                     -- instead of blind-insert, so re-uploading a file safely corrects status/revenue
+                                     -- instead of duplicating the row. See db/migrations/2026-08_revenue_data_dedup_v2.sql.
+  dedup_method      TEXT NOT NULL DEFAULT 'composite',  -- which tier produced row_hash — 'order_item_id' | 'order_id_sku' | 'composite'
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -109,6 +119,9 @@ CREATE INDEX IF NOT EXISTS idx_revenue_client_date
 
 CREATE INDEX IF NOT EXISTS idx_revenue_sku
   ON revenue_data (client_id, standard_sku);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_revenue_data_client_row_hash
+  ON revenue_data (client_id, row_hash);
 
 
 -- ───────────────────────────────────────────────────────────────────
@@ -166,25 +179,36 @@ ALTER TABLE uploads             ENABLE ROW LEVEL SECURITY;
 
 -- Policies: users can only see rows for their own client_id
 -- (JWT must carry client_id claim — set in your Supabase auth hook)
+--
+-- CREATE POLICY has no IF NOT EXISTS in Postgres, so a DROP POLICY IF
+-- EXISTS immediately before each one makes this file safe to re-run
+-- against a database that already has these policies (e.g. re-running
+-- the full schema against an existing production DB instead of just
+-- the incremental migration files) instead of erroring out on the
+-- first one it hits ("policy ... already exists").
 
+DROP POLICY IF EXISTS "client_revenue_isolation" ON revenue_data;
 CREATE POLICY "client_revenue_isolation" ON revenue_data
   FOR SELECT USING (
     auth.jwt() ->> 'role' = 'admin'
     OR client_id::TEXT = auth.jwt() ->> 'client_id'
   );
 
+DROP POLICY IF EXISTS "client_campaign_isolation" ON campaign_data;
 CREATE POLICY "client_campaign_isolation" ON campaign_data
   FOR SELECT USING (
     auth.jwt() ->> 'role' = 'admin'
     OR client_id::TEXT = auth.jwt() ->> 'client_id'
   );
 
+DROP POLICY IF EXISTS "client_tab_permissions" ON tab_permissions;
 CREATE POLICY "client_tab_permissions" ON tab_permissions
   FOR SELECT USING (
     auth.jwt() ->> 'role' = 'admin'
     OR client_id::TEXT = auth.jwt() ->> 'client_id'
   );
 
+DROP POLICY IF EXISTS "client_uploads_isolation" ON uploads;
 CREATE POLICY "client_uploads_isolation" ON uploads
   FOR SELECT USING (
     auth.jwt() ->> 'role' = 'admin'
@@ -203,6 +227,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS clients_updated_at ON clients;
 CREATE TRIGGER clients_updated_at
   BEFORE UPDATE ON clients
   FOR EACH ROW EXECUTE FUNCTION touch_updated_at();

@@ -288,33 +288,56 @@ function mergeDuplicateCampaignRows(rows) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// REVENUE ROW FINGERPRINT
-// Content-based de-dup key for revenue_data, since standard_order_id
-// isn't present on every platform's export and can't be relied on
-// alone. This MUST produce byte-identical output to the SQL backfill
-// in db/migrations/2026-08_revenue_data_dedup.sql — same field order,
-// same empty-string-for-null handling, same two-decimal formatting
-// for the revenue amount — or newly-ingested rows won't collide with
-// rows the migration already fingerprinted, silently reopening the
-// duplicate-counting bug for anything uploaded before vs after this
-// deploy.
+// REVENUE ROW DE-DUP KEY — ported from the old (pre-Semya) dashboard's
+// backend, which handled this correctly for a long time before this
+// system existed. 3-tier selection, most to least reliable:
+//
+//   1. order_item_id — unique per LINE ITEM. Correctly distinguishes
+//      multiple products within the same multi-item order. Amazon
+//      uses "0" as a placeholder on some zero-revenue adjustment
+//      rows — treated as absent, or every such row across every
+//      order would falsely collide as duplicates of each other.
+//   2. order_id + sku — unique per order+product combination, used
+//      when there's an order-level ID but no line-item-level one.
+//   3. composite (order_date + sku + state + units + revenue) —
+//      last resort when neither ID is present. Can rarely produce a
+//      false-positive collision if two genuinely different orders
+//      share all five values (e.g. two customers buying 1 unit of
+//      the same cheap SKU, same state, same day, same price) — the
+//      old system carries the identical caveat; prefer files with a
+//      real order ID whenever the platform provides one.
+//
+// This MUST stay in sync with any change to how standard_order_id /
+// standard_order_item_id are populated in columnMapper.js — in
+// particular, don't let "Order Item ID" get merged back into
+// standard_order_id (see the comment on that mapping), or tier 1
+// silently degrades into tier 2/3 for every platform that only sends
+// a line-item ID.
 // ═══════════════════════════════════════════════════════════════════
-function computeRevenueFingerprint(row) {
-  const revenueStr = row.standard_revenue != null && row.standard_revenue !== ''
-    ? Number(row.standard_revenue).toFixed(2)
+function computeRevenueDedupKey(row) {
+  const orderItemId = row.standard_order_item_id && String(row.standard_order_item_id) !== '0'
+    ? String(row.standard_order_item_id).trim()
     : '';
-  const parts = [
-    row.platform ?? '',
-    row.order_date ?? '',
-    row.standard_sku ?? '',
-    row.standard_order_id ?? '',
-    revenueStr,
-    row.standard_units != null && row.standard_units !== '' ? String(row.standard_units) : '',
-    row.standard_city ?? '',
-    row.standard_state ?? '',
-    row.standard_status ?? '',
-  ];
-  return crypto.createHash('md5').update(parts.join('|')).digest('hex');
+  const orderId = row.standard_order_id ? String(row.standard_order_id).trim() : '';
+  const sku     = row.standard_sku ? String(row.standard_sku).trim() : '';
+
+  if (orderItemId) {
+    return { hash: hash(`order_item_id:${orderItemId}`), method: 'order_item_id' };
+  }
+  if (orderId) {
+    return { hash: hash(`order_id_sku:${orderId}|${sku}`), method: 'order_id_sku' };
+  }
+
+  const revenueStr = row.standard_revenue != null && row.standard_revenue !== ''
+    ? Number(row.standard_revenue).toFixed(2) : '';
+  const unitsStr = row.standard_units != null && row.standard_units !== ''
+    ? String(row.standard_units) : '';
+  const composite = `composite:${row.order_date ?? ''}|${sku}|${row.standard_state ?? ''}|${unitsStr}|${revenueStr}`;
+  return { hash: hash(composite), method: 'composite' };
+}
+
+function hash(input) {
+  return crypto.createHash('sha256').update(input).digest('hex');
 }
 
 async function bulkInsert(table, rows) {
@@ -327,18 +350,19 @@ async function bulkInsert(table, rows) {
   //
   // campaign_data upserts-and-sums (see mergeDuplicateCampaignRows
   // above) because a daily campaign export very often legitimately
-  // re-includes the same campaign/date from a prior upload (same
-  // campaign running multiple days, or a corrected re-upload). Upsert
+  // re-includes the same campaign/date from a prior upload. Upsert
   // updates the conflicting row instead of rejecting the whole 500-row
   // chunk over one collision.
   //
-  // revenue_data upserts-and-ignores: unlike campaign rows, two
-  // revenue rows with an identical fingerprint (see
-  // computeRevenueFingerprint) really are the exact same line item —
-  // there's nothing to sum, re-inserting it should be a no-op. Before
-  // this change revenue_data had NO unique constraint at all, so
-  // re-uploading a file (or uploading two files with overlapping date
-  // ranges) silently double-counted revenue/units with no protection.
+  // revenue_data upserts-and-UPDATES (not ignores) on row_hash —
+  // ported from the old dashboard's behavior: re-uploading a file
+  // (e.g. after an order's status changed from Pending to Delivered,
+  // or a revenue correction) safely overwrites the existing row's
+  // mutable fields instead of either duplicating it or silently
+  // refusing the correction. Before this change revenue_data had NO
+  // unique constraint at all, so re-uploading a file — or uploading
+  // two files with overlapping date ranges — silently double-counted
+  // revenue/units with no protection whatsoever.
   // Requires the migration in
   // db/migrations/2026-08_revenue_data_dedup.sql to have been applied
   // first — falls back to a clear error if the constraint is missing
@@ -355,7 +379,7 @@ async function bulkInsert(table, rows) {
           return supabaseAdmin.from(table).upsert(chunk, { onConflict: 'client_id,platform,campaign_date,campaign_name' });
         }
         if (isRevenueTable) {
-          return supabaseAdmin.from(table).upsert(chunk, { onConflict: 'client_id,row_fingerprint', ignoreDuplicates: true });
+          return supabaseAdmin.from(table).upsert(chunk, { onConflict: 'client_id,row_hash' });
         }
         return supabaseAdmin.from(table).insert(chunk);
       })
@@ -486,13 +510,16 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
     // twice ("ON CONFLICT DO UPDATE command cannot affect row a second
     // time"), so these must be summed into ONE row per key before we
     // ever call bulkInsert — otherwise the whole chunk is rejected.
-    // Revenue rows get a content fingerprint so bulkInsert can upsert
-    // instead of blind-insert — see computeRevenueFingerprint() for
-    // why this exists (revenue_data previously had zero duplicate
-    // protection, unlike campaign_data below).
+    // Revenue rows get a de-dup key (hash + which tier produced it) so
+    // bulkInsert can upsert instead of blind-insert — see
+    // computeRevenueDedupKey() for the 3-tier algorithm, ported from
+    // the old dashboard's backend.
     const rows = dataType === 'campaign'
       ? mergeDuplicateCampaignRows(normalisedRows)
-      : normalisedRows.map(row => ({ ...row, row_fingerprint: computeRevenueFingerprint(row) }));
+      : normalisedRows.map(row => {
+          const { hash: row_hash, method: dedup_method } = computeRevenueDedupKey(row);
+          return { ...row, row_hash, dedup_method };
+        });
 
     // 5. Bulk insert into the correct table
     const table     = dataType === 'revenue' ? 'revenue_data' : 'campaign_data';

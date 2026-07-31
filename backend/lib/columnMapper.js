@@ -147,10 +147,23 @@ export const REVENUE_MAP = {
   // field so orderCount can properly de-duplicate.
   'order id':                   'standard_order_id',
   'order number':               'standard_order_id',
-  'order item id':              'standard_order_id',
   'amazon-order-id':            'standard_order_id',
   'merchant-order-id':          'standard_order_id',
   'name':                       'standard_order_id',   // Shopify order export uses "Name" as the order number (e.g. #1234)
+
+  // ── Order Item ID (line-item-level de-dup key) ───────────────────
+  // Deliberately a SEPARATE field from standard_order_id, not merged
+  // into it. Order Item ID is unique per LINE ITEM within an order —
+  // an order with 3 products has 1 order_id but 3 different
+  // order_item_ids. Mapping it into standard_order_id (as this used
+  // to do) meant any file with only an "Order Item ID" column, no
+  // separate "Order ID" column, still counted line items as distinct
+  // orders — reintroducing the exact inflated-order-count bug the
+  // fix above was meant to close, just via a different column. Kept
+  // apart so revenue-row de-dup (see computeRevenueFingerprint in
+  // fileIngestion.js) can use it as its most-reliable tier, matching
+  // the old dashboard's 3-tier dedup design.
+  'order item id':              'standard_order_item_id',
   'financial status':           'standard_status',   // Shopify order export — paid/pending/refunded/voided
   'item status':                'standard_status',
   'fulfillment status':         'standard_status',
