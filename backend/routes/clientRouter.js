@@ -362,29 +362,57 @@ router.get(
 function aggregateCampaignInsights(campaignRows, revenueRows) {
   // ── Spend vs revenue vs ROAS, per platform ─────────────────────
   const byPlatform = {};
+  // Track which dates actually have campaign spend data, per platform —
+  // used below to scope revenue to the SAME period as spend, so ROAS
+  // isn't comparing partial-period ad spend against a full date-range's
+  // worth of revenue. If campaign data only covers 10 of 30 selected
+  // days, revenue from the other 20 days shouldn't count toward this
+  // platform's ROAS — that's not "free" revenue, it's revenue this ad
+  // spend data literally can't speak to.
+  const campaignDatesByPlatform = {};
+
   for (const row of campaignRows) {
     const p = row.platform;
     if (!byPlatform[p]) byPlatform[p] = { platform: p, spend: 0, campaignRevenue: 0 };
     byPlatform[p].spend           += Number(row.standard_spend)   || 0;
     byPlatform[p].campaignRevenue += Number(row.standard_revenue) || 0;
+    if (row.campaign_date) {
+      if (!campaignDatesByPlatform[p]) campaignDatesByPlatform[p] = new Set();
+      campaignDatesByPlatform[p].add(row.campaign_date);
+    }
   }
+
   // Actual (order-level) revenue per platform, from revenue_data —
   // more trustworthy than a campaign export's self-reported attributed
   // revenue, and what "revenue vs spend" should really compare against.
+  // Scoped to campaign-covered dates only (see above) — a platform with
+  // NO campaign dates recorded at all falls back to the full range,
+  // since there's nothing to scope against; that platform just won't
+  // get a meaningful ROAS (spend is 0, so roas comes out null anyway).
   for (const row of revenueRows) {
     const p = row.platform;
     if (!byPlatform[p]) byPlatform[p] = { platform: p, spend: 0, campaignRevenue: 0 };
-    byPlatform[p].actualRevenue = (byPlatform[p].actualRevenue || 0) + (Number(row.standard_revenue) || 0);
+    const coveredDates = campaignDatesByPlatform[p];
+    const inCoverage = !coveredDates || coveredDates.size === 0 || coveredDates.has(row.order_date);
+    if (inCoverage) {
+      byPlatform[p].actualRevenue = (byPlatform[p].actualRevenue || 0) + (Number(row.standard_revenue) || 0);
+    }
+    // Full-period revenue tracked separately — still useful context,
+    // just not what ROAS should be computed against.
+    byPlatform[p].fullPeriodRevenue = (byPlatform[p].fullPeriodRevenue || 0) + (Number(row.standard_revenue) || 0);
   }
   const platformSummary = Object.values(byPlatform).map(p => ({
     ...p,
     actualRevenue: p.actualRevenue || 0,
+    fullPeriodRevenue: p.fullPeriodRevenue || 0,
+    campaignCoverageDays: campaignDatesByPlatform[p.platform]?.size || 0,
     roas:   p.spend > 0 ? +((p.actualRevenue || p.campaignRevenue) / p.spend).toFixed(2) : null,
     profit: (p.actualRevenue || p.campaignRevenue) - p.spend,
   }));
 
   const totalSpend   = platformSummary.reduce((s, p) => s + p.spend, 0);
   const totalRevenue = platformSummary.reduce((s, p) => s + (p.actualRevenue || p.campaignRevenue), 0);
+  const totalFullPeriodRevenue = platformSummary.reduce((s, p) => s + p.fullPeriodRevenue, 0);
 
   // ── Fulfilment channel split (Amazon FBA vs Merchant) ──────────
   // Only meaningful for platforms whose export includes it — currently
@@ -419,6 +447,7 @@ function aggregateCampaignInsights(campaignRows, revenueRows) {
     platformSummary,
     totalSpend,
     totalRevenue,
+    totalFullPeriodRevenue,
     overallRoas: totalSpend > 0 ? +(totalRevenue / totalSpend).toFixed(2) : null,
     fulfillmentBreakdown,
     topProducts,
