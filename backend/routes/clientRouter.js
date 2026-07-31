@@ -220,7 +220,7 @@ router.get(
       fetchAllRows((rangeFrom, rangeTo) => {
         let q = supabaseAdmin
           .from('revenue_data')
-          .select('standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status, standard_product_name')
+          .select('standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status, standard_product_name, standard_order_id')
           .eq('client_id', client.id)
           .range(rangeFrom, rangeTo);
         if (sku)      q = q.eq('standard_sku', sku);
