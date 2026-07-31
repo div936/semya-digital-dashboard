@@ -1,0 +1,38 @@
+name: Keep Semya backend awake
+
+# Pings the Render backend's /health endpoint on a schedule so it
+# never sits idle long enough to hit Render's free-tier sleep timeout
+# (~15 minutes). Runs every 10 minutes, with a couple of retries in
+# case a single ping lands during a cold start.
+#
+# Place this file at: .github/workflows/keep-backend-awake.yml
+# in the repo that GitHub Pages serves the dashboard from
+# (div936/semya-digital-dashboard), or in any repo you control —
+# it only needs network access, not the dashboard code itself.
+
+on:
+  schedule:
+    # GitHub's cron scheduler is best-effort and can slip by a few
+    # minutes under load, so 10 minutes gives some safety margin
+    # under Render's ~15 minute sleep window.
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}   # lets you trigger it manually from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend health endpoint
+        run: |
+          URL="https://semya-api.onrender.com/health"
+          for attempt in 1 2 3; do
+            echo "Attempt $attempt: pinging $URL"
+            if curl --fail --silent --show-error --max-time 60 "$URL"; then
+              echo "Backend responded OK."
+              exit 0
+            fi
+            echo "No response yet, retrying in 15s..."
+            sleep 15
+          done
+          echo "Backend did not respond after 3 attempts."
+          exit 1
