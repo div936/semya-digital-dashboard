@@ -1184,6 +1184,10 @@
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
               Manage Data
             </button>
+            <button class="avatar-dropdown-item" style="padding-left:28px;font-size:11px;" data-role="admin" onclick="closeAvatarMenu(); runOrderIdBackfill();">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+              Backfill Order IDs <span style="color:#94a3b8;">(one-time)</span>
+            </button>
           </div>
           <button class="avatar-dropdown-item danger" onclick="closeAvatarMenu(); window.semyaLogout();">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -2874,6 +2878,55 @@ function fetchWithTimeout(url, opts, ms) {
   });
 }
 
+// One-time admin action — triggers the standard_order_id backfill over
+// HTTP (see backend/routes/adminBackfillRouter.js). Uses its own
+// timeout, much longer than apiFetch's normal 35s, since scanning a
+// large table can genuinely take a few minutes. If the browser times
+// out before the server responds, the backfill itself keeps running
+// server-side regardless (it's not tied to whether this specific HTTP
+// connection stays open) — a timeout here just means "check back and
+// refresh in a bit," not "it failed."
+async function runOrderIdBackfill() {
+  const { clientSlug } = state;
+  if (!clientSlug) { alert('No client selected.'); return; }
+  if (!confirm(
+    'This is a one-time fix that recovers order IDs for existing data so ' +
+    '"Total Orders" counts distinct orders instead of individual product ' +
+    'line items. It reads directly from data already in the database — ' +
+    'no files need to be re-uploaded. It only writes to one field and is ' +
+    'safe to run more than once. This can take a few minutes for a large ' +
+    'dataset. Continue?'
+  )) return;
+
+  const btn = event?.target?.closest?.('button');
+  const originalHTML = btn ? btn.innerHTML : null;
+  if (btn) { btn.innerHTML = 'Running… (this may take a few minutes)'; btn.disabled = true; }
+
+  try {
+    const res = await fetchWithTimeout(
+      API_BASE + '/clients/' + clientSlug + '/admin/backfill-order-ids',
+      { method: 'POST', headers: authHeaders(), credentials: 'include' },
+      5 * 60 * 1000 // 5 minutes — this is a paginated full-table scan, not a normal quick request
+    );
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Backfill failed.');
+    alert(
+      '✓ Backfill complete.\n\n' +
+      'Rows scanned: ' + data.summary.totalScanned + '\n' +
+      'Rows updated with a recovered order ID: ' + data.summary.totalUpdated + '\n' +
+      'Rows already had an order ID: ' + data.summary.totalAlreadySet + '\n' +
+      'Rows with no order-ID column in the source file: ' + data.summary.totalNoOrderIdFound + '\n\n' +
+      'Refresh the dashboard to see updated Total Orders.'
+    );
+    tabCache = {}; // clear all cached tab data so numbers refresh immediately
+    fetchAndRender();
+  } catch (err) {
+    alert('✗ Backfill failed or timed out: ' + err.message + '\n\nIf it timed out, the backfill may still be running on the server — wait a few minutes, then refresh the dashboard to check if Total Orders changed before retrying.');
+  } finally {
+    if (btn) { btn.innerHTML = originalHTML; btn.disabled = false; }
+  }
+}
+
 async function apiFetch(path, opts) {
   const url     = API_BASE + path;
   const headers = { ...authHeaders(), ...(opts?.headers || {}) };
@@ -3811,37 +3864,68 @@ async function fetchAndRenderPS() {
       if (skuR && skuR.revenue && skuR.revenue.length) {
         // Aggregate by platform from raw revenue rows
         const byPlat = {}, byProd = {}, byDayAgg = {}, byWeekAgg = {}, byMonthAgg = {}, byYearAgg = {};
-        let gt = 0, gu = 0, go = 0;
+        let gt = 0, gu = 0;
+        const globalOrderIds = new Set();
+        let globalRowsWithoutOrderId = 0;
         skuR.revenue.forEach(r => {
           const rev = Number(r.standard_revenue) || 0;
           const units = Number(r.standard_units) || 0;
           const plat = r.platform || 'unknown';
-          if (!byPlat[plat]) byPlat[plat] = { platform: plat, totalRevenue: 0, totalUnits: 0, orderCount: 0 };
+          if (!byPlat[plat]) byPlat[plat] = { platform: plat, totalRevenue: 0, totalUnits: 0, orderCount: 0, _orderIds: new Set(), _rowsWithoutOrderId: 0 };
           byPlat[plat].totalRevenue += rev;
           byPlat[plat].totalUnits   += units;
-          byPlat[plat].orderCount   += 1;
-          gt += rev; gu += units; go += 1;
+          // Distinct orders, not rows — same fix as the backend's
+          // aggregatePlatformSales. This fallback path previously had
+          // its own copy of the old per-row-counting bug, which kept
+          // producing inflated order counts even after the backend fix
+          // shipped, whenever this fallback path was the one in use.
+          if (r.standard_order_id) {
+            byPlat[plat]._orderIds.add(r.standard_order_id);
+            globalOrderIds.add(plat + '|' + r.standard_order_id);
+          } else {
+            byPlat[plat]._rowsWithoutOrderId += 1;
+            globalRowsWithoutOrderId += 1;
+          }
+          gt += rev; gu += units;
           const sku = r.standard_sku || 'Unknown';
           const prodKey = plat + '|' + sku;
           if (!byProd[prodKey]) byProd[prodKey] = { sku, platform: plat, units: 0, revenue: 0 };
           byProd[prodKey].revenue += rev; byProd[prodKey].units += units;
           if (r.order_date) {
             const d = new Date(r.order_date);
+            const yr = d.getFullYear(), mo = d.getMonth();
             byDayAgg[r.order_date] = (byDayAgg[r.order_date] || 0) + rev;
-            const wk = 'W' + Math.ceil(d.getDate()/7) + ' ' + d.toLocaleString('default',{month:'short'}) + ' ' + d.getFullYear().toString().slice(2);
-            byWeekAgg[wk] = (byWeekAgg[wk] || 0) + rev;
-            const mo = d.toLocaleString('default',{month:'short'}) + " '" + d.getFullYear().toString().slice(2);
-            byMonthAgg[mo] = (byMonthAgg[mo] || 0) + rev;
-            const yr = String(d.getFullYear());
-            byYearAgg[yr] = (byYearAgg[yr] || 0) + rev;
+            const wk = 'W' + Math.ceil(d.getDate()/7) + ' ' + d.toLocaleString('default',{month:'short'}) + ' ' + yr.toString().slice(2);
+            const wsort = yr * 10000 + mo * 100 + Math.ceil(d.getDate()/7);
+            if (!byWeekAgg[wk]) byWeekAgg[wk] = { revenue: 0, sort: wsort };
+            byWeekAgg[wk].revenue += rev;
+            const mo_label = d.toLocaleString('default',{month:'short'}) + " '" + yr.toString().slice(2);
+            const msort = yr * 100 + mo;
+            if (!byMonthAgg[mo_label]) byMonthAgg[mo_label] = { revenue: 0, sort: msort };
+            byMonthAgg[mo_label].revenue += rev;
+            const yr_key = String(yr);
+            if (!byYearAgg[yr_key]) byYearAgg[yr_key] = { revenue: 0, sort: yr };
+            byYearAgg[yr_key].revenue += rev;
           }
         });
+        for (const p of Object.values(byPlat)) {
+          p.orderCount = p._orderIds.size + p._rowsWithoutOrderId;
+          delete p._orderIds;
+          delete p._rowsWithoutOrderId;
+        }
+        const go = globalOrderIds.size + globalRowsWithoutOrderId;
         const platforms = Object.values(byPlat).sort((a,b) => b.totalRevenue - a.totalRevenue);
         const topProducts = Object.values(byProd).sort((a,b) => b.revenue - a.revenue).slice(0,10);
         const dailyArr   = Object.entries(byDayAgg).sort((a,b) => a[0].localeCompare(b[0])).map(([day, revenue]) => ({ day, revenue }));
-        const weeklyArr  = Object.entries(byWeekAgg).map(([week, revenue]) => ({ week, revenue }));
-        const monthlyArr = Object.entries(byMonthAgg).map(([month, revenue]) => ({ month, revenue }));
-        const yearlyArr  = Object.entries(byYearAgg).map(([year, revenue]) => ({ year, revenue }));
+        // Sort by the numeric `sort` key, not object insertion order —
+        // this was the actual cause of the scrambled month labels on
+        // the trend chart (e.g. "Feb '26, May '26, Nov '25, Apr '26…").
+        // Object.entries() on non-numeric string keys returns insertion
+        // order, which is whatever order rows happened to arrive in
+        // from the API — not chronological.
+        const weeklyArr  = Object.entries(byWeekAgg).sort((a,b) => a[1].sort - b[1].sort).map(([week, v]) => ({ week, revenue: v.revenue }));
+        const monthlyArr = Object.entries(byMonthAgg).sort((a,b) => a[1].sort - b[1].sort).map(([month, v]) => ({ month, revenue: v.revenue }));
+        const yearlyArr  = Object.entries(byYearAgg).sort((a,b) => a[1].sort - b[1].sort).map(([year, v]) => ({ year, revenue: v.revenue }));
         data = { platforms, grandTotal: gt, prevGrandTotal: gt * 0.82,
                  prevUnits: gu, prevOrders: go, daily: dailyArr, weekly: weeklyArr,
                  monthly: monthlyArr, yearly: yearlyArr, topProducts };
