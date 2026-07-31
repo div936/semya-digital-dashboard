@@ -2582,7 +2582,7 @@
     </div>
 
     <div style="font-size:12px;color:#64748b;line-height:1.6;">
-      Files are automatically routed to the correct database table based on their filename prefix. Select up to 5 files at once.
+      Files are automatically routed to the correct database table based on their filename prefix. Select up to 5 files at once. <span style="color:#94a3b8;">(.xlsx/.csv format is always readable — column names are matched to known formats, with automatic best-effort detection as a fallback for unrecognized ones.)</span>
     </div>
 
     <!-- File picker -->
@@ -5423,8 +5423,17 @@ async function handleUploadAll() {
       const data = await uploadOneFile(file, clientSlug);
       successCount++;
       if (rowStatus) {
-        rowStatus.textContent = '✓ ' + (data.rowsIngested ?? '') + ' rows → ' + (data.platform || 'done');
-        rowStatus.style.color = '#059669';
+        if (data.usedFallbackMapping) {
+          // Columns didn't match any known format — auto-detected by
+          // pattern-matching instead. Flagged distinctly (amber, not
+          // green) so it's not mistaken for a normal clean success.
+          rowStatus.innerHTML = '⚠ ' + (data.rowsIngested ?? '') + ' rows (auto-detected — verify) → ' + (data.platform || 'done');
+          rowStatus.title = data.message || 'Column names were auto-detected by pattern-matching. Please spot-check the data.';
+          rowStatus.style.color = '#b45309';
+        } else {
+          rowStatus.textContent = '✓ ' + (data.rowsIngested ?? '') + ' rows → ' + (data.platform || 'done');
+          rowStatus.style.color = '#059669';
+        }
       }
     } catch (err) {
       if (err.message === 'SESSION_EXPIRED') { handleSessionExpiry(); return; }
