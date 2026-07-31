@@ -136,6 +136,21 @@ export const REVENUE_MAP = {
   // ── Order status ──────────────────────────────────────────────
   'order status':               'standard_status',
   'order state':                'standard_status',   // Flipkart order export
+
+  // ── Order ID (distinct-order counting) ──────────────────────────
+  // Previously only recognised via ORDER_ID_KEYS for fraud detection
+  // (reading raw_extras), never promoted to a real column — so
+  // "Total Orders" was counting ROWS, not distinct orders. An order
+  // with 2 line items (2 products) was silently counted as 2 orders,
+  // which is why the new dashboard's order count sat suspiciously
+  // close to its units-sold count. This makes order ID a first-class
+  // field so orderCount can properly de-duplicate.
+  'order id':                   'standard_order_id',
+  'order number':               'standard_order_id',
+  'order item id':              'standard_order_id',
+  'amazon-order-id':            'standard_order_id',
+  'merchant-order-id':          'standard_order_id',
+  'name':                       'standard_order_id',   // Shopify order export uses "Name" as the order number (e.g. #1234)
   'financial status':           'standard_status',   // Shopify order export — paid/pending/refunded/voided
   'item status':                'standard_status',
   'fulfillment status':         'standard_status',

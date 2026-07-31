@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS revenue_data (
   standard_city     TEXT,
   standard_state    TEXT,
   standard_status   TEXT,
+  standard_order_id TEXT,  -- for counting DISTINCT orders, not rows/line-items — an order with 2 products is 1 order, not 2
   standard_fulfillment_channel TEXT,  -- e.g. 'Amazon' (FBA) vs 'Merchant' — Amazon-only dimension
   standard_product_name TEXT,  -- full product name/title, kept separate from standard_sku; used for category inference
   raw_extras        JSONB DEFAULT '{}'::JSONB,  -- leftover unmapped columns

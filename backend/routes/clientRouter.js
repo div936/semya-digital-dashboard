@@ -163,7 +163,7 @@ router.get(
         // standard_sku added so Platform Sales can show a real
         // product-wise breakdown instead of bucketing everything
         // into "Unknown".
-        .select('platform, order_date, standard_revenue, standard_units, standard_status, standard_sku, standard_product_name')
+        .select('platform, order_date, standard_revenue, standard_units, standard_status, standard_sku, standard_product_name, standard_order_id')
         .eq('client_id', client.id)
         .range(from, to);
       if (req.query.from)      q = q.or(`order_date.gte.${req.query.from},order_date.is.null`);
@@ -337,7 +337,7 @@ router.get(
     const revenueRows = await fetchAllRows((rangeFrom, rangeTo) => {
       let q = supabaseAdmin
         .from('revenue_data')
-        .select('platform, standard_revenue, standard_units, standard_sku, standard_status, standard_fulfillment_channel, order_date')
+        .select('platform, standard_revenue, standard_units, standard_sku, standard_status, standard_fulfillment_channel, order_date, standard_order_id')
         .eq('client_id', client.id)
         .range(rangeFrom, rangeTo);
       if (from)     q = q.or(`order_date.gte.${from},order_date.is.null`);
@@ -393,12 +393,16 @@ function aggregateCampaignInsights(campaignRows, revenueRows) {
   const byFulfillment = {};
   for (const row of revenueRows) {
     const ch = row.standard_fulfillment_channel || 'Not specified';
-    if (!byFulfillment[ch]) byFulfillment[ch] = { channel: ch, revenue: 0, units: 0, orders: 0 };
+    if (!byFulfillment[ch]) byFulfillment[ch] = { channel: ch, revenue: 0, units: 0, orders: 0, _orderIds: new Set(), _rowsWithoutOrderId: 0 };
     byFulfillment[ch].revenue += Number(row.standard_revenue) || 0;
     byFulfillment[ch].units   += Number(row.standard_units)   || 0;
-    byFulfillment[ch].orders  += 1;
+    if (row.standard_order_id) byFulfillment[ch]._orderIds.add(row.standard_order_id);
+    else byFulfillment[ch]._rowsWithoutOrderId += 1;
   }
-  const fulfillmentBreakdown = Object.values(byFulfillment);
+  const fulfillmentBreakdown = Object.values(byFulfillment).map(f => ({
+    channel: f.channel, revenue: f.revenue, units: f.units,
+    orders: f._orderIds.size + f._rowsWithoutOrderId,
+  }));
 
   // ── Product-wise revenue, for the platforms in this view ───────
   const byProduct = {};
@@ -581,10 +585,21 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
     const rev = Number(row.standard_revenue ?? 0);
     const u   = Number(row.standard_units   ?? 0);
 
-    if (!byPlatform[p]) byPlatform[p] = { platform: p, totalRevenue: 0, totalUnits: 0, orderCount: 0 };
+    if (!byPlatform[p]) byPlatform[p] = { platform: p, totalRevenue: 0, totalUnits: 0, orderCount: 0, _orderIds: new Set(), _rowsWithoutOrderId: 0 };
     byPlatform[p].totalRevenue += rev;
     byPlatform[p].totalUnits   += u;
-    byPlatform[p].orderCount   += 1;
+    // Count DISTINCT orders, not rows. An order with 2 line items (2
+    // products) is 1 order, not 2 — previously this incremented once
+    // per row, which is why order counts sat suspiciously close to
+    // units-sold counts (both were really counting line-items). Falls
+    // back to per-row counting only for rows with no order ID at all
+    // (a platform whose export doesn't include one), rather than
+    // silently dropping those rows from the count entirely.
+    if (row.standard_order_id) {
+      byPlatform[p]._orderIds.add(row.standard_order_id);
+    } else {
+      byPlatform[p]._rowsWithoutOrderId += 1;
+    }
 
     // Time-bucketed aggregation — day, week, month, year all computed
     // in the same pass so the frontend can switch granularity instantly
@@ -643,6 +658,14 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
     if (!byCategory[category]) byCategory[category] = { category, revenue: 0, units: 0 };
     byCategory[category].revenue += rev;
     byCategory[category].units   += u;
+  }
+
+  // Finalise distinct order counts (Set → number) and strip the
+  // internal tracking fields — they're not part of the public shape.
+  for (const p of Object.values(byPlatform)) {
+    p.orderCount = p._orderIds.size + p._rowsWithoutOrderId;
+    delete p._orderIds;
+    delete p._rowsWithoutOrderId;
   }
 
   const platforms  = Object.values(byPlatform);
