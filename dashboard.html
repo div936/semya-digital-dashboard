@@ -4164,7 +4164,11 @@ function renderCI(payload) {
   document.getElementById('ciKpiSpendSub').innerHTML  = 'Across ' + campaigns.length + ' campaigns';
   document.getElementById('ciKpiRev').innerHTML      = fmtRevenue(totalRev);
   document.getElementById('ciKpiRevDelta').innerHTML  = '';
-  document.getElementById('ciKpiRevSub').innerHTML    = (totalRev > 0 && totalSpend > 0 ? '+' + ((totalRev - totalSpend)/totalSpend*100).toFixed(0) + '%' : '—') + ' return on spend';
+  const fullPeriodRev = payload.totalFullPeriodRevenue;
+  const coverageNote = (fullPeriodRev != null && fullPeriodRev > totalRev * 1.05)
+    ? ' · Scoped to dates with campaign data (full-period revenue: ' + fmtRevenue(fullPeriodRev) + ')'
+    : '';
+  document.getElementById('ciKpiRevSub').innerHTML    = (totalRev > 0 && totalSpend > 0 ? '+' + ((totalRev - totalSpend)/totalSpend*100).toFixed(0) + '%' : '—') + ' return on spend' + coverageNote;
   document.getElementById('ciKpiRoas').innerHTML     = blendedRoas > 0 ? fmtRoas(blendedRoas) : '—';
   document.getElementById('ciKpiRoasDelta').innerHTML = '';
   document.getElementById('ciKpiRoasSub').innerHTML   = 'Target: 4.0x · ' + (blendedRoas >= 4 ? 'Above' : 'Below') + ' target';
