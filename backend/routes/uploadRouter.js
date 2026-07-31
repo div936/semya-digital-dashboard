@@ -82,7 +82,10 @@ router.post(
         dataType:     result.dataType,
         rowsIngested: result.rowCount,
         rowsSkipped:  result.skippedRows,
-        message:      result.routingCorrected
+        usedFallbackMapping: result.usedFallbackMapping || false,
+        message:      result.usedFallbackMapping
+          ? `⚠ ${result.rowCount} rows ingested, but this file's column names didn't match any known format — columns were auto-detected by pattern-matching instead of the usual exact mapping. Please spot-check revenue, dates, and product names for '${result.platform}' before relying on this data.`
+          : result.routingCorrected
           ? `${result.rowCount} rows ingested into ${result.dataType} table for platform '${result.platform}'. Note: the filename suggested '${result.filenameDataType}' data, but this file's columns matched '${result.dataType}' data instead — routed accordingly.`
           : `${result.rowCount} rows ingested into ${result.dataType} table for platform '${result.platform}'.`,
       });

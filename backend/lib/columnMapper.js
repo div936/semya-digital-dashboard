@@ -59,6 +59,7 @@ export const REVENUE_MAP = {
   'selling price per item':     'standard_revenue',   // Flipkart order export
   'net revenue':                'standard_revenue',
   'net sale value':             'standard_revenue',
+  'net sales':                  'standard_revenue',   // aggregated monthly summary export. Deliberately NOT mapping 'gross sales' to this field — it appears earlier in that file's column order and would win under first-match-wins, but Net Sales (post-discount) is the correct realized-revenue figure matching how standard_revenue is defined everywhere else
   'sale amount':                'standard_revenue',
   'sales amount':               'standard_revenue',
   'total revenue':              'standard_revenue',
@@ -85,6 +86,7 @@ export const REVENUE_MAP = {
   'qty sold':                   'standard_units',
   'no. of units':               'standard_units',
   'number of units':            'standard_units',
+  'orders':                     'standard_units',   // aggregated monthly summary export — "Orders" here means order/unit count for that product+month, not a campaign metric (that's a separate mapping in CAMPAIGN_MAP for actual ad reports)
   'item quantity':              'standard_units',
   'order quantity':             'standard_units',
   'fulfilled quantity':         'standard_units',
@@ -104,6 +106,7 @@ export const REVENUE_MAP = {
   'fulfillment date':           'order_date',
   'created date':               'order_date',
   'created at':                 'order_date',
+  'month':                      'order_date',   // aggregated monthly summary export (a distinct Meta_File format from the Shopify Lineitem export — see below)
   'ordered on':                 'order_date',   // Flipkart order export
   'placed date':                'order_date',
   'invoice date':               'order_date',
@@ -573,6 +576,133 @@ export function normaliseRow(rawRow, map) {
 // Returns:
 //   { rows: Array<normalised_record>, skipped: number }
 // ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+// FALLBACK HEURISTIC MAPPING
+//
+// The dictionary above (REVENUE_MAP/CAMPAIGN_MAP) only recognises exact
+// header text it's already seen. That's precise but brittle — a new
+// export format with different column names (like the aggregated
+// "Month / Gross Sales / Net Sales / Orders" Meta report) produces
+// zero usable rows silently, because every row looks empty to
+// normaliseBatch's skip check.
+//
+// This function is a SECOND PASS, only ever invoked by fileIngestion.js
+// when the first (dictionary) pass yields zero inserted rows for a
+// non-empty file. It never runs otherwise, and never overrides a
+// dictionary hit — it only fills in targets that are still missing.
+// It combines a fuzzy keyword match on header text with a check that
+// the column's actual sample values look like the right shape (numeric
+// for revenue/units, parseable dates for the date field) — the shape
+// check exists specifically to avoid false positives like an "Order ID"
+// column matching on the word "order".
+//
+// Any file that goes through this path gets flagged in the upload
+// record (see fileIngestion.js) as "auto-detected — please verify",
+// so this is never a silent guess presented as a confident match.
+// ═══════════════════════════════════════════════════════════════════
+const FUZZY_KEYWORDS = {
+  order_date:      ['date', 'day', 'month', 'period', 'week'],
+  standard_revenue_net:   ['net sale', 'net revenue', 'net amount'],       // highest priority
+  standard_revenue_plain: ['revenue', 'sales', 'amount', 'value', 'price', 'total'],
+  standard_revenue_gross: ['gross'],                                       // lowest priority, only if nothing else found
+  standard_units:  ['qty', 'quantity', 'unit', 'order', 'count'],
+  standard_sku:    ['sku', 'asin', 'item code', 'product code', 'item id', 'product id'],
+  standard_product_name: ['product', 'item', 'title'],
+};
+
+// Headers that should never be treated as a product/name candidate even
+// though they contain "name" — these are buyer identity fields, not
+// product fields, and misassigning one here would leak PII into a
+// product-facing field instead of raw_extras where it belongs.
+const IDENTITY_NAME_EXCLUDE = ['customer', 'buyer', 'billing', 'shipping', 'ship to', 'employee'];
+
+function looksNumeric(values) {
+  const sample = values.filter(v => v !== null && v !== undefined && v !== '').slice(0, 20);
+  if (!sample.length) return false;
+  const numeric = sample.filter(v => !isNaN(parseFloat(String(v).replace(/[,₹$]/g, ''))));
+  return numeric.length / sample.length > 0.8;
+}
+
+function looksLikeDate(values) {
+  const sample = values.filter(v => v !== null && v !== undefined && v !== '').slice(0, 20);
+  if (!sample.length) return false;
+  const dateLike = sample.filter(v => !isNaN(Date.parse(v)));
+  return dateLike.length / sample.length > 0.8;
+}
+
+// Returns an EXTRA map (normalised header → target) covering only
+// currently-unmapped headers. Merge this on top of the dictionary map
+// — never replace it — so anything the dictionary already got right
+// stays untouched.
+export function detectFallbackMapping(rawRows, dictionaryMap) {
+  if (!rawRows.length) return {};
+  const headers = Object.keys(rawRows[0]);
+  const alreadyMapped = new Set();
+  for (const h of headers) {
+    if (resolveKey(dictionaryMap, h)) alreadyMapped.add(h);
+  }
+  const unmapped = headers.filter(h => !alreadyMapped.has(h));
+  if (!unmapped.length) return {};
+
+  const extra = {};
+  const claimed = new Set(); // one header per target, first good match wins
+
+  const tryClaim = (target, header) => {
+    if (claimed.has(target)) return false;
+    extra[normaliseHeaderKey(header)] = target;
+    claimed.add(target);
+    return true;
+  };
+
+  const colValues = (header) => rawRows.map(r => r[header]).slice(0, 20);
+
+  // Date — keyword match + shape confirmation
+  for (const h of unmapped) {
+    const key = normaliseHeaderKey(h);
+    if (FUZZY_KEYWORDS.order_date.some(kw => key.includes(kw)) && looksLikeDate(colValues(h))) {
+      if (tryClaim('order_date', h)) break;
+    }
+  }
+
+  // Revenue — net first, then plain, then gross as last resort
+  for (const tier of ['standard_revenue_net', 'standard_revenue_plain', 'standard_revenue_gross']) {
+    if (claimed.has('standard_revenue')) break;
+    for (const h of unmapped) {
+      const key = normaliseHeaderKey(h);
+      if (FUZZY_KEYWORDS[tier].some(kw => key.includes(kw)) && looksNumeric(colValues(h))) {
+        if (tryClaim('standard_revenue', h)) break;
+      }
+    }
+  }
+
+  // Units
+  for (const h of unmapped) {
+    const key = normaliseHeaderKey(h);
+    if (FUZZY_KEYWORDS.standard_units.some(kw => key.includes(kw)) && looksNumeric(colValues(h))) {
+      if (tryClaim('standard_units', h)) break;
+    }
+  }
+
+  // SKU
+  for (const h of unmapped) {
+    const key = normaliseHeaderKey(h);
+    if (FUZZY_KEYWORDS.standard_sku.some(kw => key.includes(kw))) {
+      if (tryClaim('standard_sku', h)) break;
+    }
+  }
+
+  // Product name — excludes buyer-identity "name" columns
+  for (const h of unmapped) {
+    const key = normaliseHeaderKey(h);
+    const isIdentityName = IDENTITY_NAME_EXCLUDE.some(kw => key.includes(kw));
+    if (!isIdentityName && FUZZY_KEYWORDS.standard_product_name.some(kw => key.includes(kw))) {
+      if (tryClaim('standard_product_name', h)) break;
+    }
+  }
+
+  return extra;
+}
+
 export function normaliseBatch(rawRows, map, { clientId, platform, uploadId, defaultDate } = {}) {
   const rows = [];
   let skipped = 0;

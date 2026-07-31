@@ -38,7 +38,7 @@ import xlsx from 'xlsx';
 import path from 'path';
 import { parse as parseCsv } from 'csv-parse/sync';
 import { supabaseAdmin }  from '../lib/supabase.js';
-import { REVENUE_MAP, CAMPAIGN_MAP, normaliseBatch, classifyDataType, scoreHeaderRow } from '../lib/columnMapper.js';
+import { REVENUE_MAP, CAMPAIGN_MAP, normaliseBatch, classifyDataType, scoreHeaderRow, detectFallbackMapping } from '../lib/columnMapper.js';
 import { generateInsights, generateNarrativeSummaries } from '../lib/insightGenerator.js';
 
 // ═══════════════════════════════════════════════════════════════════
@@ -397,12 +397,38 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
 
     // 4. Normalise via column mapper
     const map = dataType === 'revenue' ? REVENUE_MAP : CAMPAIGN_MAP;
-    const { rows: normalisedRows, skipped } = normaliseBatch(rawRows, map, {
+    let { rows: normalisedRows, skipped } = normaliseBatch(rawRows, map, {
       clientId,
       platform,
       uploadId,
       defaultDate,
     });
+
+    // Fallback: the dictionary only recognises exact header text it's
+    // already seen. If it mapped nothing usable (every row skipped,
+    // even though the file clearly has data), try fuzzy keyword +
+    // value-shape detection on the still-unmapped columns instead of
+    // silently reporting "0 rows added" — this is exactly what used to
+    // happen to files like an aggregated "Month/Net Sales/Orders"
+    // report that don't match any known export format's column names.
+    let usedFallbackMapping = false;
+    if (normalisedRows.length === 0 && rawRows.length > 0) {
+      const extraMap = detectFallbackMapping(rawRows, map);
+      if (Object.keys(extraMap).length > 0) {
+        const augmentedMap = { ...map, ...extraMap };
+        const retry = normaliseBatch(rawRows, augmentedMap, { clientId, platform, uploadId, defaultDate });
+        if (retry.rows.length > 0) {
+          normalisedRows = retry.rows;
+          skipped = retry.skipped;
+          usedFallbackMapping = true;
+          console.warn(
+            `[ingestion] ${originalName}: dictionary mapping found 0 usable rows — ` +
+            `fell back to fuzzy column detection (${JSON.stringify(extraMap)}), recovered ${retry.rows.length} rows. ` +
+            `Flagging this upload for manual verification.`
+          );
+        }
+      }
+    }
 
     // Campaign exports frequently have multiple line items for the same
     // campaign on the same day (per ad set, per age group, per placement,
@@ -420,15 +446,20 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
     const inserted  = await bulkInsert(table, rows);
 
     // 6. Mark upload as complete
-    const note = routingCorrected
+    const routingNote = routingCorrected
       ? `Note: filename suggested '${filenameDataType}' data, but the columns in this file matched '${dataType}' data instead — routed accordingly.`
       : null;
+    const fallbackNote = usedFallbackMapping
+      ? `⚠ This file's column names didn't match any known format. Columns were auto-detected by pattern-matching instead — please spot-check the data (revenue, dates, product names) before relying on it.`
+      : null;
+    const note = [routingNote, fallbackNote].filter(Boolean).join(' ') || null;
     await finaliseUpload(uploadId, 'success', inserted, skipped, note);
 
     console.log(
       `[ingestion] ✓ ${originalName} → ${table} | ` +
       `platform=${platform} rows=${inserted} skipped=${skipped}` +
-      (routingCorrected ? ` | routing corrected (${filenameDataType} → ${dataType})` : '')
+      (routingCorrected ? ` | routing corrected (${filenameDataType} → ${dataType})` : '') +
+      (usedFallbackMapping ? ` | used fallback column detection` : '')
     );
 
     // 7. Fire-and-forget insight generation (non-blocking)
@@ -443,6 +474,7 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
       uploadId, platform, dataType,
       rowCount: inserted, skippedRows: skipped,
       routingCorrected, filenameDataType,
+      usedFallbackMapping,
     };
 
   } catch (err) {
