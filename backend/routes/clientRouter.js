@@ -110,6 +110,43 @@ router.patch('/:client_slug/admin/rename', async (req, res) => {
 
 
 // ═══════════════════════════════════════════════════════════════════
+// ADMIN — UPDATE CLIENT APPEARANCE (logo + theme)
+// Body: { logoUrl?, theme? }
+// Separate from /admin/rename since logo/theme are a distinct concern
+// (visual branding vs. the client's actual name). Previously these
+// only lived in the admin's own browser localStorage — reloading on
+// a different device or as a different admin showed the defaults
+// again, and a client user never saw an admin's chosen branding at
+// all. This persists them to the client's own row, so they're real
+// and shared across everyone viewing that client's dashboard.
+// ═══════════════════════════════════════════════════════════════════
+router.patch('/:client_slug/admin/appearance', async (req, res) => {
+  if (!req.semya.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required.' });
+  }
+  const { logoUrl, theme } = req.body || {};
+  if (logoUrl === undefined && theme === undefined) {
+    return res.status(400).json({ error: 'Provide at least one of logoUrl or theme.' });
+  }
+
+  const update = {};
+  if (logoUrl !== undefined) update.logo_url = logoUrl;
+  if (theme   !== undefined) update.theme    = theme;
+
+  const { client } = req.semya;
+  const { data, error } = await supabaseAdmin
+    .from('clients')
+    .update(update)
+    .eq('id', client.id)
+    .select('slug, logo_url, theme')
+    .single();
+
+  if (error) return res.status(500).json({ error: 'Failed to save client appearance: ' + error.message });
+  return res.json({ ok: true, client: { slug: data.slug, logoUrl: data.logo_url, theme: data.theme } });
+});
+
+
+// ═══════════════════════════════════════════════════════════════════
 // ADMIN — UPDATE TAB PERMISSIONS
 // Body: { tab_key: string, is_enabled: boolean }
 // ═══════════════════════════════════════════════════════════════════

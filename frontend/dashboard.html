@@ -2142,9 +2142,31 @@
 
     <!-- ═══ APPEARANCE ═══ -->
     <div id="caPanel-appearance" class="dm-panel" style="display:none;">
+      <!-- Scope toggle: the login page (index.html) is shared by everyone
+           and exists before any client is selected, so its branding is a
+           platform-wide, admin-only setting — deliberately separate from
+           any one client's dashboard branding below. Clients never see
+           this toggle at all (the whole Client Administration modal is
+           admin-only), but the split still matters: editing "Admin Login
+           Page" here changes what EVERYONE sees on the sign-in screen,
+           not just the client currently selected in this modal. -->
+      <div style="display:flex;gap:0;background:#f1f5f9;border-radius:var(--radius-sm);padding:3px;margin-bottom:20px;width:fit-content;">
+        <button type="button" class="ca-appearance-scope-btn active" id="caScopeBtn-client" onclick="setCaAppearanceScope('client')"
+          style="padding:7px 16px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;background:#fff;color:#1e293b;box-shadow:0 1px 2px rgba(0,0,0,.06);">
+          Client Dashboard
+        </button>
+        <button type="button" class="ca-appearance-scope-btn" id="caScopeBtn-admin" onclick="setCaAppearanceScope('admin')"
+          style="padding:7px 16px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;background:transparent;color:#64748b;">
+          Admin Login Page
+        </button>
+      </div>
+      <p id="caAppearanceScopeHint" style="font-size:11px;color:#94a3b8;margin:-12px 0 20px;">
+        Editing branding for <strong id="caScopeClientName">this client's</strong> dashboard — visible only when viewing their data.
+      </p>
+
       <!-- Logo Upload -->
       <div style="margin-bottom:24px;">
-        <div class="acl-section-label">Client Logo</div>
+        <div class="acl-section-label" id="caLogoLabel">Client Logo</div>
         <div style="display:flex;align-items:center;gap:16px;margin-top:12px;">
           <div id="logoPreviewWrap" style="width:52px;height:52px;border-radius:12px;background:linear-gradient(135deg,var(--theme-deep),var(--theme-primary));display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;color:#fff;overflow:hidden;flex-shrink:0;border:2px solid var(--color-border);">
             <img id="logoPreviewImg" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover;" />
@@ -2167,10 +2189,10 @@
 
       <!-- Brand Name -->
       <div style="margin-bottom:24px;">
-        <div class="acl-section-label">Brand Name</div>
+        <div class="acl-section-label" id="caBrandNameLabel">Brand Name</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
           <div>
-            <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">Client Name</label>
+            <label id="caBrandNameFieldLabel" style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">Client Name</label>
             <input type="text" id="brandNameInput" placeholder="Neat Everyday" value="Neat Everyday"
               style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;font-family:var(--font-display);color:#1e293b;" />
           </div>
@@ -4757,7 +4779,7 @@ function setCaTab(tab) {
     const panel = document.getElementById('caPanel-' + t);
     if (panel) panel.style.display = t === tab ? '' : 'none';
   });
-  if (tab === 'appearance') prefillAppearanceTab();
+  if (tab === 'appearance') { caAppearanceScope = 'client'; setCaAppearanceScope('client'); }
   if (tab === 'access') {
     updateCaAccessHeader();
     const rows = document.querySelector('#caPanel-access .acl-rows');
@@ -6313,13 +6335,104 @@ const THEME_PRESETS = [
 ];
 let _activeThemeIdx = 0;
 
-function prefillAppearanceTab() {
+// 'client'  → editing the client currently selected in Client Administration;
+//             persists to that client's own row (logo_url/theme), visible
+//             only on their dashboard.
+// 'admin'   → editing the shared sign-in page (index.html); persists to
+//             platform_settings, visible to EVERYONE before they even log
+//             in. Admin-only concept — clients never see this toggle.
+let caAppearanceScope = 'client';
+let _caAdminLogoDataUrl = null;   // pending admin-logo upload, held until Save
+let _caClientLogoDataUrl = null;  // pending client-logo upload, held until Save
+let _caAdminThemeSnapshot = null; // last-loaded admin theme, for diffing on save
+
+function setCaAppearanceScope(scope) {
+  caAppearanceScope = scope;
+  const clientBtn = document.getElementById('caScopeBtn-client');
+  const adminBtn  = document.getElementById('caScopeBtn-admin');
+  [clientBtn, adminBtn].forEach(b => { if (b) { b.style.background = 'transparent'; b.style.color = '#64748b'; b.style.boxShadow = 'none'; } });
+  const activeBtn = scope === 'admin' ? adminBtn : clientBtn;
+  if (activeBtn) { activeBtn.style.background = '#fff'; activeBtn.style.color = '#1e293b'; activeBtn.style.boxShadow = '0 1px 2px rgba(0,0,0,.06)'; }
+
+  const logoLabel  = document.getElementById('caLogoLabel');
+  const nameLabel  = document.getElementById('caBrandNameLabel');
+  const fieldLabel = document.getElementById('caBrandNameFieldLabel');
+  const hint       = document.getElementById('caAppearanceScopeHint');
+  if (scope === 'admin') {
+    if (logoLabel)  logoLabel.textContent  = 'Admin Login Page Logo';
+    if (nameLabel)  nameLabel.textContent  = 'Sign-In Page Branding';
+    if (fieldLabel) fieldLabel.textContent = 'Platform Name';
+    if (hint) hint.innerHTML = 'Editing the <strong>shared sign-in page</strong> — this changes what everyone sees before logging in, across all clients.';
+  } else {
+    const label = caState.clientSlug ? (document.querySelector('#clientSwitcher option[value="' + caState.clientSlug + '"]')?.textContent || 'this client') : 'this client';
+    if (logoLabel)  logoLabel.textContent  = 'Client Logo';
+    if (nameLabel)  nameLabel.textContent  = 'Brand Name';
+    if (fieldLabel) fieldLabel.textContent = 'Client Name';
+    if (hint) hint.innerHTML = 'Editing branding for <strong>' + label + '\'s</strong> dashboard — visible only when viewing their data.';
+  }
+  prefillAppearanceTab();
+}
+
+async function prefillAppearanceTab() {
   renderThemeSwatches();
-  // Pre-fill brand fields from current DOM
+
+  if (caAppearanceScope === 'admin') {
+    // Load platform-wide settings (login page) from the server — this
+    // is genuinely global, not derived from whatever's on screen.
+    try {
+      const settings = await apiFetch('/platform-settings');
+      const nameEl = document.getElementById('brandNameInput');
+      const tagEl  = document.getElementById('brandTaglineInput');
+      if (nameEl) nameEl.value = settings.brandName || 'Semya Digital';
+      if (tagEl)  tagEl.value  = settings.brandTagline || 'Analytics Platform';
+      _caAdminThemeSnapshot = settings.theme || { primary: '#0284c7', deep: '#075985', accent: '#0ea5e9' };
+      applyLogoPreview(settings.logoUrl);
+      _caAdminLogoDataUrl = null; // no pending upload yet
+      const themeIdx = THEME_PRESETS.findIndex(t => t.primary === _caAdminThemeSnapshot.primary);
+      _activeThemeIdx = themeIdx >= 0 ? themeIdx : 0;
+      applyThemeColourPreviewOnly(_caAdminThemeSnapshot.primary, _caAdminThemeSnapshot.deep, _caAdminThemeSnapshot.accent);
+      renderThemeSwatches();
+    } catch (e) {
+      console.warn('[appearance] failed to load platform settings:', e.message);
+    }
+    return;
+  }
+
+  // scope === 'client': pre-fill from the currently-displayed DOM, same
+  // as before — this reflects whichever client's dashboard is showing.
   const nameEl = document.getElementById('brandNameInput');
   const tagEl  = document.getElementById('brandTaglineInput');
   if (nameEl) nameEl.value = document.querySelector('.logo-text')?.textContent || 'Neat Everyday';
   if (tagEl)  tagEl.value  = document.querySelector('.logo-sub')?.textContent  || 'Semya Digital';
+  _caClientLogoDataUrl = null;
+  applyLogoPreview(document.getElementById('logoImg')?.src || null);
+}
+
+// Sets the small preview swatch in the modal without touching the live
+// dashboard header — used when loading admin settings, which must never
+// visually change the client dashboard currently on screen.
+function applyLogoPreview(src) {
+  const prevImg  = document.getElementById('logoPreviewImg');
+  const prevText = document.getElementById('logoPreviewText');
+  if (src) {
+    if (prevImg)  { prevImg.src = src; prevImg.style.display = 'block'; }
+    if (prevText) prevText.style.display = 'none';
+  } else {
+    if (prevImg)  { prevImg.style.display = 'none'; prevImg.src = ''; }
+    if (prevText) prevText.style.display = '';
+  }
+}
+
+// Updates the modal's own colour preview (swatch borders, hex readout)
+// without touching the live --theme-* CSS variables — those should only
+// change immediately when editing the CLIENT currently on screen, not
+// when previewing the admin login page's theme (which isn't visible
+// anywhere in this dashboard at all).
+function applyThemeColourPreviewOnly(primary, deep, accent) {
+  const hex = document.getElementById('customColourHex');
+  const picker = document.getElementById('customColourPicker');
+  if (hex) hex.textContent = primary;
+  if (picker) picker.value = primary;
 }
 
 // ─── UTM Campaign Tools modal ───────────────────────────────────
@@ -6363,7 +6476,11 @@ function renderThemeSwatches() {
 function selectThemePreset(idx) {
   _activeThemeIdx = idx;
   const t = THEME_PRESETS[idx];
-  applyThemeColour(t.primary, t.deep, t.accent);
+  if (caAppearanceScope === 'admin') {
+    applyThemeColourPreviewOnly(t.primary, t.deep, t.accent);
+  } else {
+    applyThemeColour(t.primary, t.deep, t.accent);
+  }
   const picker = document.getElementById('customColourPicker');
   const hex    = document.getElementById('customColourHex');
   if (picker) picker.value = t.primary;
@@ -6374,6 +6491,12 @@ function selectThemePreset(idx) {
 function applyThemeColour(primary, deep, accent) {
   deep   = deep   || adjustColour(primary, -30);
   accent = accent || adjustColour(primary, 15);
+  if (caAppearanceScope === 'admin') {
+    // Admin scope: never touch the live dashboard's CSS variables —
+    // the login page isn't rendered here, so just update the preview.
+    applyThemeColourPreviewOnly(primary, deep, accent);
+    return;
+  }
   const root = document.documentElement;
   root.style.setProperty('--theme-primary',      primary);
   root.style.setProperty('--theme-primary-glow', hexToRgba(primary, 0.12));
@@ -6405,51 +6528,74 @@ function handleLogoUpload(input) {
   const reader = new FileReader();
   reader.onload = function(e) {
     const src = e.target.result;
-    // Update header logo
-    const img  = document.getElementById('logoImg');
-    const txt  = document.getElementById('logoText');
-    const hImg = document.getElementById('logoImg');
-    if (img)  { img.src = src; img.style.display = 'block'; }
-    if (txt)  txt.style.display = 'none';
-    // Update preview in modal
-    const prevImg  = document.getElementById('logoPreviewImg');
-    const prevText = document.getElementById('logoPreviewText');
-    if (prevImg)  { prevImg.src = src; prevImg.style.display = 'block'; }
-    if (prevText) prevText.style.display = 'none';
-    // Persist to localStorage
+    applyLogoPreview(src);
+
+    if (caAppearanceScope === 'admin') {
+      // Hold the upload until Save — never touch the live dashboard
+      // header, since this is the LOGIN page's logo, not this client's.
+      _caAdminLogoDataUrl = src;
+      return;
+    }
+
+    // Client scope: update the live header immediately, same as before.
+    _caClientLogoDataUrl = src;
+    const img = document.getElementById('logoImg');
+    const txt = document.getElementById('logoText');
+    if (img) { img.src = src; img.style.display = 'block'; }
+    if (txt) txt.style.display = 'none';
     try { localStorage.setItem('semya_logo', src); } catch(e) {}
   };
   reader.readAsDataURL(file);
 }
 
 function resetLogo() {
-  const img  = document.getElementById('logoImg');
-  const txt  = document.getElementById('logoText');
-  const prev = document.getElementById('logoPreviewImg');
-  const prevT= document.getElementById('logoPreviewText');
-  if (img)  { img.style.display = 'none'; img.src = ''; }
-  if (txt)  txt.style.display = '';
-  if (prev) { prev.style.display = 'none'; prev.src = ''; }
-  if (prevT) prevT.style.display = '';
-  try { localStorage.removeItem('semya_logo'); } catch(e) {}
+  applyLogoPreview(null);
   const fi = document.getElementById('logoFileInput');
   if (fi) fi.value = '';
+
+  if (caAppearanceScope === 'admin') {
+    _caAdminLogoDataUrl = ''; // explicit empty string = "clear it" on save, vs null = "no change"
+    return;
+  }
+
+  _caClientLogoDataUrl = '';
+  const img = document.getElementById('logoImg');
+  const txt = document.getElementById('logoText');
+  if (img) { img.style.display = 'none'; img.src = ''; }
+  if (txt) txt.style.display = '';
+  try { localStorage.removeItem('semya_logo'); } catch(e) {}
 }
 
 async function saveAppearance() {
-  const targetSlug = caState.clientSlug || state.clientSlug;
   const btn = document.getElementById('caAppearanceSaveBtn');
   if (btn) btn.textContent = 'Saving…';
 
-  // Save brand name — persists to the server as the client's real name
-  // (so it's per-client and visible to everyone, not just this browser)
   const nameVal = document.getElementById('brandNameInput')?.value.trim();
   const tagVal  = document.getElementById('brandTaglineInput')?.value.trim();
+  const t = THEME_PRESETS[_activeThemeIdx];
+  const themePayload = { primary: t.primary, deep: t.deep, accent: t.accent };
+
+  if (caAppearanceScope === 'admin') {
+    try {
+      const payload = { brandName: nameVal, brandTagline: tagVal, theme: themePayload };
+      if (_caAdminLogoDataUrl !== null) payload.logoUrl = _caAdminLogoDataUrl || null;
+      await apiFetch('/platform-settings', {
+        method: 'PATCH',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      _caAdminLogoDataUrl = null;
+    } catch (e) {
+      console.warn('[appearance] failed to save admin/login-page settings:', e.message);
+    }
+    if (btn) { btn.textContent = '✓ Saved'; setTimeout(() => { btn.textContent = 'Save Appearance'; }, 1500); }
+    return;
+  }
+
+  // scope === 'client'
+  const targetSlug = caState.clientSlug || state.clientSlug;
+
   if (nameVal) {
-    // Only touch the live header text if we're editing the client
-    // that's actually showing on the dashboard right now — editing a
-    // different client's appearance from Client Administration
-    // shouldn't visually rename what the admin is currently looking at.
     if (targetSlug === state.clientSlug) {
       const el = document.querySelector('.logo-text');
       if (el) el.textContent = nameVal;
@@ -6461,10 +6607,9 @@ async function saveAppearance() {
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: nameVal }),
       });
-      // Reflect the new name in the switcher dropdown immediately
       const opt = document.querySelector('#clientSwitcher option[value="' + targetSlug + '"]');
       if (opt) opt.textContent = nameVal;
-      loadCaClients(); // refresh the Client Section list too
+      loadCaClients();
     } catch (e) {
       console.warn('[appearance] failed to save client name to server:', e.message);
     }
@@ -6474,14 +6619,24 @@ async function saveAppearance() {
     if (el) el.textContent = tagVal;
     try { localStorage.setItem('semya_brand_tagline', tagVal); } catch(e) {}
   }
-  // Save active theme
   if (targetSlug === state.clientSlug) {
-    try {
-      const t = THEME_PRESETS[_activeThemeIdx];
-      localStorage.setItem('semya_theme', JSON.stringify({
-        primary: t.primary, deep: t.deep, accent: t.accent
-      }));
-    } catch(e) {}
+    try { localStorage.setItem('semya_theme', JSON.stringify(themePayload)); } catch(e) {}
+  }
+
+  // Persist logo + theme to the client's own row server-side, so it's
+  // real (survives across devices/admins) and not just this browser's
+  // localStorage. Only sends logoUrl if it actually changed this session.
+  try {
+    const payload = { theme: themePayload };
+    if (_caClientLogoDataUrl !== null) payload.logoUrl = _caClientLogoDataUrl || null;
+    await apiFetch('/clients/' + targetSlug + '/admin/appearance', {
+      method: 'PATCH',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    _caClientLogoDataUrl = null;
+  } catch (e) {
+    console.warn('[appearance] failed to save client logo/theme to server:', e.message);
   }
 
   if (btn) { btn.textContent = '✓ Saved'; setTimeout(() => { btn.textContent = 'Save Appearance'; }, 1500); }

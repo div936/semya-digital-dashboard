@@ -16,6 +16,7 @@ import adminBackfillRouter from './routes/adminBackfillRouter.js';
 import dataManagerRouter from './routes/dataManagerRouter.js';
 import utmRouter         from './routes/utmRouter.js';
 import projectionsRouter from './routes/projectionsRouter.js';
+import platformSettingsRouter from './routes/platformSettingsRouter.js';
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -40,6 +41,8 @@ app.use(express.json());
 app.use(cookieParser());
 
 // ─── Routes ───────────────────────────────────────────────────────
+//   GET   /platform-settings                  — public: admin/login-page branding
+//   PATCH /platform-settings                  — admin only
 //   POST /auth/login
 //   POST /auth/logout
 //   GET  /auth/me
@@ -60,6 +63,7 @@ app.use(cookieParser());
 //   /clients/:client_slug/targets             (PUT)   — admin only
 //   /clients/:client_slug/ai-insights          (GET)
 //   /clients/:client_slug/ai-insights/generate (POST)  — admin only
+app.use('/', platformSettingsRouter);
 app.use('/auth',    authRouter);
 // utmRouter is mounted BEFORE clientRouter: it has two intentionally
 // public, unauthenticated endpoints (click/conversion tracking pings

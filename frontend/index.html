@@ -71,8 +71,9 @@
 
 <div class="brand-panel">
   <div class="brand-logo">
-    <div class="brand-mark">SD</div>
-    <div><div class="brand-name">Semya Digital</div><div class="brand-tagline">Analytics Platform</div></div>
+    <div class="brand-mark" id="loginBrandMark">SD</div>
+    <img id="loginBrandLogoImg" src="" alt="" style="display:none;width:42px;height:42px;border-radius:12px;object-fit:cover;" />
+    <div><div class="brand-name" id="loginBrandName">Semya Digital</div><div class="brand-tagline" id="loginBrandTagline">Analytics Platform</div></div>
   </div>
   <div class="brand-hero">
     <div class="brand-eyebrow">Multi-brand analytics</div>
@@ -93,7 +94,7 @@
     <div class="step active" id="step-login">
       <div class="form-header">
         <h2 class="form-title">Welcome back</h2>
-        <p class="form-subtitle">Sign in to your Semya Digital account.</p>
+        <p class="form-subtitle">Sign in to your <span class="dyn-brand-name">Semya Digital</span> account.</p>
       </div>
 
       <div class="alert alert-error" id="errorAlert" role="alert">
@@ -142,7 +143,7 @@
     <div class="step" id="step-request">
       <div class="form-header">
         <h2 class="form-title">Request access</h2>
-        <p class="form-subtitle">Enter your email and the Semya Digital admin will be notified to grant you access.</p>
+        <p class="form-subtitle">Enter your email and the <span class="dyn-brand-name">Semya Digital</span> admin will be notified to grant you access.</p>
       </div>
 
       <div class="alert alert-error" id="reqErrorAlert" role="alert">
@@ -172,7 +173,7 @@
       <div class="result-title">Request sent</div>
       <p class="result-body">
         <span class="highlight-email" id="pendingEmail"></span><br><br>
-        The Semya Digital admin has been notified. Once your access is approved you'll receive an email with instructions to sign in.
+        The <span class="dyn-brand-name">Semya Digital</span> admin has been notified. Once your access is approved you'll receive an email with instructions to sign in.
       </p>
       <button class="btn-secondary" style="margin-top:24px;" onclick="showStep('step-login')">Back to sign in</button>
     </div>
@@ -188,6 +189,52 @@
   const DASHBOARD_URL = 'https://div936.github.io/semya-digital-dashboard/dashboard.html';
 
   const _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+  // ── Dynamic branding (admin-controlled, via Client Administration →
+  // Appearance → "Admin Login Page") ────────────────────────────────
+  // This page is the one thing every user sees before they're even
+  // authenticated, so its branding can't live on a per-client row —
+  // it comes from GET /platform-settings (public, no auth required).
+  // Fails soft: if the fetch fails for any reason, the hardcoded
+  // "Semya Digital" defaults already in the HTML stay exactly as they
+  // are, so sign-in is never blocked by a branding-fetch problem.
+  (async () => {
+    try {
+      const res = await fetch(API_BASE + '/platform-settings');
+      if (!res.ok) return;
+      const settings = await res.json();
+
+      if (settings.brandName) {
+        document.title = 'Sign in — ' + settings.brandName;
+        document.querySelectorAll('.dyn-brand-name').forEach(el => el.textContent = settings.brandName);
+        const nameEl = document.getElementById('loginBrandName');
+        if (nameEl) nameEl.textContent = settings.brandName;
+        const markEl = document.getElementById('loginBrandMark');
+        if (markEl) markEl.textContent = settings.brandName.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+      }
+      if (settings.brandTagline) {
+        const tagEl = document.getElementById('loginBrandTagline');
+        if (tagEl) tagEl.textContent = settings.brandTagline;
+      }
+      if (settings.logoUrl) {
+        const img  = document.getElementById('loginBrandLogoImg');
+        const mark = document.getElementById('loginBrandMark');
+        if (img)  { img.src = settings.logoUrl; img.style.display = 'block'; }
+        if (mark) mark.style.display = 'none';
+      }
+      if (settings.theme) {
+        const { primary, deep } = settings.theme;
+        const root = document.documentElement;
+        if (primary) { root.style.setProperty('--primary', primary); }
+        if (deep)    { root.style.setProperty('--primary-dark', deep); }
+        // .brand-panel's background and .btn-submit's background both
+        // read from these two CSS custom properties already (see the
+        // <style> block above), so no further changes are needed here.
+      }
+    } catch (e) {
+      console.warn('[branding] failed to load platform settings, using defaults:', e.message);
+    }
+  })();
 
   // On load: if already signed in, go straight to dashboard
   (async () => {
