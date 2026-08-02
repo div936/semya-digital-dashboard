@@ -19,9 +19,9 @@ CREATE TABLE IF NOT EXISTS platform_settings (
   brand_name     TEXT NOT NULL DEFAULT 'Semya Digital',
   brand_tagline  TEXT NOT NULL DEFAULT 'Analytics Platform',
   theme          JSONB NOT NULL DEFAULT '{
-    "primary": "#0284c7",
-    "deep":    "#075985",
-    "accent":  "#0ea5e9"
+    "primary": "#111111",
+    "deep":    "#000000",
+    "accent":  "#3f3f46"
   }'::JSONB,
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT platform_settings_singleton CHECK (id = 1)

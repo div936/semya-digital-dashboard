@@ -82,6 +82,20 @@ that points at `https://div936.github.io/semya-digital-dashboard/dashboard.html`
 constant needs updating too** — it's what the login page redirects to
 after a successful sign-in.
 
+## This round's fixes (login bug, branding logic, black/white redesign)
+
+| File | What changed | Why |
+|---|---|---|
+| `main/backend/db/seed-users.mjs` | Now actually creates a **Supabase Auth** account via the admin API, not just an app-level `users` table row. | Root cause of "Incorrect email or password" for `admin@semyadigital.com`: the old script only wrote to your own `users` table with a `hashed_pw` column that **login never reads** — sign-in goes through Supabase Auth directly, completely separately. A `users` row with no matching Supabase Auth account can never sign in, no matter the password. |
+| `main/frontend/dashboard.html` / `gh-pages/dashboard.html` | Fixed `saveAppearance()` always showing "✓ Saved" even when the server request failed. Reworked branding logic: admins now see Semya's own branding by default everywhere (header logo/name/theme), regardless of which client's data they're viewing — previously the client switcher silently re-branded the header to match whichever client's data was selected, which is why a saved admin logo appeared to do nothing. Added a **"View as Client"** toggle in the Settings menu so admins can deliberately preview a specific client's white-labeled look. Removed the old `restoreAppearance()` that replayed stale localStorage branding on every load, which fought with the new server-driven logic. Added a **Noir** (true black) theme preset. | You reported the admin logo not appearing anywhere after saving — this was two compounding bugs: (1) the save button lied about success, and (2) even on a real save, the dashboard's own branding logic overwrote it back to whichever client was selected. |
+| `main/frontend/index.html` / `gh-pages/index.html` | Brand panel redesigned to pure black, using your actual **SEM'YA logo file** (now included at `assets/semya-logo.jpg`) instead of a generic blue "SD" square. Blue accent colors replaced with neutral greys. | To match the real brand identity you shared, not the placeholder blue theme the scaffold shipped with. |
+| `main/backend/db/platform_settings_schema.sql`, `platformSettingsRouter.js` | Default theme changed from blue to the same black/near-black (`#111111` / `#000000`) used on the login page. | Consistency — a fresh install's admin theme now matches the actual brand instead of defaulting to blue. |
+
+### About the login fix specifically
+The updated `seed-users.mjs` is safe to re-run — it now creates the Supabase Auth account if missing, or updates its password if the account already exists (so re-running with a new password actually changes it). **Fastest fix for right now, before you even redeploy:** open Supabase → Authentication → Users and check whether `admin@semyadigital.com` is listed. If not, that confirms this exactly, and you can create it there directly with whatever password you want — sign-in will work immediately, no redeploy needed.
+
+### About "View as Client"
+Settings → (new toggle, admin-only) **"View as Client"**. Off by default — you always see Semya's branding. Turning it on previews whichever client is currently selected in the client switcher, using that client's own logo/theme/name from their `clients` row. Turn it back off to return to Semya's default look. This is per-browser (stored in localStorage), not synced across devices — it's a personal preview toggle, not a setting that should affect what other admins see.
 
 **Fixes:**
 - Revenue/units no longer double-count on re-upload or overlapping
@@ -103,3 +117,4 @@ after a successful sign-in.
 - The old dashboard's `/admin/dedup-report` diagnostic endpoint
   (duplicate detection, per-date/platform inflation view) hasn't been
   ported over yet — still worth doing as a follow-up.
+

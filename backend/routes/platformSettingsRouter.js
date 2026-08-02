@@ -72,7 +72,7 @@ router.get('/platform-settings', async (_req, res) => {
       logoUrl: null,
       brandName: 'Semya Digital',
       brandTagline: 'Analytics Platform',
-      theme: { primary: '#0284c7', deep: '#075985', accent: '#0ea5e9' },
+      theme: { primary: '#111111', deep: '#000000', accent: '#3f3f46' },
     });
   }
 

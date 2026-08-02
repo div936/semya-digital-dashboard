@@ -116,6 +116,8 @@
     }
     .logo-text { font-size: 13px; font-weight: 600; color: #0f172a; line-height: 1.2; }
     .logo-sub  { font-size: 10px; color: var(--theme-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    #viewAsClientToggle.on { background: var(--theme-primary); }
+    #viewAsClientToggle.on span { transform: translateX(14px); }
 
     .header-title {
       position: absolute;
@@ -1168,6 +1170,17 @@
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
               Client Administration
             </button>
+            <div id="viewAsClientRow" data-role="admin" style="display:none;align-items:center;justify-content:space-between;padding:8px 12px 8px 28px;font-size:11px;color:#475569;gap:8px;">
+              <span id="viewAsClientLabel" style="display:flex;align-items:center;gap:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                View as Client
+              </span>
+              <button type="button" id="viewAsClientToggle" onclick="event.stopPropagation(); toggleViewAsClient();"
+                title="Preview the currently-selected client's own branding instead of Semya's"
+                style="flex-shrink:0;width:32px;height:18px;border-radius:9px;border:none;background:#cbd5e1;position:relative;cursor:pointer;transition:background .15s;padding:0;">
+                <span style="position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s;"></span>
+              </button>
+            </div>
             <button class="avatar-dropdown-item" style="padding-left:28px;font-size:11px;" onclick="closeAvatarMenu(); openDailyTargetsPanel();">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               Daily Targets
@@ -3750,7 +3763,9 @@ async function loadTabPermissions() {
   try {
     const cfg = await apiFetch('/clients/' + clientSlug + '/dashboard-config');
     state.tabPermissions = cfg?.tabs || null;
+    _lastDashboardConfig = cfg;
     applyLockBadgesToNav();
+    applyBranding(cfg);
     // If we already landed on a tab before this resolved (unlikely,
     // but boot() calls this before showTab), re-check the current one.
     if (activeTab) showTab(activeTab);
@@ -3759,7 +3774,118 @@ async function loadTabPermissions() {
   }
 }
 
-// Small lock icon next to any nav tab that's off — for a client user
+// ── Branding: admin default vs. client vs. "View as Client" preview ──
+//
+// Rule (per product decision): any Semya admin, signed in with an
+// @semyadigital.com admin account, sees Semya's OWN branding
+// everywhere by default — logo, name, theme — regardless of which
+// client's DATA they're currently viewing via the client switcher.
+// Viewing a client's numbers is not the same as viewing "as" that
+// client; those were incorrectly conflated before (switchClient() used
+// to silently re-brand the header to match whichever client's data
+// was selected, which is what caused admin-uploaded branding to never
+// visibly appear anywhere).
+//
+// A client-role user (logged in with their own client's credentials)
+// always sees their own client's branding — untouched by any of this,
+// they never see this toggle at all.
+//
+// Admins can deliberately preview a specific client's white-labeled
+// look via "View as Client" in the settings menu — persisted in
+// localStorage so it survives a refresh, since a preview session might
+// span more than one page load, but scoped per-browser (not synced —
+// there's no reason it should be, it's just a personal preview toggle).
+let _lastDashboardConfig = null;
+
+function getViewAsClient() {
+  try { return localStorage.getItem('semya_view_as_client') === '1'; } catch(e) { return false; }
+}
+function setViewAsClient(on) {
+  try {
+    if (on) localStorage.setItem('semya_view_as_client', '1');
+    else localStorage.removeItem('semya_view_as_client');
+  } catch(e) {}
+}
+
+async function applyBranding(cfg) {
+  const isAdmin = !!cfg?.user?.isAdmin;
+  state.isAdmin = isAdmin;
+  updateViewAsToggleUI();
+
+  if (isAdmin && !getViewAsClient()) {
+    // Default admin view: Semya's own platform-wide branding, fetched
+    // fresh every time rather than trusted from any local cache — this
+    // is what the sign-in page also shows, so the two should agree.
+    try {
+      const settings = await apiFetch('/platform-settings');
+      setHeaderBranding(
+        settings.brandName || 'Semya Digital',
+        settings.brandTagline || 'Analytics Platform',
+        settings.logoUrl,
+        settings.theme
+      );
+    } catch (e) {
+      console.warn('[branding] failed to load admin/platform branding:', e.message);
+    }
+    return;
+  }
+
+  // Either a client-role user, or an admin actively previewing via
+  // "View as Client" — both cases show the CLIENT's own branding.
+  if (cfg?.client) {
+    setHeaderBranding(cfg.client.name, 'Semya Digital', cfg.client.logoUrl, cfg.client.theme);
+  }
+}
+
+function setHeaderBranding(name, tagline, logoUrl, theme) {
+  const nameEl = document.querySelector('.logo-text');
+  const tagEl  = document.querySelector('.logo-sub');
+  if (nameEl) nameEl.textContent = name || 'Neat Everyday';
+  if (tagEl)  tagEl.textContent  = tagline || 'Semya Digital';
+
+  const img = document.getElementById('logoImg');
+  const txt = document.getElementById('logoText');
+  if (logoUrl) {
+    if (img) { img.src = logoUrl; img.style.display = 'block'; }
+    if (txt) txt.style.display = 'none';
+  } else {
+    if (img) { img.style.display = 'none'; img.src = ''; }
+    if (txt) txt.style.display = '';
+  }
+
+  if (theme) applyThemeColour(theme.primary, theme.deep, theme.accent);
+}
+
+// Toggled from the Settings submenu — admin only. Flips between the
+// Semya default and previewing the client currently selected in the
+// (data) client switcher.
+async function toggleViewAsClient() {
+  setViewAsClient(!getViewAsClient());
+  updateViewAsToggleUI();
+  if (_lastDashboardConfig) {
+    applyBranding(_lastDashboardConfig);
+  } else {
+    try {
+      const cfg = await apiFetch('/clients/' + state.clientSlug + '/dashboard-config');
+      _lastDashboardConfig = cfg;
+      applyBranding(cfg);
+    } catch (e) { console.warn('[view-as-client] failed to reload config:', e.message); }
+  }
+}
+
+function updateViewAsToggleUI() {
+  const row = document.getElementById('viewAsClientRow');
+  const toggle = document.getElementById('viewAsClientToggle');
+  const label = document.getElementById('viewAsClientLabel');
+  if (row) row.style.display = state.isAdmin ? 'flex' : 'none';
+  const on = getViewAsClient();
+  if (toggle) toggle.classList.toggle('on', on);
+  if (label) label.textContent = on
+    ? 'Viewing as: ' + (document.querySelector('#clientSwitcher option[value="' + state.clientSlug + '"]')?.textContent || 'client')
+    : 'View as Client';
+}
+
+// Small icon next to any nav tab that's off — for a client user
 // this is the tab they can't open; for an admin it's a quick visual
 // reminder of what's currently hidden from the client, even though
 // admins can still click through to preview it.
@@ -5672,11 +5798,14 @@ async function switchClient(newSlug) {
   _sidebarCache = {};
   try {
     const cfg = await apiFetch('/clients/' + newSlug + '/dashboard-config');
-    if (cfg?.client?.name) {
-      const el = document.querySelector('.logo-text');
-      if (el) el.textContent = cfg.client.name;
-    }
-    if (cfg?.client?.theme) applyThemeColour(cfg.client.theme.primary, cfg.client.theme.deep, cfg.client.theme.accent);
+    _lastDashboardConfig = cfg;
+    // Switching which client's DATA is shown is NOT the same as
+    // switching branding — an admin browsing a different client's
+    // numbers should keep seeing Semya's own look unless they've
+    // explicitly turned on "View as Client" (see applyBranding above).
+    // A client-role user can't reach this switcher at all, so this
+    // path is admin-only in practice.
+    applyBranding(cfg);
   } catch (e) {
     console.warn('[client-switch] failed to load new client config:', e.message);
   }
@@ -6332,6 +6461,7 @@ const THEME_PRESETS = [
   { name: 'Teal',    primary: '#0d9488', deep: '#115e59', accent: '#14b8a6' },
   { name: 'Indigo',  primary: '#4338ca', deep: '#312e81', accent: '#6366f1' },
   { name: 'Cyan',    primary: '#0891b2', deep: '#164e63', accent: '#06b6d4' },
+  { name: 'Noir',    primary: '#111111', deep: '#000000', accent: '#3f3f46' },
 ];
 let _activeThemeIdx = 0;
 
@@ -6385,7 +6515,7 @@ async function prefillAppearanceTab() {
       const tagEl  = document.getElementById('brandTaglineInput');
       if (nameEl) nameEl.value = settings.brandName || 'Semya Digital';
       if (tagEl)  tagEl.value  = settings.brandTagline || 'Analytics Platform';
-      _caAdminThemeSnapshot = settings.theme || { primary: '#0284c7', deep: '#075985', accent: '#0ea5e9' };
+      _caAdminThemeSnapshot = settings.theme || { primary: '#111111', deep: '#000000', accent: '#3f3f46' };
       applyLogoPreview(settings.logoUrl);
       _caAdminLogoDataUrl = null; // no pending upload yet
       const themeIdx = THEME_PRESETS.findIndex(t => t.primary === _caAdminThemeSnapshot.primary);
@@ -6576,6 +6706,7 @@ async function saveAppearance() {
   const themePayload = { primary: t.primary, deep: t.deep, accent: t.accent };
 
   if (caAppearanceScope === 'admin') {
+    let saveOk = false;
     try {
       const payload = { brandName: nameVal, brandTagline: tagVal, theme: themePayload };
       if (_caAdminLogoDataUrl !== null) payload.logoUrl = _caAdminLogoDataUrl || null;
@@ -6585,10 +6716,25 @@ async function saveAppearance() {
         body: JSON.stringify(payload),
       });
       _caAdminLogoDataUrl = null;
+      saveOk = true;
     } catch (e) {
       console.warn('[appearance] failed to save admin/login-page settings:', e.message);
     }
-    if (btn) { btn.textContent = '✓ Saved'; setTimeout(() => { btn.textContent = 'Save Appearance'; }, 1500); }
+    if (btn) {
+      if (saveOk) {
+        btn.textContent = '✓ Saved';
+        // If this admin is currently seeing Semya branding (i.e. not
+        // previewing a client via "View as Client"), reflect the new
+        // logo/name/theme on the live header immediately — otherwise
+        // the only way to see it took effect was a hard refresh.
+        if (!getViewAsClient()) applyBranding(_lastDashboardConfig);
+      } else {
+        btn.textContent = '✗ Failed to save — see console';
+        btn.style.color = '#dc2626';
+        setTimeout(() => { btn.style.color = ''; }, 3000);
+      }
+      setTimeout(() => { btn.textContent = 'Save Appearance'; }, saveOk ? 1500 : 3000);
+    }
     return;
   }
 
@@ -6626,6 +6772,7 @@ async function saveAppearance() {
   // Persist logo + theme to the client's own row server-side, so it's
   // real (survives across devices/admins) and not just this browser's
   // localStorage. Only sends logoUrl if it actually changed this session.
+  let clientSaveOk = false;
   try {
     const payload = { theme: themePayload };
     if (_caClientLogoDataUrl !== null) payload.logoUrl = _caClientLogoDataUrl || null;
@@ -6635,31 +6782,35 @@ async function saveAppearance() {
       body: JSON.stringify(payload),
     });
     _caClientLogoDataUrl = null;
+    clientSaveOk = true;
   } catch (e) {
     console.warn('[appearance] failed to save client logo/theme to server:', e.message);
   }
 
-  if (btn) { btn.textContent = '✓ Saved'; setTimeout(() => { btn.textContent = 'Save Appearance'; }, 1500); }
+  if (btn) {
+    if (clientSaveOk) {
+      btn.textContent = '✓ Saved';
+      // If an admin is currently previewing THIS client via "View as
+      // Client", reflect the change on the live header immediately.
+      if (getViewAsClient() && targetSlug === state.clientSlug) applyBranding(_lastDashboardConfig);
+    } else {
+      btn.textContent = '✗ Failed to save — see console';
+      btn.style.color = '#dc2626';
+      setTimeout(() => { btn.style.color = ''; }, 3000);
+    }
+    setTimeout(() => { btn.textContent = 'Save Appearance'; }, clientSaveOk ? 1500 : 3000);
+  }
 }
 
-// Restore persisted appearance on load
-(function restoreAppearance() {
-  try {
-    const logo = localStorage.getItem('semya_logo');
-    if (logo) {
-      const img = document.getElementById('logoImg');
-      const txt = document.getElementById('logoText');
-      if (img) { img.src = logo; img.style.display = 'block'; }
-      if (txt) txt.style.display = 'none';
-    }
-    const name = localStorage.getItem('semya_brand_name');
-    const tag  = localStorage.getItem('semya_brand_tagline');
-    if (name) { const el = document.querySelector('.logo-text'); if (el) el.textContent = name; }
-    if (tag)  { const el = document.querySelector('.logo-sub');  if (el) el.textContent = tag; }
-    const theme = JSON.parse(localStorage.getItem('semya_theme') || 'null');
-    if (theme) applyThemeColour(theme.primary, theme.deep, theme.accent);
-  } catch(e) {}
-})();
+// Branding is now applied by applyBranding() (see above), driven by
+// the server — GET /platform-settings for the admin default, or the
+// client's own logo_url/theme for a client user or an admin previewing
+// via "View as Client". This used to instead replay whatever was last
+// saved to this browser's localStorage on every page load — which is
+// exactly what caused a saved admin logo to appear to "not work": it
+// only ever updated the localStorage of the browser that saved it,
+// never the actual server-side setting everyone else (and the login
+// page) reads from.
 // ════════════════════════════════════════════════════════════════
 // DATA MANAGER  (Admin only — Profile → Settings → Manage Data)
 // ════════════════════════════════════════════════════════════════
