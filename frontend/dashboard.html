@@ -1005,6 +1005,8 @@
 
     /* ─── 4-COL KPI GRID ───────────────────────────────────────────── */
     .kpi-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    .kpi-grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+    @media (max-width: 1200px) { .kpi-grid-5 { grid-template-columns: repeat(3, 1fr); } }
 
     /* ─── UNIFIED SIDEBAR SLOT ─────────────────────────────────────── */
     .sidebar-slot { display: flex; flex-direction: column; gap: 14px; }
@@ -1814,7 +1816,7 @@
       </div>
 
       <!-- KPIs -->
-      <div class="kpi-grid-4">
+      <div class="kpi-grid-5">
         <div class="kpi-card">
           <div class="kpi-icon">₹</div>
           <div class="kpi-label">Today's Revenue</div>
@@ -1842,6 +1844,13 @@
           <div class="kpi-value" id="dtKpiSpend"><span class="skel skel-val"></span></div>
           <div><span class="kpi-delta" id="dtKpiSpendDelta"><span class="skel skel-delta"></span></span></div>
           <div class="kpi-sub" id="dtKpiSpendSub"><span class="skel skel-sub"></span></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon">📈</div>
+          <div class="kpi-label">Total ROAS</div>
+          <div class="kpi-value" id="dtKpiRoas"><span class="skel skel-val"></span></div>
+          <div><span class="kpi-delta" id="dtKpiRoasDelta"><span class="skel skel-delta"></span></span></div>
+          <div class="kpi-sub" id="dtKpiRoasSub"><span class="skel skel-sub"></span></div>
         </div>
       </div>
 
@@ -1871,6 +1880,24 @@
           </div>
         </div>
 
+      </div>
+
+      <!-- Campaign Performance: highest to lowest gross campaign,
+           with the date each occurred — pulled from campaign_data via
+           the existing /campaign-insights endpoint, ranked client-side.
+           30-day window ending on whichever date is selected above,
+           since a single day rarely has enough campaigns to usefully
+           rank; the trend needs a wider lens. -->
+      <div class="card" style="margin-top:18px;">
+        <div class="card-header">
+          <span class="card-title">Campaign Performance — Highest to Lowest Gross Sales</span>
+          <span class="card-badge">Last 30 days</span>
+        </div>
+        <div id="dtCampaignRanking" style="display:flex;flex-direction:column;gap:0;">
+          <div class="skel skel-row" style="display:block;height:32px;margin-bottom:8px;"></div>
+          <div class="skel skel-row" style="display:block;height:32px;margin-bottom:8px;"></div>
+          <div class="skel skel-row" style="display:block;height:32px;margin-bottom:8px;"></div>
+        </div>
       </div>
 
 
@@ -4745,9 +4772,87 @@ async function fetchAndRenderDT() {
 
   dtState.targets  = targets;
   dtState.achieved = achieved;
-  renderDT(targets, achieved);
-  tabCache['daily_targets'] = { data: { targets, achieved }, timestamp: Date.now() };
-  setBadgeDT(isLive ? 'live' : 'empty');
+
+  // Everything from here on is pure rendering (DOM writes, a Chart.js
+  // call) — defensively wrapped so ANY unexpected error here (a
+  // missing element, a chart-library hiccup, a future edit that
+  // breaks an assumption) still resolves the loading badge instead of
+  // leaving it stuck on "Loading…" forever, which is what silently
+  // happened before: an uncaught exception mid-render meant the
+  // setBadgeDT() call at the end of this function never ran.
+  try {
+    renderDT(targets, achieved);
+    tabCache['daily_targets'] = { data: { targets, achieved }, timestamp: Date.now() };
+    setBadgeDT(isLive ? 'live' : 'empty');
+  } catch (e) {
+    console.error('[DT] render failed:', e);
+    setBadgeDT('empty');
+  }
+
+  // Campaign ranking is independent of the targets/achieved data above
+  // (it's its own fetch against campaign_data) — runs separately so a
+  // failure here can't affect the KPI cards' loading state either.
+  loadDTCampaignRanking(date).catch(e => console.warn('[DT] campaign ranking failed:', e.message));
+}
+
+// Highest-to-lowest gross-sales campaign ranking, with the date each
+// occurred — reuses the existing /campaign-insights endpoint (which
+// already returns raw campaign_data rows) rather than a new backend
+// route, since the ranking itself is a simple client-side sort.
+// 30-day window ending on whichever date is selected on this tab: a
+// single day rarely has enough distinct campaigns to usefully rank.
+async function loadDTCampaignRanking(endDate) {
+  const { clientSlug } = state; if (!clientSlug) return;
+  const el = document.getElementById('dtCampaignRanking');
+  if (!el) return;
+
+  const end = new Date(endDate + 'T00:00:00');
+  const start = new Date(end); start.setDate(start.getDate() - 29);
+  const fromStr = toISTDateString(start);
+
+  const resp = await apiFetch('/clients/' + clientSlug + '/campaign-insights?from=' + fromStr + '&to=' + endDate);
+  const rows = (resp?.campaigns || [])
+    .filter(c => c.standard_revenue != null && c.campaign_name)
+    // One row can appear more than once if the same campaign/date was
+    // legitimately split across an upsert-merge — collapse by
+    // campaign_name + campaign_date so the ranking shows one line per
+    // campaign-day, matching what mergeDuplicateCampaignRows already
+    // guarantees is unique in the database.
+    .reduce((acc, c) => {
+      const key = c.campaign_name + '|' + c.campaign_date;
+      if (!acc.has(key)) acc.set(key, c);
+      return acc;
+    }, new Map());
+
+  const sorted = Array.from(rows.values()).sort((a, b) => (b.standard_revenue || 0) - (a.standard_revenue || 0));
+
+  if (!sorted.length) {
+    el.innerHTML = '<div style="padding:24px 0;text-align:center;color:#94a3b8;font-size:12px;">No campaign data in this 30-day window yet.</div>';
+    return;
+  }
+
+  const top5 = sorted.slice(0, 5);
+  const bottom5 = sorted.length > 5 ? sorted.slice(-5).reverse() : [];
+
+  const row = (c, rank, isTop) => {
+    const m = PLATFORM_META[c.platform] || { label: (c.platform || '').toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
+    const dateLabel = c.campaign_date ? new Date(c.campaign_date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #f1f5f9;">' +
+      '<span style="width:18px;font-size:11px;font-weight:700;color:' + (isTop ? '#059669' : '#dc2626') + ';flex-shrink:0;">' + rank + '</span>' +
+      '<span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;flex-shrink:0;">' + m.label + '</span>' +
+      '<span style="flex:1;font-size:12px;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (c.campaign_name || '').replace(/"/g, '&quot;') + '">' + (c.campaign_name || 'Unnamed campaign') + '</span>' +
+      '<span style="font-size:11px;color:#94a3b8;flex-shrink:0;">' + dateLabel + '</span>' +
+      '<span style="font-size:12px;font-weight:700;color:#1e293b;width:80px;text-align:right;flex-shrink:0;">' + fmtRevenue(c.standard_revenue) + '</span>' +
+    '</div>';
+  };
+
+  let html = '<div style="font-size:10.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;padding-bottom:6px;">Highest gross sales</div>';
+  html += top5.map((c, i) => row(c, i + 1, true)).join('');
+  if (bottom5.length) {
+    html += '<div style="font-size:10.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;padding:14px 0 6px;">Lowest gross sales</div>';
+    html += bottom5.map((c, i) => row(c, sorted.length - i, false)).join('');
+  }
+  el.innerHTML = html;
 }
 
 function renderDT(targets, achieved) {
@@ -4783,6 +4888,23 @@ function renderDT(targets, achieved) {
     ? '<span class="kpi-delta up">✓ Target hit</span>'
     : '<span class="kpi-delta down">' + fmtRevenue(totalTarget - totalAchieved) + ' remaining</span>';
   document.getElementById('dtKpiAttainmentSub').innerHTML = attainPct.toFixed(0) + '% overall attainment';
+
+  const roasEl = document.getElementById('dtKpiRoas');
+  if (roasEl) {
+    roasEl.innerHTML = overallRoas != null ? fmtRoas(overallRoas) : '—';
+    const roasDeltaEl = document.getElementById('dtKpiRoasDelta');
+    if (roasDeltaEl) {
+      roasDeltaEl.innerHTML = overallRoas != null
+        ? '<span class="kpi-delta ' + (overallRoas >= 3 ? 'up' : overallRoas >= 1 ? '' : 'down') + '">' + (overallRoas >= 1 ? 'Profitable' : 'Below breakeven') + '</span>'
+        : '';
+    }
+    const roasSubEl = document.getElementById('dtKpiRoasSub');
+    if (roasSubEl) {
+      roasSubEl.innerHTML = (totalSpendActual > 0)
+        ? fmtRevenue(totalAchieved) + ' / ' + fmtRevenue(totalSpendActual) + ' spend'
+        : 'No spend data yet';
+    }
+  }
 
   const dtSpendEl = document.getElementById('dtKpiSpend');
   if (dtSpendEl) {

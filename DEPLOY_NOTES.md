@@ -82,7 +82,15 @@ that points at `https://div936.github.io/semya-digital-dashboard/dashboard.html`
 constant needs updating too** — it's what the login page redirects to
 after a successful sign-in.
 
-## This round's fixes (timezone bug — dates silently shifting a day)
+## This round's fixes (stuck loading, Total ROAS, campaign ranking)
+
+| What | Details |
+|---|---|
+| **Stuck "Loading…" on Daily Targets** | Couldn't fully reproduce the root cause (all referenced DOM elements exist, and `apiFetch` already has a 35s timeout) — most likely explanation is a Render free-tier cold start caught mid-load in your screenshot, which the keep-alive workflow from earlier reduces but can't fully eliminate (a long-idle period or fresh deploy can still cold-start once). Regardless of cause, added a real safety net: `fetchAndRenderDT()`'s rendering step is now wrapped in try/catch, so **any** unexpected error clears the loading badge to an empty state instead of leaving it stuck indefinitely — this class of bug (an uncaught exception mid-render skipping the badge-clearing call at the end of the function) can't recur even if the specific trigger differs next time. |
+| **Total ROAS card** | Added as a 5th KPI card on Daily Targets, same visual treatment as Today's Ad Spend. Reuses the `overallRoas` value already being computed (revenue achieved ÷ spend, for the selected day) — it existed as a small sub-line under Ad Spend before, now it's its own dedicated card as requested. |
+| **Campaign Performance ranking** | New card below Platform Attainment: highest-to-lowest gross-sales campaigns, each with its date, over a rolling 30-day window ending on the date selected. Reuses the existing `/campaign-insights` endpoint (already returns raw `campaign_data` rows with `standard_revenue` = the platform's own attributed sales figure, e.g. Amazon's "7 Day Total Sales") rather than adding a new backend route — the ranking itself is a simple client-side sort. Shows top 5 and bottom 5. |
+
+
 
 | File | What changed | Why |
 |---|---|---|
