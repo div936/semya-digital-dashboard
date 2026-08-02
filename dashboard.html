@@ -2682,6 +2682,19 @@
 const API_BASE  = 'https://semya-api.onrender.com';
 const TOKEN_KEY = 'semya_token';
 
+// ── IST-aware date helper ───────────────────────────────────────
+// `date.toISOString().split('T')[0]` truncates to the UTC calendar
+// day, not India's — this business runs on IST (UTC+5:30), so an
+// admin opening the dashboard between 00:00–05:30 IST would see
+// "today" default to yesterday's date (the UTC clock hadn't crossed
+// into the new day yet), and any date math built the same way had
+// the same bug. Mirrors dateUtils.js on the backend — use this
+// instead of `.toISOString().split('T')[0]` anywhere a calendar-day
+// string is needed here.
+const _IST_FMT = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' });
+function toISTDateString(d) { return _IST_FMT.format(d instanceof Date ? d : new Date(d)); }
+function todayIST() { return toISTDateString(new Date()); }
+
 // ─── PLATFORM META ────────────────────────────────────────────────
 const PLATFORM_META = {
   // Individual data sources — used for breakdown rows, tables, and pills
@@ -3109,7 +3122,7 @@ function showSkel(id, skelClass) {
 function initDates() {
   const now  = new Date();
   const from = new Date(now.getFullYear(), 0, 1); // Jan 1 of current year
-  const fmt  = d => d.toISOString().split('T')[0];
+  const fmt  = d => toISTDateString(d);
   document.getElementById('dateFrom').value = fmt(from);
   document.getElementById('dateTo').value   = fmt(now);
   state.dateFrom = fmt(from);
@@ -4702,7 +4715,7 @@ function setBadgeDT(mode) {
 async function fetchAndRenderDT() {
   const { clientSlug } = state; if (!clientSlug) return;
   setBadgeDT('loading');
-  const date = dtState.date || new Date().toISOString().split('T')[0];
+  const date = dtState.date || todayIST();
 
   let targets  = null;
   let achieved = null;
@@ -6256,7 +6269,7 @@ function boot(user) {
   state.clientSlug = (user && user.clientSlug) || (window.location.pathname.match(/\/clients\/([^/]+)/)||[])[1] || 'neat-everyday';
   initDates();
   const from = state.dateFrom; const to = state.dateTo;
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayIST();
   const psF = document.getElementById('psDateFrom');  const psT = document.getElementById('psDateTo');
   const ciF = document.getElementById('ciDateFrom');  const ciT = document.getElementById('ciDateTo');
   const geoF= document.getElementById('geoDateFrom'); const geoT= document.getElementById('geoDateTo');
@@ -6384,7 +6397,7 @@ function openDailyTargetsPanel() {
   const modal = document.getElementById('dailyTargetsModal');
   if (!modal) return;
   // Populate date and inputs
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayIST();
   const dateEl = document.getElementById('dtModalDate');
   if (dateEl) dateEl.value = dtState.date || today;
   populateDtModalInputs();
@@ -6424,7 +6437,7 @@ async function saveTargetsFromModal() {
     }
   });
   const dateEl = document.getElementById('dtModalDate');
-  const date   = (dateEl && dateEl.value) || (dtState.date || new Date().toISOString().split('T')[0]);
+  const date   = (dateEl && dateEl.value) || (dtState.date || todayIST());
   dtState.date = date;
   try {
     const res = await fetch(API_BASE + '/clients/' + clientSlug + '/targets', {
