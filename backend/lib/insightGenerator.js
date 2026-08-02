@@ -17,6 +17,7 @@
 // ─────────────────────────────────────────────────────────────────
 import Anthropic       from '@anthropic-ai/sdk';
 import { supabaseAdmin } from './supabase.js';
+import { toISTDateString } from './dateUtils.js';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -128,7 +129,7 @@ export async function generateNarrativeSummaries({ clientId }) {
 
   const since = new Date();
   since.setDate(since.getDate() - 30);
-  const sinceStr = since.toISOString().split('T')[0];
+  const sinceStr = toISTDateString(since); // was UTC-truncated — see dateUtils.js
 
   const [{ data: revRows }, { data: campRows }] = await Promise.all([
     supabaseAdmin
@@ -316,7 +317,7 @@ function parseNarrativeResponse(raw) {
 async function buildDataSummary(clientId, platformFilter) {
   const since = new Date();
   since.setDate(since.getDate() - 30);
-  const sinceStr = since.toISOString().split('T')[0];
+  const sinceStr = toISTDateString(since); // was UTC-truncated — see dateUtils.js
 
   // Revenue data
   let revQuery = supabaseAdmin

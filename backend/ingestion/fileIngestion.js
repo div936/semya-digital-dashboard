@@ -41,6 +41,7 @@ import { parse as parseCsv } from 'csv-parse/sync';
 import { supabaseAdmin }  from '../lib/supabase.js';
 import { REVENUE_MAP, CAMPAIGN_MAP, normaliseBatch, classifyDataType, scoreHeaderRow, detectFallbackMapping } from '../lib/columnMapper.js';
 import { generateInsights, generateNarrativeSummaries } from '../lib/insightGenerator.js';
+import { toISTDateString } from '../lib/dateUtils.js';
 
 // ═══════════════════════════════════════════════════════════════════
 // PREFIX → ROUTING TABLE
@@ -234,8 +235,8 @@ function extractDateFromPreamble(preambleLines) {
   for (const line of preambleLines) {
     const match = line.match(dateRe);
     if (match) {
-      const d = new Date(match[1]);
-      if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+      const isoDate = toISTDateString(match[1]);
+      if (isoDate) return isoDate;
     }
   }
   return null;

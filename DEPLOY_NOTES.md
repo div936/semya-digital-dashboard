@@ -82,7 +82,24 @@ that points at `https://div936.github.io/semya-digital-dashboard/dashboard.html`
 constant needs updating too** — it's what the login page redirects to
 after a successful sign-in.
 
-## This round's fixes (login bug, branding logic, black/white redesign)
+## This round's fixes (timezone bug — dates silently shifting a day)
+
+| File | What changed | Why |
+|---|---|---|
+| `main/backend/lib/dateUtils.js` | **New file.** `toISTDateString()` / `todayIST()` — resolves calendar dates explicitly in Asia/Kolkata, never the server process's own timezone or UTC. | Root cause fix — see below. |
+| `main/backend/lib/columnMapper.js` | Date coercion (`order_date`/`campaign_date`) now uses `toISTDateString()` instead of `new Date(x).toISOString().split('T')[0]`. | This is the actual ingestion bug: `.toISOString()` always converts to UTC. An order at 00:15 IST on Aug 2 is 18:45 UTC on Aug 1 — the old code filed it as an Aug 1 order. |
+| `main/backend/ingestion/fileIngestion.js` | Preamble-date fallback parser (used for exports like Google Ads with a date range in a header line) now uses the same IST helper. | Same class of bug, different code path. |
+| `main/backend/routes/targetsRouter.js` | Daily Targets' default `date` (when no `?date=` is passed) now uses `todayIST()` instead of `new Date().toISOString()...`. | **This is the exact bug behind your screenshot.** For the first ~5.5 hours of every IST day, the UTC clock hasn't rolled over yet, so "today" silently defaulted to yesterday. |
+| `main/backend/lib/insightGenerator.js`, `main/backend/lib/projections.js` | 30-day lookback windows and weekly-bucket keys now use the IST helper too. | Same underlying bug, lower-stakes (a few hours of boundary drift on a 30-day window / week bucket) but fixed for consistency. |
+| `main/frontend/dashboard.html` / `gh-pages/dashboard.html` | Added a matching `toISTDateString()`/`todayIST()` helper and replaced all 5 places a date-picker defaulted via the same broken UTC-truncation pattern. | So the frontend's idea of "today" always agrees with the backend's. |
+
+### Important — this does NOT retroactively fix historical data
+Once a row is stored, only the truncated date survives — the original full timestamp is never kept anywhere (not even in `raw_extras`), so there's no way to detect or auto-correct which existing rows were shifted by this bug. This fix stops it from happening to any newly-ingested data. For historical rows:
+
+- **Re-uploading original source files after this deploy will self-correct most rows automatically** — anything with a real order ID or order-item ID (most Amazon/Acutas data) upserts safely via `row_hash`, which doesn't include the date for those tiers, so a corrected date just updates the existing row.
+- **Rows keyed only by the composite fallback hash** (no order ID at all — see `computeRevenueDedupKey` in `fileIngestion.js`) DO include the date in their hash, so a corrected date produces a different hash and could insert as a new row alongside the old, wrong-dated one on re-upload. Worth a manual spot-check after re-uploading if this matters for a specific report.
+
+
 
 | File | What changed | Why |
 |---|---|---|

@@ -14,13 +14,14 @@
 import { Router } from 'express';
 import { rbacMiddleware } from '../middleware/rbac.js';
 import { supabaseAdmin }  from '../lib/supabase.js';
+import { todayIST } from '../lib/dateUtils.js';
 
 const router = Router({ mergeParams: true });
 
 // ─── GET /clients/:client_slug/targets ───────────────────────────
 router.get('/:client_slug/targets', rbacMiddleware, async (req, res) => {
   const { client } = req.semya;
-  const date = req.query.date || new Date().toISOString().split('T')[0];
+  const date = req.query.date || todayIST();
 
   // 1. Load saved targets for this date
   const { data: targetRows, error: tErr } = await supabaseAdmin

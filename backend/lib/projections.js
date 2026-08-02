@@ -13,6 +13,8 @@
 // (returnLoss) so it's visible rather than silently netted away.
 // ─────────────────────────────────────────────────────────────────
 
+import { toISTDateString } from './dateUtils.js';
+
 const CANCEL_RE = /cancel|return|refund|reject|void/i;
 
 // ── SKU cost resolution (effective-dated) ──────────────────────────
@@ -68,7 +70,7 @@ export function computeProfitSeries(revenueRows, campaignRows, costRows, assumpt
     // week: ISO-ish Monday-start key
     const day = (d.getDay() + 6) % 7;
     const monday = new Date(d); monday.setDate(d.getDate() - day);
-    return monday.toISOString().split('T')[0];
+    return toISTDateString(monday);
   };
 
   for (const row of revenueRows) {
