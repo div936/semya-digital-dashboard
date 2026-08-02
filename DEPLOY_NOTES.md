@@ -82,7 +82,24 @@ that points at `https://div936.github.io/semya-digital-dashboard/dashboard.html`
 constant needs updating too** — it's what the login page redirects to
 after a successful sign-in.
 
-## This round's fixes (stuck loading, Total ROAS, campaign ranking)
+## Correction to the earlier timezone fix — please read before deploying
+
+The previous round's timezone fix (IST-converting every raw file timestamp) was **wrong** and is now partially reverted. Cross-checked directly against your uploaded Amazon file: the IST-converted total for a day came out **₹14,235**, but the business's actual expected number — and Amazon's own daily reporting convention — is **₹15,625**. Converting Amazon's genuinely-UTC `purchase-date` into IST rolled some late-UTC-day orders into the previous calendar day, which is the opposite of what was wanted.
+
+**What changed:** `dateUtils.js` now has two distinct functions instead of one:
+- `todayIST()` / `toISTDateString()` — kept, still used for "what's today's real date right now" (Daily Targets' default date, date-picker defaults). This part of the original fix was correct — it's about the server's current moment, unrelated to file parsing.
+- `extractLiteralDate()` — **new**, replaces the IST-conversion for reading dates OUT of uploaded files. Reads the calendar date exactly as written in the source column — Amazon's ISO `purchase-date`, Shopify/Meta's `Created at`, and the `campaign_date` fields — no timezone math at all. `columnMapper.js` and `fileIngestion.js` now use this instead.
+
+**If you already deployed the previous (IST-conversion) version and uploaded files through it**, some rows may have been filed under the wrong date during that window — re-upload the affected files after this fix deploys to correct them (the upsert logic from the earlier revenue de-dup fix makes this safe).
+
+## This round's fixes (Acutas missing from Daily Targets, stuck loading, Total ROAS, campaign ranking)
+
+**Acutas (and Google) were completely missing from Daily Targets** — `PLATFORMS_DT` (used for the platform-attainment list and every KPI total on that tab) was hardcoded to `['amazon', 'flipkart', 'blinkit', 'meta']`, silently excluding Acutas revenue from the platform list, the revenue/units/attainment totals, ad spend, and Total ROAS. Fixed to `['amazon', 'acutas', 'flipkart', 'blinkit', 'meta', 'google']` in all three places it's defined in `dashboard.html`. This was likely the main driver behind Total ROAS looking off too — it's calculated from the same undercounted totals.
+
+## Known issue found, not yet fixed: Meta/Shopify revenue may be slightly overstated
+While validating these numbers, `Lineitem price` (used as `standard_revenue` for Meta/Shopify rows) doesn't account for order-level discounts reflected in the `Total` column — e.g. one row: Lineitem price ₹653, Total (after discount) ₹603. Using `Total` directly would fix this but breaks per-line-item revenue attribution for multi-product orders (Shopify only populates `Total` on one line item row per order, leaving the rest at ₹0) — needs a proper proportional-allocation fix, not a quick field swap. Flagging for a follow-up rather than rushing it.
+
+
 
 | What | Details |
 |---|---|

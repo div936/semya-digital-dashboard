@@ -4713,7 +4713,7 @@ document.getElementById('geoDateTo').addEventListener('change',   function() { g
 // ═══════════════════════════════════════════════════════════════════
 const dtState = { date: '', targets: {}, achieved: {} };
 
-const PLATFORMS_DT = ['amazon', 'flipkart', 'blinkit', 'meta'];
+const PLATFORMS_DT = ['amazon', 'acutas', 'flipkart', 'blinkit', 'meta', 'google']; // was missing acutas/google entirely — their revenue was silently excluded from every Daily Targets total
 
 const MOCK_TARGETS = {
   amazon:   { target: 600000, achieved: 512000 },
@@ -6532,7 +6532,7 @@ function closeDailyTargetsPanel() {
 function populateDtModalInputs() {
   const container = document.getElementById('dtModalInputs');
   if (!container) return;
-  const PLATFORMS_DT = ['amazon', 'flipkart', 'blinkit', 'meta'];
+  const PLATFORMS_DT = ['amazon', 'acutas', 'flipkart', 'blinkit', 'meta', 'google']; // was missing acutas/google entirely — their revenue was silently excluded from every Daily Targets total
   container.innerHTML = PLATFORMS_DT.map(p => {
     const m   = PLATFORM_META[p] || { label: p.toUpperCase() };
     const tgt = dtState.targets[p]?.target || 0;
@@ -6545,7 +6545,7 @@ async function saveTargetsFromModal() {
   const { clientSlug } = state; if (!clientSlug) return;
   const statusEl = document.getElementById('dtModalStatus');
   if (statusEl) { statusEl.textContent = 'Saving…'; statusEl.style.color = '#64748b'; }
-  const PLATFORMS_DT = ['amazon', 'flipkart', 'blinkit', 'meta'];
+  const PLATFORMS_DT = ['amazon', 'acutas', 'flipkart', 'blinkit', 'meta', 'google']; // was missing acutas/google entirely — their revenue was silently excluded from every Daily Targets total
   PLATFORMS_DT.forEach(p => {
     const input = document.getElementById('dtModalTarget_' + p);
     const spendInput = document.getElementById('dtModalSpendTarget_' + p);

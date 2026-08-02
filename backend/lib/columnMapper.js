@@ -6,7 +6,7 @@
 // same concept. Amazon calls it "ASIN", Flipkart calls it "SKU ID",
 // Blinkit has no SKU column at all (uses "Product Name").
 //
-import { toISTDateString } from './dateUtils.js';
+import { extractLiteralDate } from './dateUtils.js';
 // Solution: a two-layer dictionary.
 //   Layer 1 — REVENUE_MAP / CAMPAIGN_MAP
 //     Maps every known raw column variant → standard target field.
@@ -796,11 +796,11 @@ function coerceValue(targetField, raw) {
   }
 
   if (dateFields.includes(targetField)) {
-    // Was: new Date(raw).toISOString().split('T')[0] — that truncates
-    // to the UTC calendar day, not India's. An order at 00:15 IST on
-    // Aug 2 is 18:45 UTC on Aug 1, so the old code silently filed it
-    // as Aug 1. See dateUtils.js for the full story.
-    return toISTDateString(raw);
+    // Read the date exactly as the file states it — no timezone
+    // conversion. See dateUtils.js for why: an earlier IST-conversion
+    // attempt here silently underreported revenue relative to the
+    // business's own numbers.
+    return extractLiteralDate(raw);
   }
 
   if (targetField === 'standard_state') {
