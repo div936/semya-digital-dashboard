@@ -679,6 +679,10 @@
       background: linear-gradient(135deg, var(--theme-deep), var(--theme-accent));
       display: flex; align-items: center; justify-content: center;
       font-size: 15px;
+      color: #fff;   /* was unset, so it inherited a dark text colour and
+                         disappeared against this badge's dark gradient
+                         background — only visible if text-selected,
+                         which is what made it look "highlighted" */
       box-shadow: 0 0 14px var(--theme-primary-glow);
       flex-shrink: 0;
     }
