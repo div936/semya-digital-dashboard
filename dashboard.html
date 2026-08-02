@@ -1885,13 +1885,13 @@
       <!-- Campaign Performance: highest to lowest gross campaign,
            with the date each occurred — pulled from campaign_data via
            the existing /campaign-insights endpoint, ranked client-side.
-           30-day window ending on whichever date is selected above,
-           since a single day rarely has enough campaigns to usefully
-           rank; the trend needs a wider lens. -->
+           Single day, matching whatever date is selected above — this
+           tab is about "what did today's/this date's uploaded file
+           contain", not a historical rollup. -->
       <div class="card" style="margin-top:18px;">
         <div class="card-header">
           <span class="card-title">Campaign Performance — Highest to Lowest Gross Sales</span>
-          <span class="card-badge">Last 30 days</span>
+          <span class="card-badge" id="dtCampaignRankingBadge">Selected date</span>
         </div>
         <div id="dtCampaignRanking" style="display:flex;flex-direction:column;gap:0;">
           <div class="skel skel-row" style="display:block;height:32px;margin-bottom:8px;"></div>
@@ -4739,8 +4739,21 @@ function setBadgeDT(mode) {
   if (t) t.textContent = mode === 'loading' ? 'Loading…' : mode === 'live' ? 'Live data' : 'No data — upload a file';
 }
 
+// Guards against overlapping calls to fetchAndRenderDT() — this can
+// happen legitimately now: a tab switch, the periodic auto-refresh
+// (every 5 min), and the date-picker's change handler can all trigger
+// it independently. Without this, a SLOWER older request finishing
+// after a faster newer one would overwrite correct, freshly-rendered
+// numbers with stale results — including flipping the badge back to
+// "No data — upload a file" even though the numbers on screen are
+// real, live data from the newer request that already landed. Every
+// call gets a token; only the most recent token's results are ever
+// applied to the DOM.
+let _dtFetchToken = 0;
+
 async function fetchAndRenderDT() {
   const { clientSlug } = state; if (!clientSlug) return;
+  const myToken = ++_dtFetchToken;
   setBadgeDT('loading');
   const date = dtState.date || todayIST();
 
@@ -4770,6 +4783,12 @@ async function fetchAndRenderDT() {
     PLATFORMS_DT.forEach(p => { achieved[p] = { revenue: 0, units: 0 }; });
   }
 
+  // A newer call to this function has started since we began — our
+  // results are stale (built from an older `date`/state snapshot),
+  // so drop them silently rather than overwrite whatever the newer
+  // call already rendered (or is about to render).
+  if (myToken !== _dtFetchToken) return;
+
   dtState.targets  = targets;
   dtState.achieved = achieved;
 
@@ -4792,7 +4811,7 @@ async function fetchAndRenderDT() {
   // Campaign ranking is independent of the targets/achieved data above
   // (it's its own fetch against campaign_data) — runs separately so a
   // failure here can't affect the KPI cards' loading state either.
-  loadDTCampaignRanking(date).catch(e => console.warn('[DT] campaign ranking failed:', e.message));
+  loadDTCampaignRanking(date, myToken).catch(e => console.warn('[DT] campaign ranking failed:', e.message));
 }
 
 // Highest-to-lowest gross-sales campaign ranking, with the date each
@@ -4801,16 +4820,28 @@ async function fetchAndRenderDT() {
 // route, since the ranking itself is a simple client-side sort.
 // 30-day window ending on whichever date is selected on this tab: a
 // single day rarely has enough distinct campaigns to usefully rank.
-async function loadDTCampaignRanking(endDate) {
+async function loadDTCampaignRanking(date, myToken) {
   const { clientSlug } = state; if (!clientSlug) return;
   const el = document.getElementById('dtCampaignRanking');
   if (!el) return;
 
-  const end = new Date(endDate + 'T00:00:00');
-  const start = new Date(end); start.setDate(start.getDate() - 29);
-  const fromStr = toISTDateString(start);
+  const badgeEl = document.getElementById('dtCampaignRankingBadge');
+  if (badgeEl && date) {
+    badgeEl.textContent = new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  }
 
-  const resp = await apiFetch('/clients/' + clientSlug + '/campaign-insights?from=' + fromStr + '&to=' + endDate);
+  // Single day, matching the rest of this tab — was previously a
+  // rolling 30-day window, which pulled in old, unrelated campaign
+  // history (a ₹5.38L historical Google campaign next to a page
+  // otherwise showing single-day numbers in the tens of thousands).
+  // This tab is about "what did the file I uploaded for THIS date
+  // contain" — the ranking should answer that, not summarize a month.
+  const resp = await apiFetch('/clients/' + clientSlug + '/campaign-insights?from=' + date + '&to=' + date);
+
+  // Same overlapping-request guard as fetchAndRenderDT — abandon
+  // stale results if a newer call has started since we began.
+  if (myToken !== undefined && myToken !== _dtFetchToken) return;
+
   const rows = (resp?.campaigns || [])
     .filter(c => c.standard_revenue != null && c.campaign_name)
     // One row can appear more than once if the same campaign/date was
@@ -4827,7 +4858,7 @@ async function loadDTCampaignRanking(endDate) {
   const sorted = Array.from(rows.values()).sort((a, b) => (b.standard_revenue || 0) - (a.standard_revenue || 0));
 
   if (!sorted.length) {
-    el.innerHTML = '<div style="padding:24px 0;text-align:center;color:#94a3b8;font-size:12px;">No campaign data in this 30-day window yet.</div>';
+    el.innerHTML = '<div style="padding:24px 0;text-align:center;color:#94a3b8;font-size:12px;">No campaign data uploaded for this date yet.</div>';
     return;
   }
 
