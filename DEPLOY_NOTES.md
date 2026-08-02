@@ -92,6 +92,13 @@ The previous round's timezone fix (IST-converting every raw file timestamp) was 
 
 **If you already deployed the previous (IST-conversion) version and uploaded files through it**, some rows may have been filed under the wrong date during that window — re-upload the affected files after this fix deploys to correct them (the upsert logic from the earlier revenue de-dup fix makes this safe).
 
+## This round's fixes ("No data" badge race condition, campaign ranking scope)
+
+| What | Details |
+|---|---|
+| **"No data — upload a file" showing despite real numbers on screen** | Couldn't reproduce directly, but found a real, plausible cause: `fetchAndRenderDT()` can now legitimately be triggered from multiple places at once — a tab switch, the 5-minute auto-refresh, and the date picker's change handler. Without protection, an older/slower request finishing *after* a newer one would overwrite the newer request's correct results — including flipping the badge back to "No data" even though the numbers on screen were real. Added a request-token guard: every call gets a token, and only the most recent one's results are ever applied to the page. Older, now-stale results are silently dropped instead of overwriting newer ones. |
+| **Campaign Performance ranking pulling in unrelated old data** | Was scoped to a rolling 30-day window, which is why a ₹5.38 Lakh historical Google campaign from weeks ago sat at the top of a page otherwise showing single-day numbers in the tens of thousands, while Amazon's own campaign file (uploaded same day) never appeared at all. Changed to match the single date selected on the tab — "what did the file uploaded for this date contain," not a month-long rollup. The card badge now shows the actual selected date instead of "Last 30 days". |
+
 ## This round's fixes (Acutas missing from Daily Targets, stuck loading, Total ROAS, campaign ranking)
 
 **Acutas (and Google) were completely missing from Daily Targets** — `PLATFORMS_DT` (used for the platform-attainment list and every KPI total on that tab) was hardcoded to `['amazon', 'flipkart', 'blinkit', 'meta']`, silently excluding Acutas revenue from the platform list, the revenue/units/attainment totals, ad spend, and Total ROAS. Fixed to `['amazon', 'acutas', 'flipkart', 'blinkit', 'meta', 'google']` in all three places it's defined in `dashboard.html`. This was likely the main driver behind Total ROAS looking off too — it's calculated from the same undercounted totals.
