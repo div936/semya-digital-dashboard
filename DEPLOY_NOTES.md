@@ -92,7 +92,25 @@ The previous round's timezone fix (IST-converting every raw file timestamp) was 
 
 **If you already deployed the previous (IST-conversion) version and uploaded files through it**, some rows may have been filed under the wrong date during that window — re-upload the affected files after this fix deploys to correct them (the upsert logic from the earlier revenue de-dup fix makes this safe).
 
-## This round's fix — Campaign Performance scrollbar overlapping the amount column
+## This round's feature — set a real password after the magic-link invite
+
+**New file:** `main/frontend/set-password.html` / `gh-pages/set-password.html`. Same black/white Semya branding as the login page.
+
+**What changed:** the invite/magic-link flow now redirects through this page instead of straight to the dashboard. It uses the session the magic link itself establishes to call Supabase's `updateUser({ password })` — the person picks a password once, then can sign in directly with email + password on the regular login page every time after that, no link required. `main/backend/routes/authRouter.js`'s `redirectTo` was updated to point here instead of `dashboard.html` directly.
+
+**Nothing else changes about the sign-in page itself** — `index.html`'s email/password form already works as-is once a password is set this way; this only adds the missing step to actually set one in the first place.
+
+**Deploy order:** backend first (so new invites use the new redirect), then frontend (so the new page + updated invite-response handling from last round are both live). Existing users who already have a password (like `admin@semyadigital.com`, set up via `seed-users.mjs`) are unaffected — this only applies to the invite flow.
+
+
+
+**The bug:** the Employee Invite flow's backend called `createUser()` + `generateLink()` — neither of which sends an email. `generateLink()` only *returns* a link; nothing dispatches it anywhere. That link was included in the API response, and the frontend's invite button **never read the response body at all** — it just discarded it. No email was ever going to arrive, no matter how long anyone waited; there was nothing sending one in the first place.
+
+**Fix:** switched to `inviteUserByEmail()` for a brand-new email — the one Supabase Admin API call that actually sends a real email automatically, using the same "You've been invited" template and SMTP configuration already used elsewhere in this app (the admin-notification email for new access requests). Falls back to a copyable magic sign-in link — now actually shown to the admin in a prompt, not discarded — for emails that already have an account, since Supabase won't send a fresh invite email to an existing user.
+
+**On setting a password:** this app uses **magic-link (passwordless) sign-in** for anyone invited this way — clicking the link in the email logs them straight in, no password step exists in this flow at all (`hashed_pw` is set to a fixed placeholder for every invited user, not a real password). There's no in-app way to set one for this flow, and none is needed. **Specifically for `admin@semyadigital.com`** — if `seed-users.mjs` was successfully run for that email a few rounds back (fixing the earlier login bug), it already has a real password-based Supabase Auth account completely separately from this invite flow, and can sign in directly on the login page right now without needing an invite at all.
+
+
 
 The scrollable list from last round had no reserved space for its scrollbar, so it sat directly on top of the revenue figures on the right. Added `padding-right:16px` to the scroll container so the scrollbar now sits in its own gutter, clear of the amounts. The app already has a thin (6px) custom scrollbar style applied globally, so no further styling was needed — just the missing space.
 

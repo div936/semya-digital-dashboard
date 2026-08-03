@@ -49,18 +49,67 @@ async function requireAdmin(req, res) {
 // request into a real user) and /admin/invite-employee (an admin
 // proactively adding someone without a prior request) — same
 // underlying operation either way, just triggered differently.
+//
+// BUG FIX: this used to always call createUser() + generateLink() —
+// neither of which sends any email. generateLink() only RETURNS a
+// link; it doesn't dispatch it anywhere. The link was being returned
+// in the API response and then silently discarded by the frontend
+// (the invite button never read the response body at all), so no
+// email was ever going to arrive no matter how long anyone waited —
+// there was nothing sending one in the first place.
+//
+// Fixed to try inviteUserByEmail() first for a brand-new email — this
+// is the one Supabase Admin API call that actually sends a real
+// email automatically (Supabase's own "You've been invited" template,
+// via whatever SMTP is configured on the project — the same
+// mechanism already used elsewhere in this file to notify the admin
+// of a new access request). Falls back to generateLink() only when
+// the person already has an auth account (inviteUserByEmail errors
+// on an existing user) — in that case there's no "invite" email to
+// send since they're not new, so the magic link is returned in the
+// response for the frontend to show directly to the admin instead
+// (copy/paste and send however they like), rather than silently
+// discarding it again.
 async function createOrInviteUser({ email, role, clientId, isLead = false }) {
   const cleanEmail = email.toLowerCase().trim();
+  // Redirects through set-password.html instead of straight to the
+  // dashboard — lets a first-time invite end with the person choosing
+  // a real password, so future sign-ins don't require another magic
+  // link at all. See set-password.html: it calls supabase.auth.
+  // updateUser({ password }) using the session this link itself
+  // establishes, then sends them on to the dashboard.
+  const redirectTo = `${FRONTEND_URL}/set-password.html`;
 
   let authUserId = null;
+  let emailSent = false;
+  let magicLink = null;
+
   try {
-    const { data: newAuthUser } = await supabaseAuth.auth.admin.createUser({
-      email: cleanEmail, email_confirm: true,
-    });
-    authUserId = newAuthUser?.user?.id;
+    // New account: this call BOTH creates the auth user AND sends
+    // them a real invite email — the only one of these calls that
+    // actually dispatches anything.
+    const { data: invited, error: inviteErr } = await supabaseAuth.auth.admin.inviteUserByEmail(cleanEmail, { redirectTo });
+    if (inviteErr) throw inviteErr;
+    authUserId = invited?.user?.id;
+    emailSent = true;
   } catch (e) {
+    // Most likely cause: this email already has a Supabase Auth
+    // account (e.g. re-inviting, or they already have password-based
+    // login set up separately) — inviteUserByEmail refuses to send a
+    // fresh "invite" email to an existing user. Look up their ID and
+    // fall back to a magic link the admin can hand off manually.
+    console.warn('[createOrInviteUser] inviteUserByEmail failed, falling back to magic link:', e.message);
     const { data: { users } } = await supabaseAuth.auth.admin.listUsers();
     authUserId = users.find(u => u.email === cleanEmail)?.id;
+
+    try {
+      const { data: linkData } = await supabaseAuth.auth.admin.generateLink({
+        type: 'magiclink', email: cleanEmail, options: { redirectTo },
+      });
+      magicLink = linkData?.properties?.action_link || null;
+    } catch (e2) {
+      console.warn('[createOrInviteUser] generateLink fallback also failed:', e2.message);
+    }
   }
 
   const { error: upsertErr } = await supabaseAdmin.from('users').upsert({
@@ -73,18 +122,7 @@ async function createOrInviteUser({ email, role, clientId, isLead = false }) {
   }, { onConflict: 'email' });
   if (upsertErr) throw new Error('Failed to create/update user record: ' + upsertErr.message);
 
-  let magicLink = null;
-  try {
-    const { data: linkData } = await supabaseAuth.auth.admin.generateLink({
-      type: 'magiclink', email: cleanEmail,
-      options: { redirectTo: `${FRONTEND_URL}/dashboard.html` },
-    });
-    magicLink = linkData?.properties?.action_link || null;
-  } catch (e) {
-    console.warn('[createOrInviteUser] generateLink failed (user was still created):', e.message);
-  }
-
-  return { email: cleanEmail, magicLink };
+  return { email: cleanEmail, emailSent, magicLink };
 }
 
 
