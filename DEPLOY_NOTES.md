@@ -92,7 +92,16 @@ The previous round's timezone fix (IST-converting every raw file timestamp) was 
 
 **If you already deployed the previous (IST-conversion) version and uploaded files through it**, some rows may have been filed under the wrong date during that window — re-upload the affected files after this fix deploys to correct them (the upsert logic from the earlier revenue de-dup fix makes this safe).
 
-## This round's fix — Supabase Studio's own "send reset" button landed on the login page
+## This round's fixes — logo upload payload limit, recovery-link redirect made deterministic
+
+| What | Details |
+|---|---|
+| **"Failed to save" on logo upload** | Express's default JSON body limit is **100kb** — a base64-encoded logo image easily exceeds that (base64 inflates file size by ~33%, so even a modest 75–100KB image becomes 100KB+ as a data URL) and was being rejected by Express itself before ever reaching the route handler. Raised the limit to 5mb in `app.js`, comfortably covering any reasonable logo file. |
+| **Recovery link still landing on the login page** | The previous fix (listening for Supabase's `PASSWORD_RECOVERY` event) depends on Supabase's own async URL-parsing finishing and firing that event before anything else reacts — usually reliable, evidently not reliably enough in practice. Replaced the primary mechanism with a synchronous check: `index.html` now reads the URL directly for a recovery indicator (`type=recovery`, in either the hash *or* the query string — Supabase can use either format depending on flow) as the very first thing it does, before even creating the Supabase client, and redirects immediately with no race condition possible. The event-listener approach is kept as a second-layer fallback. Also made `set-password.html` handle the PKCE `?code=...` link format explicitly (`exchangeCodeForSession`), since the hash-based `detectSessionInUrl` auto-parsing doesn't cover that format on its own, and it wasn't clear which format this project's links actually use. |
+
+**Deploy order:** backend first (logo upload fix), then frontend (redirect fix). For the logo, just retry the save — no need to re-upload the file, it should go through now. For the redirect, request a fresh reset link and click it again; the old link's token has already been consumed by the earlier failed attempt(s), so a new one is needed either way.
+
+
 
 Only applies when using Supabase's dashboard "send password reset" button directly (not our own invite flow, which was already correctly pointed at `set-password.html`). That button always redirects to your project's configured default **Site URL**, which is the login page — nothing in our own code controls where it goes, since it's not part of our request/response flow at all.
 

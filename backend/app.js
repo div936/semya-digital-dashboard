@@ -37,7 +37,15 @@ app.use(cors({
   origin:      process.env.ALLOWED_ORIGINS?.split(',') ?? '*',
   credentials: true,
 }));
-app.use(express.json());
+// Default Express JSON limit is 100kb — too small for a base64-encoded
+// logo image (base64 inflates file size by ~33%, so even a modest
+// 75-100KB image file becomes 100KB+ as a data URL and gets silently
+// rejected by Express itself before it ever reaches a route handler,
+// showing up as "Failed to save" with no useful detail on the
+// frontend). 5mb comfortably covers any reasonable logo upload while
+// staying well short of anything that would meaningfully stress this
+// low-traffic internal admin tool.
+app.use(express.json({ limit: '5mb' }));
 app.use(cookieParser());
 
 // ─── Routes ───────────────────────────────────────────────────────
