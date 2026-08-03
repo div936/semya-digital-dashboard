@@ -92,7 +92,29 @@ The previous round's timezone fix (IST-converting every raw file timestamp) was 
 
 **If you already deployed the previous (IST-conversion) version and uploaded files through it**, some rows may have been filed under the wrong date during that window — re-upload the affected files after this fix deploys to correct them (the upsert logic from the earlier revenue de-dup fix makes this safe).
 
-## This round's fixes — Campaign ranking null-date bug, real 7-day trend, branding self-diagnosis
+## This round's fix — "Unknown" city in SKU Performance's Top Cities
+
+Your hypothesis was exactly right, and better: **the fix for this already existed in the codebase** — it was just never wired into the endpoint feeding this specific card.
+
+`backfillLocationByOrder()` in `columnMapper.js` groups rows by order and fills in a blank `standard_city`/`standard_state` from a sibling line item of the same order that has one — built specifically for the pattern you described: a multi-item order where only the first line item carries shipping details, and every other product in that same order is left blank (the same Shopify/marketplace export quirk behind the Meta discount-allocation fix a few rounds back). This was already correctly applied to the **Geographic Analysis** tab's endpoint — but the **SKU Performance** endpoint (`/sku-performance`, which is what feeds the "Top Cities by Revenue" card you're looking at) never called it, and didn't even fetch the `raw_extras` column the backfill needs to group rows by order in the first place.
+
+Fixed: `/sku-performance` now fetches `raw_extras`, runs the same backfill, then strips `raw_extras` back out before responding (matching the privacy/size handling already done for Geographic Analysis — that field can carry buyer name/phone/address on platforms that expose those in unmapped columns).
+
+**Deploy just the backend for this one.** Once it's live, re-check the Top Cities card — "Unknown" should drop to genuinely unresolvable rows only (an order where *no* line item anywhere had a city, not just one where a sibling row had it and this one didn't).
+
+
+
+| What | Details |
+|---|---|
+| **ROAS hidden for Amazon/Flipkart/Blinkit** | Last round I removed per-platform ROAS everywhere except Website, matching the old dashboard's headline metric definition — but that went too far. Restored it for every platform in Platform Attainment and Ad Spend Breakdown. "Website ROAS" (the KPI card) stays as the one true headline paid-media efficiency number, matching the old dashboard exactly; the per-platform figures elsewhere are supplementary context, not competing with that definition. |
+| **The "Admin" badge next to the client switcher was 100% static HTML** | `<span class="tag-admin">Admin</span>` — no logic, no role check, always rendered for every single person who ever loads this page, client or admin. This was actively misleading while debugging the logo issue: it looked like proof `isAdmin` was true when it checked nothing at all. Made it genuinely dynamic, driven by the real `cfg.user.isAdmin` from `applyBranding()`. |
+
+### About the logo issue specifically
+With the toggle confirmed off in your screenshot, and now that the "Admin" badge is real, this becomes self-diagnosing in one look: **after this deploys, reload the dashboard as the same account and check whether the "Admin" badge is still there.**
+- **If the badge disappears** — this account genuinely isn't flagged `role = 'admin'` in the `users` table, which explains everything: the branding code was correctly showing client branding because, as far as the server is concerned, this isn't an admin session. Fixable directly in Supabase (update that user's `role` to `admin`), not a code issue.
+- **If the badge stays** — `isAdmin` is genuinely true, and the real cause is either the `/platform-settings` fetch failing or the admin branding never having actually saved (plausible if it was attempted before the "always shows Saved" bug was fixed a few rounds back). Open the browser console (F12) — the `[branding]` log line added last round will show exactly what happened, and paste it here.
+
+
 
 | What | Details |
 |---|---|

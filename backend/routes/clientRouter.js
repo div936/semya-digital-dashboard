@@ -257,7 +257,7 @@ router.get(
       fetchAllRows((rangeFrom, rangeTo) => {
         let q = supabaseAdmin
           .from('revenue_data')
-          .select('standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status, standard_product_name, standard_order_id')
+          .select('standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status, standard_product_name, standard_order_id, raw_extras')
           .eq('client_id', client.id)
           .range(rangeFrom, rangeTo);
         if (sku)      q = q.eq('standard_sku', sku);
@@ -280,6 +280,26 @@ router.get(
     });
 
     if (res.headersSent) return;
+
+    // Backfill blank city/state from a sibling line-item row of the
+    // same order — the same fix already applied in Geographic
+    // Analysis (backfillLocationByOrder), just not wired in here
+    // until now. Some platform exports (Shopify-shaped ones
+    // especially — see the discount-allocation fix and its comments
+    // for the same underlying export quirk) only populate shipping
+    // details on ONE row per multi-item order, leaving every other
+    // line item's city/state blank — which is exactly why "Unknown"
+    // was showing up as a top city: those blank rows were being
+    // counted as a real "Unknown" location instead of backfilled from
+    // their own order's other line item. Then raw_extras is dropped
+    // before the response goes out — only needed here for the
+    // order-grouping itself, and can contain buyer name/phone/address
+    // on platforms that expose that in unmapped columns.
+    for (const r of revenueRows) {
+      if (r.standard_state) r.standard_state = normaliseStateName(r.standard_state);
+    }
+    backfillLocationByOrder(revenueRows);
+    for (const r of revenueRows) delete r.raw_extras;
 
     // Same opt-in exclusion as /platform-sales — nothing dropped
     // unless the caller passes ?excludeStatuses=...
