@@ -92,7 +92,44 @@ The previous round's timezone fix (IST-converting every raw file timestamp) was 
 
 **If you already deployed the previous (IST-conversion) version and uploaded files through it**, some rows may have been filed under the wrong date during that window — re-upload the affected files after this fix deploys to correct them (the upsert logic from the earlier revenue de-dup fix makes this safe).
 
-## This round's fixes — logo upload payload limit, recovery-link redirect made deterministic
+## This round's change — inventory management restructured per your request
+
+**Changed:** `main/backend/routes/inventoryRouter.js` (new bulk-upload endpoint), `main/frontend/dashboard.html`.
+
+**Settings → Inventory Settings is now ONLY stock-quantity entry** — two ways:
+1. **Manual, one SKU at a time** — SKU, warehouse, quantity, threshold, Save.
+2. **Bulk Excel/CSV upload** — new endpoint, `POST /clients/:slug/inventory/stock/bulk-upload`. Expects columns for SKU, Warehouse, Quantity, and optionally a low-stock threshold (column names are matched loosely — "Qty", "Quantity", "Stock", "On Hand" all work for the quantity column, similar spirit to a few other common variants for the others). A row whose warehouse name doesn't exactly match an existing warehouse is skipped and reported back by name and row number, never guessed at or silently misfiled.
+
+**Everything else moved to the UTM Analytics tab**, visible and manageable right there:
+- **Warehouses & Platform Mapping** — create/delete warehouses, set the default, and map each platform to a specific warehouse, all inline on the tab.
+- **Inventory & Low-Stock Alerts** — unchanged from last round.
+- **All Stock** — the full stock table (every SKU/warehouse combination, not just low ones), now visible on the tab instead of only reachable through Settings.
+
+**Deploy just the backend and frontend** — no new SQL this round, the schema from last round already supports this.
+
+
+
+**New:** `main/backend/db/inventory_schema.sql`, `main/backend/routes/inventoryRouter.js`. **Changed:** `main/backend/app.js`, `main/backend/ingestion/fileIngestion.js`, `main/frontend/dashboard.html`.
+
+### How it works
+- **Settings → Inventory Settings** (new modal): create warehouses, mark one as default, map each platform to a specific warehouse (or leave it on "Default"), and set current on-hand quantity + low-stock threshold per SKU per warehouse.
+- **Automatic deduction:** every time a revenue file is uploaded, each sold SKU automatically decreases stock at whichever warehouse its platform is mapped to (or the default warehouse if unmapped). This reuses the exact same `row_hash` already computed for revenue de-duplication as an idempotency key — **re-uploading a file can never deduct the same sale twice**, the same guarantee that already protects revenue totals from double-counting.
+- **UTM Analytics tab**: new "Inventory & Low-Stock Alerts" card shows every SKU/warehouse combination at or below its threshold, with a rough "days remaining" estimate based on the last 14 days of sales velocity — explicitly labeled as an estimate, not a promise, since it can't see pending restocks or demand spikes.
+- Every stock change (sale or manual edit) is logged in `inventory_movements` — a full audit trail of exactly why a number changed and when.
+
+### Deploy order
+1. Run `inventory_schema.sql` in Supabase (seeds a "Main Warehouse" per existing client automatically, so deduction has somewhere to go immediately).
+2. Deploy backend.
+3. Deploy frontend.
+4. Go to Settings → Inventory Settings and set real starting quantities for your SKUs — the system has no way to know your actual current stock until you tell it once; from that point forward, uploads keep it accurate automatically.
+
+### A few suggestions for a stronger inventory view, if useful going forward
+- **Per-SKU reorder point instead of a flat threshold** — right now the low-stock trigger is a fixed quantity you set once; a more useful version ties it to *lead time* (e.g. "alert when stock will run out before a replacement order could arrive," using your actual supplier lead time per SKU rather than a guessed number).
+- **A dedicated Inventory tab**, not just an alerts card tucked into UTM Analytics — worth doing once you're relying on this daily, with a full stock table (all SKUs, not just low ones), a movement history view, and CSV export for reconciling against a physical stock count.
+- **Bulk stock import** — right now setting initial quantities is one SKU at a time in the modal; a CSV upload (SKU, warehouse, quantity) would make the initial setup and periodic physical-count reconciliation much faster.
+- **Restock-in-transit tracking** — the days-remaining estimate currently assumes zero incoming stock; even a simple "expected restock date + quantity" field per SKU would make that estimate meaningfully more useful.
+
+
 
 | What | Details |
 |---|---|

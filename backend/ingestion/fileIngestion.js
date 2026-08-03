@@ -42,6 +42,7 @@ import { supabaseAdmin }  from '../lib/supabase.js';
 import { REVENUE_MAP, CAMPAIGN_MAP, normaliseBatch, classifyDataType, scoreHeaderRow, detectFallbackMapping } from '../lib/columnMapper.js';
 import { generateInsights, generateNarrativeSummaries } from '../lib/insightGenerator.js';
 import { extractLiteralDate } from '../lib/dateUtils.js';
+import { recordMovement } from '../routes/inventoryRouter.js';
 
 // ═══════════════════════════════════════════════════════════════════
 // PREFIX → ROUTING TABLE
@@ -416,6 +417,69 @@ function hash(input) {
   return crypto.createHash('sha256').update(input).digest('hex');
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// AUTOMATIC INVENTORY DEDUCTION
+//
+// Resolves, once per call, which warehouse each platform present in
+// this batch should deduct from — platform_warehouse_map if one's
+// configured, otherwise the client's single default warehouse. Rows
+// for a platform with neither (no mapping AND no default warehouse
+// configured yet) are skipped with a warning rather than failing the
+// whole batch — inventory tracking is opt-in; a client who hasn't
+// set up any warehouses yet should be able to upload revenue files
+// exactly as before, with no inventory side-effects at all.
+//
+// Runs in small concurrent batches (mirrors bulkInsert's own
+// CONCURRENCY pattern) rather than one row at a time sequentially,
+// since a large file could otherwise mean thousands of sequential
+// round trips.
+// ═══════════════════════════════════════════════════════════════════
+async function deductInventoryForSale(clientId, rows) {
+  const sellable = rows.filter(r => r.standard_sku && Number(r.standard_units) > 0);
+  if (!sellable.length) return;
+
+  const platforms = [...new Set(sellable.map(r => r.platform))];
+
+  const [{ data: mappings }, { data: warehouses }] = await Promise.all([
+    supabaseAdmin.from('platform_warehouse_map').select('platform, warehouse_id').eq('client_id', clientId).in('platform', platforms),
+    supabaseAdmin.from('warehouses').select('id, is_default').eq('client_id', clientId).eq('is_active', true),
+  ]);
+
+  const defaultWarehouseId = warehouses?.find(w => w.is_default)?.id || null;
+  const warehouseByPlatform = {};
+  for (const p of platforms) {
+    warehouseByPlatform[p] = mappings?.find(m => m.platform === p)?.warehouse_id || defaultWarehouseId;
+  }
+
+  const unresolvedPlatforms = platforms.filter(p => !warehouseByPlatform[p]);
+  if (unresolvedPlatforms.length) {
+    console.warn(`[inventory] No warehouse configured for platform(s) ${unresolvedPlatforms.join(', ')} (client ${clientId}) — skipping deduction for those rows. Set up a default warehouse or a platform mapping to enable this.`);
+  }
+
+  const toDeduct = sellable.filter(r => warehouseByPlatform[r.platform]);
+  if (!toDeduct.length) return;
+
+  const CONCURRENCY = 8;
+  let deducted = 0, duplicates = 0;
+  for (let i = 0; i < toDeduct.length; i += CONCURRENCY) {
+    const batch = toDeduct.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(batch.map(row =>
+      recordMovement({
+        clientId,
+        warehouseId: warehouseByPlatform[row.platform],
+        sku: row.standard_sku,
+        qtyDelta: -Math.round(Number(row.standard_units)),
+        reason: 'sale',
+        platform: row.platform,
+        sourceRowHash: row.row_hash,
+      }).catch(e => { console.warn('[inventory] deduction failed for one row:', e.message); return false; })
+    ));
+    for (const wasNew of results) { if (wasNew) deducted++; else duplicates++; }
+  }
+
+  console.log(`[inventory] deducted ${deducted} sale(s), skipped ${duplicates} already-recorded duplicate(s) (client ${clientId})`);
+}
+
 async function bulkInsert(table, rows) {
   const chunks = [];
   for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
@@ -608,6 +672,23 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
     // 5. Bulk insert into the correct table
     const table     = dataType === 'revenue' ? 'revenue_data' : 'campaign_data';
     const inserted  = await bulkInsert(table, rows);
+
+    // 5b. Automatic inventory deduction — each revenue row that
+    // represents a real sale (has both a SKU and a positive unit
+    // count) decrements the warehouse stock mapped to its platform.
+    // Uses the same row_hash already computed for revenue de-dup
+    // above as the movement ledger's idempotency key, so re-uploading
+    // this same file later (or any file containing the same rows)
+    // can NEVER double-deduct — see recordMovement() in
+    // routes/inventoryRouter.js for the full mechanism. Deliberately
+    // best-effort: a failure here is logged but never fails the
+    // upload itself — inventory tracking is a downstream convenience,
+    // not something that should block getting revenue data in.
+    if (dataType === 'revenue') {
+      await deductInventoryForSale(clientId, rows).catch(e => {
+        console.warn(`[ingestion] inventory deduction failed for ${originalName} (upload still succeeded):`, e.message);
+      });
+    }
 
     // 6. Mark upload as complete
     const routingNote = routingCorrected
