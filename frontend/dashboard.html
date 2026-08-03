@@ -4933,7 +4933,7 @@ async function loadDTCampaignRanking(date, myToken) {
   // campaign list across every platform can get long.
   const countLabel = '<div style="font-size:11px;color:#94a3b8;margin-bottom:10px;">' + sorted.length + ' campaign' + (sorted.length === 1 ? '' : 's') + ' live on this date</div>';
   const filterInput = '<input type="text" id="dtCampaignFilter" placeholder="Filter by campaign name or platform…" oninput="filterDTCampaignRows(this.value)" style="width:100%;padding:7px 10px;margin-bottom:10px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:12px;font-family:var(--font-display);" />';
-  const rowsHtml = '<div id="dtCampaignRows" style="max-height:520px;overflow-y:auto;">' + sorted.map((c, i) => row(c, i + 1)).join('') + '</div>';
+  const rowsHtml = '<div id="dtCampaignRows" style="max-height:520px;overflow-y:auto;overflow-x:hidden;padding-right:16px;">' + sorted.map((c, i) => row(c, i + 1)).join('') + '</div>';
 
   el.innerHTML = countLabel + filterInput + rowsHtml;
 }

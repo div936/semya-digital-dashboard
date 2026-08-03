@@ -92,7 +92,11 @@ The previous round's timezone fix (IST-converting every raw file timestamp) was 
 
 **If you already deployed the previous (IST-conversion) version and uploaded files through it**, some rows may have been filed under the wrong date during that window — re-upload the affected files after this fix deploys to correct them (the upsert logic from the earlier revenue de-dup fix makes this safe).
 
-## This round's fix — "Request access" succeeding but never reaching the admin
+## This round's fix — Campaign Performance scrollbar overlapping the amount column
+
+The scrollable list from last round had no reserved space for its scrollbar, so it sat directly on top of the revenue figures on the right. Added `padding-right:16px` to the scroll container so the scrollbar now sits in its own gutter, clear of the amounts. The app already has a thin (6px) custom scrollbar style applied globally, so no further styling was needed — just the missing space.
+
+
 
 **The bug:** `POST /auth/request-access` only handled two cases — already approved (stop), or no existing row (insert). A row that existed in any *other* state — most likely `rejected` from earlier testing, or a `pending` row that was never surfaced — matched neither branch. Nothing got inserted or updated, but the endpoint still returned success. The requester saw a genuine "success" message for a request that silently changed nothing in the database.
 
