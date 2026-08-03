@@ -199,6 +199,22 @@
 
   const _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
+  // A password-recovery link can land HERE even though our own invite
+  // flow's redirectTo points at set-password.html — Supabase Studio's
+  // own "send password reset" button (used directly from the Supabase
+  // dashboard, not through this app's code) always redirects to
+  // whatever the project's default Site URL is configured to, which
+  // is this login page. Without this, the recovery session gets
+  // silently established in the background and the person just sees
+  // an ordinary login form with no way to actually use that session
+  // to set a new password. Supabase fires PASSWORD_RECOVERY specifically
+  // for this case — catch it and send them to the right page instead.
+  _sb.auth.onAuthStateChange((event) => {
+    if (event === 'PASSWORD_RECOVERY') {
+      window.location.href = 'set-password.html';
+    }
+  });
+
   // ── Dynamic branding (admin-controlled, via Client Administration →
   // Appearance → "Admin Login Page") ────────────────────────────────
   // This page is the one thing every user sees before they're even
