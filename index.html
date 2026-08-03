@@ -191,6 +191,34 @@
 </div>
 
 <script>
+  // ── Password-recovery link redirect — checked FIRST, synchronously ──
+  // This must run before anything else, including creating the
+  // Supabase client below. Reasoning: the onAuthStateChange listener
+  // approach (still kept further down as a second layer) depends on
+  // Supabase's own async URL-parsing finishing and firing an event
+  // before anything else on the page reacts — which is usually fine,
+  // but isn't a hard guarantee, and evidently wasn't reliable enough
+  // in practice (recovery links were landing on the plain login form
+  // instead of being redirected). This check has no such race: it
+  // reads the URL directly, synchronously, before any async Supabase
+  // logic starts at all, and redirects immediately if it finds a
+  // recovery link. Handles both URL shapes Supabase can use —
+  // #access_token=...&type=recovery (implicit flow, hash) and
+  // ?code=...&type=recovery (PKCE flow, query string) — since which
+  // one a given project/link uses can vary.
+  (function redirectRecoveryLinksImmediately() {
+    const hashParams  = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const queryParams = new URLSearchParams(window.location.search);
+    const isRecovery = hashParams.get('type') === 'recovery' || queryParams.get('type') === 'recovery';
+    if (isRecovery) {
+      // Preserve the token wherever it actually is (hash or query) so
+      // set-password.html's own Supabase client can pick it up and
+      // establish the session there — replace(), not href, so the
+      // one-time recovery link doesn't linger in browser history.
+      window.location.replace('set-password.html' + window.location.search + window.location.hash);
+    }
+  })();
+
   // ── CONFIG ──────────────────────────────────────────────────────
   const SUPABASE_URL  = 'https://oeusnopzqsrbgqqarepj.supabase.co';
   const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ldXNub3B6cXNyYmdxcWFyZXBqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzNzI0MDUsImV4cCI6MjA5OTk0ODQwNX0.DU4xBf6fib8EKiAqh1AFn86RqFQNo3vgm48MwbDY1eM';
@@ -199,16 +227,10 @@
 
   const _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-  // A password-recovery link can land HERE even though our own invite
-  // flow's redirectTo points at set-password.html — Supabase Studio's
-  // own "send password reset" button (used directly from the Supabase
-  // dashboard, not through this app's code) always redirects to
-  // whatever the project's default Site URL is configured to, which
-  // is this login page. Without this, the recovery session gets
-  // silently established in the background and the person just sees
-  // an ordinary login form with no way to actually use that session
-  // to set a new password. Supabase fires PASSWORD_RECOVERY specifically
-  // for this case — catch it and send them to the right page instead.
+  // Kept as a second layer in case a recovery link ever arrives in a
+  // shape the synchronous check above doesn't recognise — cheap
+  // insurance, shouldn't normally fire since the check above should
+  // already have redirected away before this point.
   _sb.auth.onAuthStateChange((event) => {
     if (event === 'PASSWORD_RECOVERY') {
       window.location.href = 'set-password.html';
