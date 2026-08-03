@@ -119,9 +119,22 @@ router.post('/request-access', asyncHandler(async (req, res) => {
     .single();
 
   if (existing?.status === 'approved') return res.json({ ok: true });
-  if (!existing) {
-    await supabaseAdmin.from('access_requests').insert({ email: cleanEmail, status: 'pending' });
-  }
+
+  // BUG FIX: this used to be `if (!existing) { insert(...) }` — meaning
+  // if a row already existed for this email in ANY state other than
+  // 'approved' (most commonly 'rejected', but also a 'pending' row an
+  // admin somehow never saw), neither branch matched: not approved, so
+  // it didn't short-circuit, but also not `!existing`, so nothing was
+  // inserted either. The request silently did nothing to the database
+  // while still returning { ok: true } — the requester saw a genuine
+  // success message for a request that was never actually re-surfaced
+  // to any admin. Upserting instead means clicking "Request access"
+  // always results in a real pending row, regardless of what state (if
+  // any) a previous request for this email was left in.
+  await supabaseAdmin.from('access_requests').upsert(
+    { email: cleanEmail, status: 'pending', requested_at: new Date().toISOString(), reviewed_at: null, reviewed_by: null },
+    { onConflict: 'email' }
+  );
 
   // Notify admin via Supabase email (uses your project SMTP)
   // We send the admin a magic link to a special approve page

@@ -92,7 +92,23 @@ The previous round's timezone fix (IST-converting every raw file timestamp) was 
 
 **If you already deployed the previous (IST-conversion) version and uploaded files through it**, some rows may have been filed under the wrong date during that window — re-upload the affected files after this fix deploys to correct them (the upsert logic from the earlier revenue de-dup fix makes this safe).
 
-## This round's fix — "Unknown" city in SKU Performance's Top Cities
+## This round's fix — "Request access" succeeding but never reaching the admin
+
+**The bug:** `POST /auth/request-access` only handled two cases — already approved (stop), or no existing row (insert). A row that existed in any *other* state — most likely `rejected` from earlier testing, or a `pending` row that was never surfaced — matched neither branch. Nothing got inserted or updated, but the endpoint still returned success. The requester saw a genuine "success" message for a request that silently changed nothing in the database.
+
+**Fix:** changed the insert to an upsert (using `access_requests.email`'s existing unique constraint), resetting the row to `pending` with a fresh timestamp regardless of what state it was previously in. A repeat request now always produces a real, visible pending row.
+
+**For the specific email you tried:** run this to check its actual current state —
+```sql
+select email, status, requested_at, reviewed_at from access_requests where email = 'THE_EMAIL_HERE';
+```
+If it shows `rejected` (or anything other than `pending`), that confirms this exact bug for that email. After this deploys, have them click "Request access" again — it'll now correctly show up in Client Administration's Pending Access Requests.
+
+
+
+Was truncated to top 5 / bottom 5, hiding everything in between (with 90+ campaigns on some days, that's most of the list). Now shows every campaign live on the selected date, ranked highest to lowest, in a scrollable list with a quick filter box (by campaign name or platform) since a full day's list across every platform can get long. Same single-day scoping and null-date exclusion from the last two rounds — this only changes how many rows are shown, not which ones.
+
+
 
 Your hypothesis was exactly right, and better: **the fix for this already existed in the codebase** — it was just never wired into the endpoint feeding this specific card.
 
