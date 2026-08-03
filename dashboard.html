@@ -1847,7 +1847,7 @@
         </div>
         <div class="kpi-card">
           <div class="kpi-icon">📈</div>
-          <div class="kpi-label">Total ROAS</div>
+          <div class="kpi-label">Website ROAS</div>
           <div class="kpi-value" id="dtKpiRoas"><span class="skel skel-val"></span></div>
           <div><span class="kpi-delta" id="dtKpiRoasDelta"><span class="skel skel-delta"></span></span></div>
           <div class="kpi-sub" id="dtKpiRoasSub"><span class="skel skel-sub"></span></div>
@@ -1880,6 +1880,24 @@
           </div>
         </div>
 
+      </div>
+
+      <!-- Ad Spend Breakdown: hierarchical — Amazon (Neat Amazon +
+           Acutas) and Website (Meta + Google) shown as group totals
+           with their sub-platforms nested underneath; Flipkart and
+           Blinkit stand alone since they have no sibling data source.
+           Populated by renderDTAdSpendBreakdown(), called from
+           renderDT() with the same targets object already fetched
+           for the KPI cards above — no extra request needed. -->
+      <div class="card" style="margin-top:18px;">
+        <div class="card-header">
+          <span class="card-title">Ad Spend Breakdown</span>
+          <span class="card-badge">By platform group</span>
+        </div>
+        <div id="dtAdSpendBreakdown" style="display:flex;flex-direction:column;gap:14px;">
+          <div class="skel skel-row" style="display:block;height:40px;"></div>
+          <div class="skel skel-row" style="display:block;height:40px;"></div>
+        </div>
       </div>
 
       <!-- Campaign Performance: highest to lowest gross campaign,
@@ -4886,6 +4904,63 @@ async function loadDTCampaignRanking(date, myToken) {
   el.innerHTML = html;
 }
 
+// Hierarchical spend view: Amazon (Neat Amazon + Acutas) and Website
+// (Meta + Google) as expandable group totals with their sub-platforms
+// nested underneath; Flipkart/Blinkit stand alone since they don't
+// have a sibling data source the way Amazon/Acutas or Meta/Google do.
+function renderDTAdSpendBreakdown(targets) {
+  const el = document.getElementById('dtAdSpendBreakdown');
+  if (!el) return;
+
+  const spendOf = p => targets[p]?.spendActual || 0;
+  const planOf  = p => targets[p]?.spendTarget || 0;
+
+  const groupRow = (label, color, subPlatforms, standalone, showRoas) => {
+    const spend = subPlatforms.reduce((s, p) => s + spendOf(p), 0);
+    const plan  = subPlatforms.reduce((s, p) => s + planOf(p), 0);
+    const roas  = (showRoas && spend > 0) ? (subPlatforms.reduce((s, p) => s + (targets[p]?.achieved || 0), 0) / spend) : null;
+    const planPct = plan > 0 ? (spend / plan * 100) : null;
+
+    const header = '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;' + (standalone ? '' : 'border-bottom:1px solid #f1f5f9;margin-bottom:2px;') + '">' +
+      '<span style="font-size:12.5px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:8px;">' +
+        '<span style="width:8px;height:8px;border-radius:2px;background:' + color + ';display:inline-block;"></span>' + label +
+      '</span>' +
+      '<span style="text-align:right;">' +
+        '<span style="font-size:13px;font-weight:700;color:#1e293b;">' + fmtRevenue(spend) + '</span>' +
+        (plan ? '<span style="font-size:10.5px;color:#94a3b8;"> / ' + fmtRevenue(plan) + ' plan' + (planPct != null ? ' (' + planPct.toFixed(0) + '%)' : '') + '</span>' : '') +
+        (roas != null ? '<span style="font-size:10.5px;color:#059669;margin-left:8px;">ROAS ' + fmtRoas(roas) + '</span>' : '') +
+      '</span>' +
+    '</div>';
+
+    if (standalone) return header;
+
+    const subRows = subPlatforms.map(p => {
+      const m = PLATFORM_META[p] || { label: p.toUpperCase(), pillClass: 'pill-amz' };
+      const s = spendOf(p), pl = planOf(p);
+      // ROAS only shown for Website's sub-platforms — the old
+      // dashboard never computes ROAS for marketplace platforms
+      // (Amazon/Acutas), only for paid-traffic-driven Website sales.
+      const r = (showRoas && s > 0) ? ((targets[p]?.achieved || 0) / s) : null;
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0 5px 16px;">' +
+        '<span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span>' +
+        '<span style="text-align:right;">' +
+          '<span style="font-size:12px;color:#475569;">' + fmtRevenue(s) + '</span>' +
+          (pl ? '<span style="font-size:10px;color:#cbd5e1;"> / ' + fmtRevenue(pl) + '</span>' : '') +
+          (r != null ? '<span style="font-size:10px;color:#94a3b8;margin-left:6px;">ROAS ' + fmtRoas(r) + '</span>' : '') +
+        '</span>' +
+      '</div>';
+    }).join('');
+
+    return header + subRows;
+  };
+
+  el.innerHTML =
+    groupRow('Amazon',   '#ff9900', ['amazon', 'acutas'], false, false) +
+    groupRow('Flipkart', '#0077ff', ['flipkart'], true, false) +
+    groupRow('Blinkit',  '#fbbf24', ['blinkit'],  true, false) +
+    groupRow('Website',  '#1877f2', ['google', 'meta'], false, true);
+}
+
 function renderDT(targets, achieved) {
   const platforms = PLATFORMS_DT;
   let totalTarget   = 0, totalAchieved = 0, totalUnits = 0;
@@ -4904,7 +4979,20 @@ function renderDT(targets, achieved) {
 
   const attainPct = totalTarget > 0 ? (totalAchieved / totalTarget * 100) : 0;
   const attainCls = attainPct >= 100 ? 'up' : attainPct >= 80 ? '' : 'down';
-  const overallRoas = totalSpendActual > 0 ? (totalAchieved / totalSpendActual) : null;
+
+  // ROAS is deliberately NOT "all revenue / all spend" — ported from
+  // the old dashboard, which defines it as Website revenue / Website
+  // ad spend (Meta + Google) ONLY, explicitly excluding Amazon/
+  // Flipkart/Blinkit from both sides of the ratio. Blending everything
+  // together (what this used to do) mixes Amazon's mostly-organic
+  // marketplace revenue against a much smaller ad spend figure,
+  // producing an inflated "vanity ROAS" that doesn't mean what it
+  // looks like it means — ROAS is fundamentally a paid-traffic
+  // efficiency metric, and Amazon/Flipkart/Blinkit sales aren't
+  // driven by a click the way Website traffic from Meta/Google is.
+  const websiteAchieved    = (achieved.meta?.revenue || targets.meta?.achieved || 0) + (achieved.google?.revenue || targets.google?.achieved || 0);
+  const websiteSpendActual = (targets.meta?.spendActual || 0) + (targets.google?.spendActual || 0);
+  const overallRoas = websiteSpendActual > 0 ? (websiteAchieved / websiteSpendActual) : null;
   const spendVsPlanPct = totalSpendTarget > 0 ? (totalSpendActual / totalSpendTarget * 100) : null;
 
   // KPIs
@@ -4931,9 +5019,9 @@ function renderDT(targets, achieved) {
     }
     const roasSubEl = document.getElementById('dtKpiRoasSub');
     if (roasSubEl) {
-      roasSubEl.innerHTML = (totalSpendActual > 0)
-        ? fmtRevenue(totalAchieved) + ' / ' + fmtRevenue(totalSpendActual) + ' spend'
-        : 'No spend data yet';
+      roasSubEl.innerHTML = (websiteSpendActual > 0)
+        ? fmtRevenue(websiteAchieved) + ' / ' + fmtRevenue(websiteSpendActual) + ' website spend'
+        : 'No website spend data yet';
     }
   }
 
@@ -4948,28 +5036,50 @@ function renderDT(targets, achieved) {
     }
     const spendSubEl = document.getElementById('dtKpiSpendSub');
     if (spendSubEl) {
-      spendSubEl.innerHTML = overallRoas != null
-        ? 'ROAS: ' + fmtRoas(overallRoas) + (totalSpendTarget ? ' · Plan: ' + fmtRevenue(totalSpendTarget) : '')
-        : (totalSpendTarget ? 'Plan: ' + fmtRevenue(totalSpendTarget) : 'No spend data yet');
+      // Deliberately doesn't repeat "ROAS: x" here anymore — this card
+      // is TOTAL spend across every platform (Amazon + Flipkart +
+      // Blinkit + Website combined), and blending that total against
+      // Website-only ROAS in the same line was exactly the misleading
+      // pairing this whole fix corrects. See "Website ROAS" card for
+      // the real ROAS figure and what it's actually measuring against.
+      spendSubEl.innerHTML = totalSpendTarget ? 'Plan: ' + fmtRevenue(totalSpendTarget) : 'Across all platforms';
     }
   }
 
-  // Platform progress bars
-  document.getElementById('dtPlatformProgress').innerHTML = platforms.map(p => {
+  // Platform progress bars — Meta + Google are shown merged as a
+  // single "Website" row here (matching how the rest of the app treats
+  // them as one attribution channel), while Amazon and Acutas stay as
+  // separate rows since nothing asked for those to be merged too.
+  const progressGroups = [
+    { key: 'amazon',   platforms: ['amazon'] },
+    { key: 'acutas',   platforms: ['acutas'] },
+    { key: 'flipkart', platforms: ['flipkart'] },
+    { key: 'blinkit',  platforms: ['blinkit'] },
+    { key: 'website',  platforms: ['meta', 'google'] },
+  ];
+  document.getElementById('dtPlatformProgress').innerHTML = progressGroups.map(group => {
+    const p        = group.key;
     const m        = PLATFORM_META[p] || { label: p.toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
-    const tgt      = targets[p]?.target   || 0;
-    const ach      = achieved[p]?.revenue || targets[p]?.achieved || 0;
+    const tgt      = group.platforms.reduce((sum, gp) => sum + (targets[gp]?.target || 0), 0);
+    const ach      = group.platforms.reduce((sum, gp) => sum + (achieved[gp]?.revenue || targets[gp]?.achieved || 0), 0);
+    const spendA   = group.platforms.reduce((sum, gp) => sum + (targets[gp]?.spendActual || 0), 0);
+    const spendT   = group.platforms.reduce((sum, gp) => sum + (targets[gp]?.spendTarget || 0), 0);
     const pct      = tgt > 0 ? Math.min((ach / tgt * 100), 150) : 0;  // cap bar at 150%
     const pctLabel = tgt > 0 ? (ach / tgt * 100).toFixed(1) : '0';
     const pctCls   = pct >= 100 ? 'over' : pct >= 80 ? 'on' : pct >= 50 ? 'under' : 'low';
-    const spendA   = targets[p]?.spendActual || 0;
-    const spendT   = targets[p]?.spendTarget || 0;
-    const roasP    = targets[p]?.roas;
+    // ROAS only shown for Website — see the comment on overallRoas
+    // above for why: it's a paid-traffic efficiency metric, not
+    // meaningful for Amazon/Flipkart/Blinkit's mostly-organic sales.
+    // The old dashboard never computes or shows a ROAS figure for
+    // those platforms at all, only for Website (Meta+Google).
+    const roasP    = (p === 'website' && spendA > 0) ? (ach / spendA) : null;
     const spendLine = (spendA > 0 || spendT > 0)
       ? '<div style="font-size:10.5px;color:#94a3b8;margin-top:3px;">Spend: ' + fmtRevenue(spendA) + (spendT ? ' / ' + fmtRevenue(spendT) + ' plan' : '') + (roasP != null ? ' · ROAS ' + fmtRoas(roasP) : '') + '</div>'
       : '';
     return '<div class="progress-wrap"><div class="progress-header"><span class="progress-label"><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></span><div class="progress-vals"><span class="progress-achieved">' + fmtRevenue(ach) + '</span><span style="color:#94a3b8;font-size:11px;">/</span><span class="progress-target">' + fmtRevenue(tgt) + '</span><span class="progress-pct ' + pctCls + '">' + pctLabel + '%</span></div></div><div class="progress-track"><div class="progress-fill" style="width:' + Math.min(pct, 100) + '%;background:' + m.color + ';opacity:' + (pct < 50 ? 0.5 : 1) + ';"></div></div>' + spendLine + '</div>';
   }).join('');
+
+  renderDTAdSpendBreakdown(targets);
 
   // 7-day attainment trend — only render when real achieved data exists
   const trendCanvas  = document.getElementById('dtTrendChart');
