@@ -1154,7 +1154,7 @@
         <span style="font-size:10px;color:#64748b;">Live</span>
       </div>
 
-      <span class="tag-admin">Admin</span>
+      <span class="tag-admin" id="headerAdminBadge" style="display:none;">Admin</span>
 
       <!-- Client Switcher -->
       <select class="select-styled" id="clientSwitcher" title="Switch client">
@@ -3880,6 +3880,15 @@ async function applyBranding(cfg) {
   state.isAdmin = isAdmin;
   updateViewAsToggleUI();
 
+  // This badge used to be static HTML that always said "Admin"
+  // regardless of who was actually logged in — meaning it never
+  // proved anything and was actively misleading while debugging the
+  // branding issue below (it looked like confirmation of admin status
+  // when it wasn't checking anything at all). Now genuinely reflects
+  // cfg.user.isAdmin from this request.
+  const adminBadgeEl = document.getElementById('headerAdminBadge');
+  if (adminBadgeEl) adminBadgeEl.style.display = isAdmin ? 'inline-block' : 'none';
+
   const viewingAsClient = isAdmin && getViewAsClient();
   const badgeEl = document.getElementById('headerViewAsClientBadge');
   if (badgeEl) badgeEl.style.display = viewingAsClient ? 'inline-block' : 'none';
@@ -4979,9 +4988,9 @@ function renderDTAdSpendBreakdown(targets) {
   };
 
   el.innerHTML =
-    groupRow('Amazon',   '#ff9900', ['amazon', 'acutas'], false, false) +
-    groupRow('Flipkart', '#0077ff', ['flipkart'], true, false) +
-    groupRow('Blinkit',  '#fbbf24', ['blinkit'],  true, false) +
+    groupRow('Amazon',   '#ff9900', ['amazon', 'acutas'], false, true) +
+    groupRow('Flipkart', '#0077ff', ['flipkart'], true, true) +
+    groupRow('Blinkit',  '#fbbf24', ['blinkit'],  true, true) +
     groupRow('Website',  '#1877f2', ['google', 'meta'], false, true);
 }
 
@@ -5096,7 +5105,13 @@ function renderDT(targets, achieved) {
     // meaningful for Amazon/Flipkart/Blinkit's mostly-organic sales.
     // The old dashboard never computes or shows a ROAS figure for
     // those platforms at all, only for Website (Meta+Google).
-    const roasP    = (p === 'website' && spendA > 0) ? (ach / spendA) : null;
+    // Shown for every platform now, not just Website — the earlier
+    // restriction (matching the old dashboard's headline "Total ROAS"
+    // definition) was about which number gets top billing as THE
+    // ROAS figure, not about hiding per-platform efficiency data
+    // entirely. Per-platform ROAS here is still useful context even
+    // though it's not what the KPI card above means by "Website ROAS."
+    const roasP    = spendA > 0 ? (ach / spendA) : null;
     const spendLine = (spendA > 0 || spendT > 0)
       ? '<div style="font-size:10.5px;color:#94a3b8;margin-top:3px;">Spend: ' + fmtRevenue(spendA) + (spendT ? ' / ' + fmtRevenue(spendT) + ' plan' : '') + (roasP != null ? ' · ROAS ' + fmtRoas(roasP) : '') + '</div>'
       : '';
