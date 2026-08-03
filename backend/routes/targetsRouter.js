@@ -35,7 +35,7 @@ router.get('/:client_slug/targets', rbacMiddleware, async (req, res) => {
   // 2. Load actual revenue for the same date from revenue_data
   const { data: revenueRows, error: rErr } = await supabaseAdmin
     .from('revenue_data')
-    .select('platform, standard_revenue, standard_units')
+    .select('platform, standard_revenue, standard_units, standard_status')
     .eq('client_id', client.id)
     .eq('order_date', date);
 
@@ -53,8 +53,23 @@ router.get('/:client_slug/targets', rbacMiddleware, async (req, res) => {
   if (sErr) return res.status(500).json({ error: 'Failed to load spend actuals.' });
 
   // 3. Aggregate actuals by platform
+  //
+  // "Achieved" excludes cancelled orders — ported directly from the old
+  // dashboard's /api/targets/summary endpoint, which has this exact
+  // exclusion with a comment marking it as a deliberate bug fix:
+  // "BUG FIX: Exclude Cancelled orders (status = 'Cancelled')". This
+  // system had no such exclusion at all, so a cancelled order still
+  // inflated "Today's Revenue" and everything derived from it — the
+  // same class of overstatement as the revenue-dedup and Meta-discount
+  // issues already fixed. Only "cancelled"/"canceled" are excluded
+  // here, not "returned" or other statuses — matching the specific set
+  // the old system's TARGETS endpoint uses (its marketing-summary
+  // endpoint uses a wider exclusion list for a different report; this
+  // one mirrors the narrower, Daily-Targets-specific version).
+  const CANCELLED_STATUSES = new Set(['cancelled', 'canceled']);
   const actuals = {};
   for (const row of (revenueRows || [])) {
+    if (row.standard_status && CANCELLED_STATUSES.has(String(row.standard_status).toLowerCase())) continue;
     const p = row.platform;
     if (!actuals[p]) actuals[p] = { revenue: 0, units: 0, spend: 0 };
     actuals[p].revenue += Number(row.standard_revenue) || 0;

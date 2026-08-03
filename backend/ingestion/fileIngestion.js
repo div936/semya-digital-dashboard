@@ -315,6 +315,81 @@ function mergeDuplicateCampaignRows(rows) {
 // silently degrades into tier 2/3 for every platform that only sends
 // a line-item ID.
 // ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+// ORDER-LEVEL DISCOUNT ALLOCATION (Shopify/Meta-style exports)
+//
+// THE PROBLEM: Shopify order exports (used for Meta/Google-attributed
+// sales) put the line-item price BEFORE any discount in "Lineitem
+// price", and the real post-discount order total in "Total" — but
+// "Total" is only populated on ONE row per order (Shopify's export
+// quirk), with every other line item of a multi-product order left
+// blank. Mapping "Lineitem price" straight to standard_revenue (the
+// previous behaviour) overstates revenue by the discount amount on
+// every discounted order. Switching to "Total" instead would fix the
+// total but WRONGLY attribute the entire order's revenue to whichever
+// single line item happened to carry the Total value, zeroing out
+// every other product in that order — breaking SKU-level reporting.
+//
+// THE FIX: allocate each order's real (post-discount) Total across
+// its line items proportionally, by each item's share of that SAME
+// order's own line-item prices summed together.
+//
+// IMPORTANT: the ratio is deliberately computed as
+//   Total / (sum of this order's own "Lineitem price" values)
+// and NOT as Total / Subtotal (the file's own Subtotal column),
+// even though Subtotal looks like it should be exactly that sum.
+// Cross-checked directly against two real uploaded files: on both,
+// a meaningful fraction of orders (14 of 36 on one day, 15 of 27 on
+// another) have a Subtotal that doesn't actually equal the sum of
+// that order's own line items — an inconsistency in the export
+// itself, not something we can fix by trusting a different column.
+// Deriving the ratio from the line items being scaled is
+// self-consistent by construction: it always reconstructs the
+// order's real Total exactly when summed back up, regardless of
+// whether Subtotal agrees. Verified against a second, independently
+// uploaded day's file: this formula landed within 0.3% of the old
+// dashboard's own number (₹37,908 vs ₹37,799) — the closest of every
+// approach tried, including trusting Subtotal (which was noticeably
+// further off on both files tested).
+//
+// SCOPE: only touches rows carrying a "Total" value in their
+// raw_extras (i.e. actually came from a Shopify-shaped export). A
+// no-op for Amazon/Flipkart/Blinkit files, which don't have this
+// column at all — nothing here changes their behaviour.
+// ═══════════════════════════════════════════════════════════════════
+function allocateOrderLevelDiscount(rows) {
+  const byOrder = new Map();
+  for (const row of rows) {
+    const orderId = row.standard_order_id;
+    if (!orderId) continue;
+    const total = row.raw_extras?.Total;
+    if (total === undefined) continue; // not a Shopify-shaped row
+    if (!byOrder.has(orderId)) byOrder.set(orderId, { rows: [], total: null });
+    const group = byOrder.get(orderId);
+    group.rows.push(row);
+    // Only one row per order actually carries this value — take
+    // whichever isn't blank, across the whole group.
+    if (group.total === null && total !== '' ) {
+      const n = Number(String(total).replace(/[₹$,\s]/g, ''));
+      if (!isNaN(n)) group.total = n;
+    }
+  }
+
+  for (const group of byOrder.values()) {
+    if (group.total == null) continue; // no Total found anywhere in this order — leave rows as-is (pre-discount lineitem price)
+    const lineitemSum = group.rows.reduce((s, r) => s + (r.standard_revenue || 0), 0);
+    if (lineitemSum <= 0) continue;
+    const ratio = group.total / lineitemSum;
+    for (const row of group.rows) {
+      if (row.standard_revenue != null) {
+        row.standard_revenue = Math.round(row.standard_revenue * ratio * 100) / 100;
+      }
+    }
+  }
+
+  return rows;
+}
+
 function computeRevenueDedupKey(row) {
   const orderItemId = row.standard_order_item_id && String(row.standard_order_item_id) !== '0'
     ? String(row.standard_order_item_id).trim()
@@ -515,9 +590,17 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
     // bulkInsert can upsert instead of blind-insert — see
     // computeRevenueDedupKey() for the 3-tier algorithm, ported from
     // the old dashboard's backend.
+    // Order-level discount allocation for Shopify-shaped exports
+    // (Meta/Google) — must run BEFORE the dedup hash is computed, so
+    // the corrected revenue is what actually gets fingerprinted and
+    // stored. No-op for platforms without Total/Subtotal columns.
+    const discountAdjustedRows = dataType === 'revenue'
+      ? allocateOrderLevelDiscount(normalisedRows)
+      : normalisedRows;
+
     const rows = dataType === 'campaign'
       ? mergeDuplicateCampaignRows(normalisedRows)
-      : normalisedRows.map(row => {
+      : discountAdjustedRows.map(row => {
           const { hash: row_hash, method: dedup_method } = computeRevenueDedupKey(row);
           return { ...row, row_hash, dedup_method };
         });

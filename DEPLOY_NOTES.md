@@ -92,7 +92,57 @@ The previous round's timezone fix (IST-converting every raw file timestamp) was 
 
 **If you already deployed the previous (IST-conversion) version and uploaded files through it**, some rows may have been filed under the wrong date during that window — re-upload the affected files after this fix deploys to correct them (the upsert logic from the earlier revenue de-dup fix makes this safe).
 
-## This round's fixes ("No data" badge race condition, campaign ranking scope)
+## This round's fixes — ported directly from the old dashboard's real source code
+
+Read `/api/targets/summary`, `/api/marketing/summary`, and the ad-spend endpoints in the old dashboard's actual backend (`mangalam-updated/backend/main.py`, sent earlier in this conversation) instead of reverse-engineering behavior from screenshots. Found two more real, provable bugs.
+
+| What | Old dashboard's actual logic | What this system was doing | Fix |
+|---|---|---|---|
+| **Cancelled orders in "Achieved"** | `/api/targets/summary` explicitly excludes them — the old code has a comment marking it as a deliberate fix: `"BUG FIX: Exclude Cancelled orders (status = 'Cancelled')"` | No exclusion at all — every cancelled order still counted toward Today's Revenue and everything derived from it | `targetsRouter.js` now excludes `cancelled`/`canceled` orders from achieved revenue, matching exactly |
+| **"Total ROAS"** | Always `Website revenue ÷ Website ad spend (Meta + Google only)` — explicitly never blended with Amazon/Flipkart/Blinkit on either side | `totalAchieved ÷ totalSpendActual` — summed revenue from every platform divided by summed spend from every platform, which is misleading since Amazon's mostly-organic marketplace revenue was being credited against total spend that's mostly Amazon's own | Renamed the card to **"Website ROAS"** and fixed the formula to Website-only, matching the old system exactly. Removed the now-inconsistent per-platform ROAS display for Amazon everywhere it appeared (Platform Attainment, Ad Spend Breakdown) — the old dashboard never shows a ROAS figure for marketplace platforms, only for Website. |
+
+**Why ROAS being platform-scoped actually matters, not just cosmetically:** ROAS is fundamentally a paid-traffic efficiency question — "did this ad spend produce this revenue." Amazon/Flipkart/Blinkit sales happen mostly organically on those marketplaces; crediting them against ad spend (mostly Amazon's own sponsored listings) produces a number that looks like marketing efficiency but isn't measuring what it claims to. The old dashboard's own design already recognized this and scoped ROAS accordingly — this brings the new system in line with that reasoning, not just the number.
+
+**Also confirmed while reading this code:** the Ad Spend Breakdown hierarchy from last round (Amazon → Neat + Acutas, Flipkart, Blinkit, Website → Meta + Google) matches the old dashboard's own `amazon_spend_detail` / `website_breakdown` structure closely — good confirmation that feature was built in the right shape from the start.
+
+
+
+Thanks to the Aug 2 files you sent alongside the old dashboard's own numbers for the same day, I could directly cross-validate this properly for the first time — and found a better formula than last round's.
+
+**What changed in `allocateOrderLevelDiscount()` (`fileIngestion.js`):** the discount ratio is now computed as `Total / (sum of that order's own Lineitem price values)` — **not** `Total / Subtotal` (the file's own Subtotal column), which is what the previous version used.
+
+**Why:** cross-checking directly against two real uploaded files, a meaningful fraction of orders — 14 of 36 on one day, 15 of 27 on another — have a `Subtotal` that doesn't actually equal the sum of that order's own line items. That's an inconsistency in the export file itself. Trusting it as the discount baseline threw the allocation off. Deriving the ratio from the line items actually being scaled is self-consistent by construction — it always reconstructs the order's real `Total` exactly when summed back up, regardless of whether `Subtotal` agrees with anything.
+
+**Validated end-to-end**, running the actual deployed function against your real Aug 2 Meta file: **₹37,908.03**, against the old dashboard's **₹37,799** for the same day — within 0.3%, the closest of every formula tried (including the previous Subtotal-based one, and a plain "sum of order Totals," both tested against the same file).
+
+Also confirmed independently: your new Amazon (₹12,786) and Acutas (₹4,930) numbers sum to **₹17,716** — an exact match to the old dashboard's combined Amazon figure for Aug 2. The date-extraction fix from a few rounds back is holding up correctly.
+
+
+
+| What | Details |
+|---|---|
+| **Platform Attainment now groups Meta + Google as "Website"** | Was showing them as two separate rows; now merged into one, matching how the rest of the app treats them as a single attribution channel. Amazon and Acutas stay separate (nothing asked for those to merge). |
+| **New Ad Spend Breakdown card** | Hierarchical: Amazon (total) → Neat Amazon + Acutas nested underneath; Flipkart and Blinkit standalone; Website (total) → Meta + Google nested underneath. Reuses the same `targets` data already being fetched for the KPI cards — no extra request. |
+| **Meta/Shopify revenue — proportional discount allocation** | Implemented in `fileIngestion.js` (`allocateOrderLevelDiscount`): each order's real post-discount `Total` is now allocated across its line items proportionally by each item's share of the pre-discount `Subtotal`, instead of using the pre-discount `Lineitem price` directly. This is a real improvement and preserves per-SKU revenue attribution (which a naive switch to `Total` would have broken — Shopify only populates `Total` on one row per multi-item order). **Important honest caveat below.** |
+
+### Why the Meta total still won't match your number exactly
+Tracing this all the way through, I found the uploaded Meta file has internal inconsistencies — several orders where `Subtotal` doesn't actually equal the sum of that order's own `Lineitem price` values, even accounting for every row belonging to that order (e.g. order `NEAT-16153`: a single-line-item order priced at ₹608, but `Subtotal` says ₹1,155.20 — for one line item, those should be equal by definition). Fifteen of twenty-seven orders on Aug 1 have this mismatch. That's a data-quality issue in the source file, not something fixable in code — no formula can reconcile numbers that don't agree with each other in the first place. Worth checking with whoever generates this export whether that's expected/known. The new proportional-allocation logic is still the right general-purpose fix and will produce noticeably better numbers than before on files that don't have this inconsistency.
+
+### Campaign Performance ranking — diagnosis, not yet fixed
+The single-day scoping fix from last round IS working (the "Lowest Gross Sales" list correctly changed to show Amazon's ₹0 campaigns for this date). But "Highest Gross Sales" still shows the same large historical Google figures (₹5.38L etc.) unchanged — which means those specific Google campaign rows in the database are themselves tagged with `campaign_date = 2026-08-01` despite representing a much larger figure than a single day's spend would produce. This smells like the same class of bug we already found and fixed for Amazon's `7 Day Total Sales` column (a rolling-window figure mapped as if it were a single day's number) — possibly present in whatever Google Ads export originally populated this data. I don't have that source file to confirm directly. Run this to check:
+
+```sql
+select campaign_name, campaign_date, standard_revenue, standard_spend, created_at
+from campaign_data
+where client_id = 'b5bdce75-9b69-47ef-a1e7-bc3c09612ef6'
+  and platform = 'google'
+  and campaign_date = '2026-08-01'
+order by standard_revenue desc
+limit 10;
+```
+If `created_at` shows these rows were uploaded well before this recent session (i.e. old data from an earlier, unrelated upload), that's the likely explanation — worth checking against whatever Google Ads export file was originally used, and confirming whether its own "sales" column is a rolling window like Amazon's.
+
+
 
 | What | Details |
 |---|---|
