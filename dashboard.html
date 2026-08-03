@@ -5423,7 +5423,7 @@ async function inviteCaEmployee() {
   if (!email) { alert('Enter an email address first.'); return; }
   if (!caState.clientId) { alert('Select a client first.'); return; }
   try {
-    await apiFetch('/auth/admin/invite-employee', {
+    const result = await apiFetch('/auth/admin/invite-employee', {
       method: 'POST',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, clientId: caState.clientId, isLead: leadInput?.checked || false }),
@@ -5432,6 +5432,28 @@ async function inviteCaEmployee() {
     if (leadInput) leadInput.checked = false;
     loadCaEmployees(caState.clientId);
     loadCaClients(); // refresh employee counts
+
+    // BUG FIX: this used to ignore the response entirely — the
+    // backend could generate a real, working sign-in link and this
+    // code would just throw it away with no email ever having been
+    // sent, so the invited person genuinely never received anything,
+    // no matter how long they waited.
+    if (result?.emailSent) {
+      alert('Invite email sent to ' + result.email + '.');
+    } else if (result?.magicLink) {
+      // Most likely cause: this email already has an account (e.g.
+      // re-inviting, or they already sign in with a password some
+      // other way) — Supabase won't send a fresh "invite" email to an
+      // existing user, so there's a real sign-in link here instead
+      // that needs to be copied and sent manually.
+      prompt(
+        result.email + ' already has an account, so no new invite email was sent. ' +
+        'Copy this sign-in link and send it to them directly:',
+        result.magicLink
+      );
+    } else {
+      alert('Employee added, but no invite email could be sent and no fallback link could be generated — check the server logs.');
+    }
   } catch (e) {
     alert('Failed to invite employee: ' + e.message);
   }
