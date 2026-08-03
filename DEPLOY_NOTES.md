@@ -92,7 +92,15 @@ The previous round's timezone fix (IST-converting every raw file timestamp) was 
 
 **If you already deployed the previous (IST-conversion) version and uploaded files through it**, some rows may have been filed under the wrong date during that window — re-upload the affected files after this fix deploys to correct them (the upsert logic from the earlier revenue de-dup fix makes this safe).
 
-## This round's fixes — ported directly from the old dashboard's real source code
+## This round's fix — targets weren't carrying forward to future dates
+
+**The bug:** setting a target for one date (e.g. 01-07-2026) had no effect on any later date — 02-07-2026 showed `Target: ₹0` and "No data" as if nothing had ever been set. Confirmed by reading the old dashboard's actual schema: its `platform_targets` table has `platform VARCHAR(50) UNIQUE` — **no date column at all.** A target is a single ongoing setting per platform in the old system; there's no such thing as a "date-specific" target there. This system's schema is date-scoped (`daily_targets` has a `target_date` column) but the lookup only ever matched the exact date, with no fallback — so a target only ever applied to the literal day it was saved under.
+
+**The fix, in `targetsRouter.js`:** kept the date-scoped schema (a real improvement over the old system — it preserves a history of when targets changed, which a single-row-per-platform design can't do at all), but changed the lookup from an exact-date match to "the most recent target row on or before the requested date." Practically: set a target once, it holds for every day after that until you set a new one — matching what the old system does and what you expect — while past dates before a target was ever set still correctly show ₹0 (arguably more correct than the old system, which has no concept of "before this was set" at all).
+
+**No frontend changes needed** — the Daily Revenue Targets modal already reads from this same endpoint, so it automatically shows the carried-forward value when you open it for any date, and saving a new target from the modal correctly becomes the new "effective from" point going forward.
+
+
 
 Read `/api/targets/summary`, `/api/marketing/summary`, and the ad-spend endpoints in the old dashboard's actual backend (`mangalam-updated/backend/main.py`, sent earlier in this conversation) instead of reverse-engineering behavior from screenshots. Found two more real, provable bugs.
 

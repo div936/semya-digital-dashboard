@@ -3,9 +3,26 @@
 // GET  /clients/:client_slug/targets?date=YYYY-MM-DD
 //   Returns the target + achieved revenue for each platform for date.
 //
+//   TARGET CARRY-FORWARD: a target set for one date applies to every
+//   SUBSEQUENT date too, until a newer target is set — it does NOT
+//   only apply to the exact date it was saved under. Ported from the
+//   old dashboard, whose `platform_targets` table has a UNIQUE
+//   constraint on `platform` alone (no date column at all): a target
+//   is a single ongoing setting per platform, not a per-day one.
+//   This system's schema keeps target_date (a real improvement — it
+//   preserves a history of when targets changed, which the old
+//   system's single-row-per-platform design couldn't do at all), but
+//   the lookup below picks the MOST RECENT row with target_date <=
+//   the requested date, not an exact match — so the practical
+//   behavior matches what admins actually expect: set it once, it
+//   holds until you change it again.
+//
 // PUT  /clients/:client_slug/targets   (admin only)
 //   Body: { date: 'YYYY-MM-DD', targets: { amazon: { target: 600000 }, ... } }
-//   Upserts one row per platform into daily_targets.
+//   Upserts one row per platform into daily_targets, dated from
+//   whichever date is passed — that date becomes the point going
+//   forward (and only forward — see the carry-forward note above)
+//   where this new target takes effect.
 //
 // Mount in app.js:
 //   import targetsRouter from './routes/targetsRouter.js';
@@ -23,12 +40,18 @@ router.get('/:client_slug/targets', rbacMiddleware, async (req, res) => {
   const { client } = req.semya;
   const date = req.query.date || todayIST();
 
-  // 1. Load saved targets for this date
+  // 1. Load the most recent target row on or before this date, per
+  // platform — NOT an exact date match. Ordered newest-first so the
+  // first row encountered for each platform in the loop below is
+  // automatically the one that applies. A platform with no target
+  // ever set (for any date up to and including this one) simply
+  // won't appear here, same as before.
   const { data: targetRows, error: tErr } = await supabaseAdmin
     .from('daily_targets')
-    .select('platform, revenue_target, units_target')
+    .select('platform, revenue_target, units_target, spend_target, target_date')
     .eq('client_id', client.id)
-    .eq('target_date', date);
+    .lte('target_date', date)
+    .order('target_date', { ascending: false });
 
   if (tErr) return res.status(500).json({ error: 'Failed to load targets.' });
 
@@ -82,8 +105,13 @@ router.get('/:client_slug/targets', rbacMiddleware, async (req, res) => {
   }
 
   // 4. Build response shape: { targets: { amazon: { target, achieved, spendTarget, spendActual, roas } } }
+  // targetRows is ordered newest target_date first — only keep the
+  // FIRST row seen per platform (skip if already set), so the most
+  // recent target wins. Simply overwriting on every row would do the
+  // opposite: the last iteration (oldest date) would win instead.
   const targets = {};
   for (const row of (targetRows || [])) {
+    if (targets[row.platform]) continue; // already have this platform's most recent target
     const a = actuals[row.platform] || { revenue: 0, units: 0, spend: 0 };
     const spendTarget = Number(row.spend_target) || 0;
     targets[row.platform] = {
