@@ -92,7 +92,15 @@ The previous round's timezone fix (IST-converting every raw file timestamp) was 
 
 **If you already deployed the previous (IST-conversion) version and uploaded files through it**, some rows may have been filed under the wrong date during that window — re-upload the affected files after this fix deploys to correct them (the upsert logic from the earlier revenue de-dup fix makes this safe).
 
-## This round's feature — set a real password after the magic-link invite
+## This round's fix — Supabase Studio's own "send reset" button landed on the login page
+
+Only applies when using Supabase's dashboard "send password reset" button directly (not our own invite flow, which was already correctly pointed at `set-password.html`). That button always redirects to your project's configured default **Site URL**, which is the login page — nothing in our own code controls where it goes, since it's not part of our request/response flow at all.
+
+**Fix:** `index.html` now listens for Supabase's `PASSWORD_RECOVERY` auth event (fired specifically when a recovery link's session gets established) and immediately forwards to `set-password.html` when it fires — regardless of which flow actually sent the link. Also made `set-password.html` itself listen for both `SIGNED_IN` and `PASSWORD_RECOVERY` events (a recovery link can fire either depending on the exact flow), so it works correctly whether someone arrives via our invite flow or a direct Supabase Studio reset.
+
+**Worth doing on the Supabase side too, for full control going forward:** under Authentication → URL Configuration, add `set-password.html`'s full URL to the **Redirect URLs** allowlist. Not strictly required for this fix (the `index.html` forwarding handles it either way), but it means a reset triggered via the Admin API with an explicit `redirectTo` would be allowed to land there directly too.
+
+
 
 **New file:** `main/frontend/set-password.html` / `gh-pages/set-password.html`. Same black/white Semya branding as the login page.
 
