@@ -92,7 +92,13 @@ The previous round's timezone fix (IST-converting every raw file timestamp) was 
 
 **If you already deployed the previous (IST-conversion) version and uploaded files through it**, some rows may have been filed under the wrong date during that window — re-upload the affected files after this fix deploys to correct them (the upsert logic from the earlier revenue de-dup fix makes this safe).
 
-## This round's change — inventory management restructured per your request
+## This round's fix — Platform Health showing 0.0x ROAS for Meta despite real revenue
+
+Same root cause class as the earlier "Website ROAS" fix, found in a different widget: `renderPlatformHealth()` was computing ROAS from each campaign row's own self-reported "conversion value" (`standard_revenue` inside the ad-spend file itself), not the real attributed revenue from actual orders shown right next to it. Meta's ad-spend export apparently doesn't populate a meaningful conversion-value column (common when full server-side purchase tracking isn't wired into the ads platform) — so despite real spend and real revenue existing, the self-reported figure used for the ratio was near zero.
+
+**Fix:** now uses `p.totalRevenue` (the real, actual attributed revenue already being displayed in ₹ next to each platform) divided by real spend — same principle as the Website ROAS fix: real revenue over real spend, never self-reported-over-self-reported. This changes the ROAS shown for every platform in this widget, not just Meta, since the same self-reported-revenue issue was silently present for all of them — worth a quick recheck of Amazon/Flipkart's numbers here too once this deploys, since they may shift slightly.
+
+
 
 **Changed:** `main/backend/routes/inventoryRouter.js` (new bulk-upload endpoint), `main/frontend/dashboard.html`.
 

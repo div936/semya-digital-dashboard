@@ -3688,8 +3688,18 @@ function renderPlatformHealth(byPlatform, campaigns) {
     const pct  = total > 0 ? Math.round(p.totalRevenue / total * 100) : 0;
     const camp = campaigns.filter(c => c.platform === p.platform);
     const spend= camp.reduce((s, c) => s + (c.standard_spend || 0), 0);
-    const crev = camp.reduce((s, c) => s + (c.standard_revenue || 0), 0);
-    const roas = spend > 0 ? crev / spend : 0;
+    // Uses REAL attributed revenue from actual orders (p.totalRevenue,
+    // from revenue_data) — NOT each campaign row's own self-reported
+    // "conversion value" (standard_revenue from the ad-spend FILE
+    // itself). That self-reported figure is frequently zero or wildly
+    // understated whenever an advertiser doesn't have full
+    // server-side purchase tracking wired into their ads platform —
+    // Meta clearly driving real revenue while showing 0.0x ROAS here
+    // was exactly this: real spend, real orders, but a Meta Ads
+    // export with an empty/near-empty conversion-value column. Same
+    // fix already applied to "Website ROAS" on Daily Targets — real
+    // revenue over real spend, not self-reported-over-self-reported.
+    const roas = spend > 0 ? p.totalRevenue / spend : 0;
     const color = roasColor(roas);
     return `<div style="display:flex;align-items:center;justify-content:space-between;">
       <div style="display:flex;align-items:center;gap:8px;">
