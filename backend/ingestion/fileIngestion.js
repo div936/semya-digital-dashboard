@@ -391,7 +391,7 @@ function allocateOrderLevelDiscount(rows) {
   return rows;
 }
 
-function computeRevenueDedupKey(row) {
+export function computeRevenueDedupKey(row) {
   const orderItemId = row.standard_order_item_id && String(row.standard_order_item_id) !== '0'
     ? String(row.standard_order_item_id).trim()
     : '';

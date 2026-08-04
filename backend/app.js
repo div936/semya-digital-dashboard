@@ -10,6 +10,7 @@ import cors           from 'cors';
 import authRouter     from './routes/authRouter.js';
 import targetsRouter  from './routes/targetsRouter.js';
 import inventoryRouter from './routes/inventoryRouter.js';
+import reconciliationRouter from './routes/reconciliationRouter.js';
 import insightsRouter from './routes/insightsRouter.js';
 import clientRouter   from './routes/clientRouter.js';
 import uploadRouter      from './routes/uploadRouter.js';
@@ -87,6 +88,7 @@ app.use('/clients', adminBackfillRouter);
 app.use('/clients', dataManagerRouter);
 app.use('/clients', targetsRouter);
 app.use('/clients', inventoryRouter);
+app.use('/clients', reconciliationRouter);
 app.use('/clients', insightsRouter);
 app.use('/clients', projectionsRouter);
 

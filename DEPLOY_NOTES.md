@@ -92,7 +92,64 @@ The previous round's timezone fix (IST-converting every raw file timestamp) was 
 
 **If you already deployed the previous (IST-conversion) version and uploaded files through it**, some rows may have been filed under the wrong date during that window — re-upload the affected files after this fix deploys to correct them (the upsert logic from the earlier revenue de-dup fix makes this safe).
 
-## This round's fix — Website ad spend showing ~4x too high (Google Ads rollup rows)
+## This round's feature — Data Migration, fully built (Settings-only, admin-only)
+
+**New:** `main/backend/routes/reconciliationRouter.js` (full rebuild — 4 endpoints now: two missing-orders variants, logic-differences, and import). **Changed:** `main/backend/ingestion/fileIngestion.js` (exported `computeRevenueDedupKey` for reuse), `main/frontend/dashboard.html` (moved out of Daily Targets entirely, now lives only in Settings → Data Migration).
+
+### Where it lives now
+**Settings → Data Migration**, admin-only. Nothing about this shows up on any regular tab anymore — the button and card that were previously on Daily Targets are gone; this is the only place it's reachable.
+
+### What it does — three capabilities, as discussed
+1. **Missing Orders** — "Check All History" diffs the old dashboard's entire order ledger against this system in one pass (grouped by date, with the full row list below); "Check This Date" scopes it to one day. Either way, results show up as a real row-level list (SKU, Order ID, platform, status, revenue), not just a totals gap.
+2. **Logic Differences** — a genuinely different check: dates where the *same* orders exist in both systems but the computed revenue disagrees. That's a calculation bug, not missing data — the same category as the Google Ads rollup-row and Meta discount-allocation issues found earlier in this conversation. Differences under ₹5/day are treated as rounding noise.
+3. **Import, with review** — every missing row has a checkbox (all selected by default, deselect what you don't want). Platform mapping uses the old dashboard's own tagging logic exactly as you described: `source_tag == "Amazon"` → Neat, `"Acutas"` → Acutas, Website rows tagged `Meta`/`Google` accordingly, defaulting to Meta when untagged (matching the old system's own stated default). Any row where that mapping couldn't be confirmed gets a ⚠ next to the platform name — worth a manual look before importing those specifically. Import reuses the **exact same `row_hash` de-dup mechanism** protecting every normal file upload — safe to re-run, already-imported rows are automatically skipped, never duplicated.
+
+### Deploy order
+Backend, then frontend. No SQL.
+
+### Practical notes
+- "Check All History" pulls the old dashboard's *entire* ledger in one request — expect it to take real time on a mature dataset, more if that service needs to cold-start. This is an on-demand migration tool, not something to run casually or repeatedly.
+- The ⚠ platform-confidence flag exists specifically because a handful of old-dashboard rows might be untagged (no `source_tag` set) — those get a sensible default (Neat for Amazon-family, Meta for Website) but are flagged so you can manually correct the platform before importing if the default guess is wrong for that specific row.
+
+
+
+**New:** `main/backend/routes/reconciliationRouter.js` now has `GET /clients/:slug/reconciliation/missing-rows`. **Changed:** `main/frontend/dashboard.html` — the button on Daily Targets is now **"Find Missing Orders vs. Old Dashboard"**.
+
+### What changed from the previous version
+The first version of this feature only compared totals (target/achieved/spend per platform) — useful for spotting *that* something's off, but not *which* orders are actually missing. This replaces that with an actual row-level diff.
+
+### How it works
+- Pulls the old dashboard's `/data` endpoint — it returns its **entire** order ledger with no date filter built in, so this filters down to the requested date on our side.
+- Matches each old-dashboard row against this system's own `revenue_data` for the same date, using **(Order ID, SKU)** as the key — deliberately not platform, since the two systems use different platform groupings (this app splits Amazon into `amazon`/`acutas`; the old one groups Meta+Google as one "Website") and matching on platform would produce false "missing" results from label differences alone, not real gaps.
+- Anything on the old side with no match here is returned individually — SKU, Order ID, platform, state, status, and revenue — plus a running total of how much revenue that missing set represents.
+- Old-dashboard rows with no Order ID or SKU at all (some platforms don't always provide one) are reported separately as "can't be verified," not silently counted as either present or missing.
+
+### Deploy order
+Backend, then frontend. No SQL. This calls the old dashboard's live `/data` endpoint on every use, which returns its whole ledger — expect it to take a few seconds, more if that service is cold-starting (also on Render's free tier).
+
+### Honest scope note
+This tells you exactly *which* orders are missing so you can go investigate why (a file that was never uploaded, a row that failed silently during ingestion, etc.) — it does not import or add anything automatically. Every fix still happens the same way it has this whole conversation: find the specific cause, fix that.
+
+
+
+**New:** `main/backend/routes/reconciliationRouter.js`. **Changed:** `main/backend/app.js`, `main/frontend/dashboard.html`.
+
+### What it does
+A new **"Compare with Old Dashboard"** button on Daily Targets (admin-only) that pulls the same date's numbers from both systems and shows them side by side — target, achieved, and spend, per platform group, with mismatches highlighted in red — instead of the manual screenshot-and-eyeball comparison that's driven most of the fixes in this conversation so far.
+
+### How it works
+- **This system's numbers**: computed the same way Daily Targets already does — same cancelled-order exclusion, same target carry-forward logic, same platform grouping (Amazon = Neat+Acutas, Website = Meta+Google).
+- **Old dashboard's numbers**: pulled live, server-to-server, from `https://neat-everyday-performance-kd2j.onrender.com/api/targets/summary?report_date=YYYY-MM-DD`. This works because **the old dashboard's API has no authentication on any route** — confirmed directly from its source code (no auth dependency anywhere) and from the live site loading with no login wall. If that ever changes, this endpoint will need credentials added.
+- Differences under ₹1 are treated as rounding noise, not flagged — real discrepancies only.
+- If the old dashboard doesn't respond (it's also on Render's free tier and can cold-start, same as this app), this system's own numbers still display, with a clear note that the comparison itself failed rather than silently showing nothing.
+
+### Deploy order
+Backend, then frontend. No SQL. Try it on Daily Targets → Compare with Old Dashboard, for a date you already know has a discrepancy (like Aug 3 from this conversation) to confirm it surfaces correctly.
+
+### Honest limitation
+This compares **computed totals** (target/achieved/spend), not raw underlying rows — it'll tell you *that* Flipkart's achieved revenue differs by ₹X on a given date, but not *which specific order* caused it. For that level of detail, the per-file, per-row tracing we've been doing manually throughout this conversation is still the right tool. Worth building a deeper "diff the actual orders" version later if platform-level reconciliation stops being precise enough on its own.
+
+
 
 **Confirmed with exact math against your uploaded Google Ads file:** real spend was ₹4,182.68 (matches the old dashboard exactly), but the new dashboard showed ~₹16.7K — because Google Ads campaign exports append several aggregate rows after the real per-campaign rows: `Total: Campaigns`, `Total: Account`, `Total: Search`, `Total: Performance Max`, etc. Each of those carries its own real `Cost` figure — a sum of some subset of the campaigns above it — but our ingestion was treating them as ordinary campaign rows and summing their spend right alongside the real campaigns, multiplying the reported total several times over. Verified precisely: summing every row (real campaigns + all the non-zero "Total:" rows) produces ₹16,730.72 — almost exactly what was shown.
 

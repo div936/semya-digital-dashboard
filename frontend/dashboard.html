@@ -1209,6 +1209,10 @@
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
               Inventory Settings
             </button>
+            <button class="avatar-dropdown-item" style="padding-left:28px;font-size:11px;" data-role="admin" onclick="closeAvatarMenu(); openDataMigrationModal();">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+              Data Migration
+            </button>
             <button class="avatar-dropdown-item" style="padding-left:28px;font-size:11px;" data-role="admin" onclick="closeAvatarMenu(); openDataManager();">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
               Manage Data
@@ -2735,6 +2739,74 @@
       <span id="stockBulkFileName" style="font-size:12px;color:#94a3b8;"></span>
     </div>
     <div id="stockBulkUploadStatus" style="font-size:12px;"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     DATA MIGRATION MODAL  (Settings → Data Migration)
+     Admin-only, migration-parity tool — not meant to be a permanent
+     feature. Purpose: find exactly what the old dashboard has that
+     this system doesn't (row-level, not just totals), find dates
+     where the SAME orders exist in both but the computed revenue
+     disagrees (a calculation bug, not missing data), and import
+     reviewed rows using the same de-dup mechanism as normal uploads.
+══════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="dataMigrationModal">
+  <div class="modal" style="width:820px;max-height:90vh;overflow-y:auto;">
+    <div class="modal-header">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--theme-accent)" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+        <span class="modal-title">Data Migration</span>
+      </div>
+      <button class="modal-close" onclick="closeDataMigrationModal()">✕</button>
+    </div>
+    <p style="font-size:12px;color:#64748b;margin:-8px 0 20px;">Compares this system directly against the old dashboard's live data — used to verify parity before the old one is retired. Nothing here runs automatically; every check is on-demand, and importing always requires your review first.</p>
+
+    <!-- Tabs -->
+    <div style="display:flex;gap:0;background:#f1f5f9;border-radius:var(--radius-sm);padding:3px;margin-bottom:20px;width:fit-content;">
+      <button type="button" class="dm-migration-tab-btn active" id="dmTabBtn-missing" onclick="setDataMigrationTab('missing')"
+        style="padding:7px 16px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;background:#fff;color:#1e293b;box-shadow:0 1px 2px rgba(0,0,0,.06);">
+        Missing Orders
+      </button>
+      <button type="button" class="dm-migration-tab-btn" id="dmTabBtn-logic" onclick="setDataMigrationTab('logic')"
+        style="padding:7px 16px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;background:transparent;color:#64748b;">
+        Logic Differences
+      </button>
+    </div>
+
+    <!-- ═══ MISSING ORDERS ═══ -->
+    <div id="dmPanel-missing">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="runMissingOrdersCheck('all')" style="font-size:12px;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px;vertical-align:-2px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Check All History
+        </button>
+        <span style="font-size:12px;color:#94a3b8;">or a specific date:</span>
+        <input type="date" id="dmSpecificDate" style="padding:7px 10px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:12px;" />
+        <button class="btn btn-ghost" onclick="runMissingOrdersCheck('date')" style="font-size:12px;">Check This Date</button>
+      </div>
+      <div id="dmMissingSummary"></div>
+      <div id="dmMissingByDate" style="margin-bottom:16px;"></div>
+      <div id="dmMissingActions" style="display:none;align-items:center;gap:10px;margin-bottom:12px;">
+        <button class="btn btn-ghost" onclick="toggleAllMissingRows(true)" style="font-size:11px;padding:5px 10px;">Select all</button>
+        <button class="btn btn-ghost" onclick="toggleAllMissingRows(false)" style="font-size:11px;padding:5px 10px;">Select none</button>
+        <span id="dmSelectedCount" style="font-size:11px;color:#94a3b8;"></span>
+        <button class="btn btn-primary" onclick="importSelectedRows()" style="font-size:12px;margin-left:auto;">Import Selected</button>
+      </div>
+      <div id="dmImportStatus" style="font-size:12px;margin-bottom:10px;"></div>
+      <div id="dmMissingRows" style="max-height:400px;overflow-y:auto;overflow-x:auto;padding-right:16px;"></div>
+    </div>
+
+    <!-- ═══ LOGIC DIFFERENCES ═══ -->
+    <div id="dmPanel-logic" style="display:none;">
+      <p style="font-size:12px;color:#64748b;margin-bottom:14px;">Dates where the exact same orders exist in <strong>both</strong> systems (nothing missing either way) but the computed revenue still disagrees — this points at a calculation bug somewhere, not a data gap. Differences under ₹5 for the whole day are treated as rounding noise and left out.</p>
+      <button class="btn btn-primary" onclick="runLogicDifferencesCheck()" style="font-size:12px;margin-bottom:16px;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px;vertical-align:-2px;"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        Check for Logic Differences
+      </button>
+      <div id="dmLogicResults"></div>
+    </div>
+
   </div>
 </div>
 
@@ -4906,6 +4978,7 @@ function setBadgeDT(mode) {
 // call gets a token; only the most recent token's results are ever
 // applied to the DOM.
 let _dtFetchToken = 0;
+
 
 async function fetchAndRenderDT() {
   const { clientSlug } = state; if (!clientSlug) return;
@@ -7140,6 +7213,178 @@ document.getElementById('financialSettingsModal')?.addEventListener('click', fun
 
 // ─── Inventory Settings modal ─────────────────────────────────────
 let _invWarehouses = []; // cached for the stock-level warehouse <select> and mapping grid
+
+// ─── Data Migration modal ──────────────────────────────────────
+// Migration-parity tool — admin-only, lives entirely here in
+// Settings. See reconciliationRouter.js on the backend for the full
+// story on how the comparison and import actually work.
+let _dmMissingRowsCache = []; // last fetched missing-rows list, for select/import
+
+function openDataMigrationModal() {
+  document.getElementById('dataMigrationModal')?.classList.add('open');
+  const dateInput = document.getElementById('dmSpecificDate');
+  if (dateInput && !dateInput.value) dateInput.value = todayIST();
+}
+function closeDataMigrationModal() {
+  document.getElementById('dataMigrationModal')?.classList.remove('open');
+}
+document.getElementById('dataMigrationModal')?.addEventListener('click', function(e) {
+  if (e.target === e.currentTarget) closeDataMigrationModal();
+});
+
+function setDataMigrationTab(tab) {
+  ['missing', 'logic'].forEach(t => {
+    document.getElementById('dmTabBtn-' + t)?.classList.toggle('active', t === tab);
+    const btn = document.getElementById('dmTabBtn-' + t);
+    if (btn) {
+      btn.style.background = t === tab ? '#fff' : 'transparent';
+      btn.style.color = t === tab ? '#1e293b' : '#64748b';
+      btn.style.boxShadow = t === tab ? '0 1px 2px rgba(0,0,0,.06)' : 'none';
+    }
+    const panel = document.getElementById('dmPanel-' + t);
+    if (panel) panel.style.display = t === tab ? '' : 'none';
+  });
+}
+
+async function runMissingOrdersCheck(mode) {
+  const summaryEl = document.getElementById('dmMissingSummary');
+  const byDateEl  = document.getElementById('dmMissingByDate');
+  const rowsEl    = document.getElementById('dmMissingRows');
+  const actionsEl = document.getElementById('dmMissingActions');
+  const importStatusEl = document.getElementById('dmImportStatus');
+  if (!summaryEl) return;
+
+  importStatusEl.textContent = '';
+  summaryEl.innerHTML = '<div class="skel skel-row" style="height:20px;margin-bottom:12px;"></div>';
+  byDateEl.innerHTML = '';
+  rowsEl.innerHTML = '<div class="skel skel-row" style="height:200px;"></div>';
+  actionsEl.style.display = 'none';
+  _dmMissingRowsCache = [];
+
+  const date = document.getElementById('dmSpecificDate')?.value;
+  const endpoint = mode === 'date'
+    ? '/clients/' + state.clientSlug + '/reconciliation/missing-rows?date=' + date
+    : '/clients/' + state.clientSlug + '/reconciliation/missing-rows/all';
+
+  try {
+    const result = await apiFetch(endpoint);
+    _dmMissingRowsCache = result.missingRows || [];
+
+    const oldTotal = mode === 'date' ? result.oldTotalRowsForDate : result.oldTotalRows;
+    const newTotal = mode === 'date' ? result.newTotalRowsForDate : result.newTotalRows;
+
+    if (!result.missingCount) {
+      summaryEl.innerHTML = '<div style="padding:14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:var(--radius-sm);color:#059669;font-size:13px;font-weight:600;">✓ Nothing missing — old dashboard has ' + oldTotal + ' order(s)' + (mode === 'date' ? ' for this date' : ' total') + ', all matched here too.</div>';
+      rowsEl.innerHTML = '';
+      return;
+    }
+
+    summaryEl.innerHTML = '<div style="padding:14px;background:#fef2f2;border:1px solid #fecaca;border-radius:var(--radius-sm);color:#991b1b;font-size:13px;">' +
+      'Old dashboard has <strong>' + oldTotal + '</strong> order(s)' + (mode === 'date' ? ' for this date' : '') + '; this system has <strong>' + newTotal + '</strong>. ' +
+      '<strong>' + result.missingCount + '</strong> order(s) are missing here, totalling <strong>' + fmtRevenue(result.missingRevenueTotal) + '</strong> in revenue.' +
+      (result.unmatchedRows?.length ? '<br><span style="font-size:11px;">Additionally, ' + result.unmatchedRows.length + ' old-dashboard row(s) had no Order ID/SKU to check and are excluded from this count either way.</span>' : '') +
+    '</div>';
+
+    if (result.byDate) {
+      byDateEl.innerHTML = '<div style="font-size:10.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin:16px 0 8px;">By Date</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:6px;">' +
+        result.byDate.map(d => '<span style="font-size:11px;padding:4px 9px;background:#f1f5f9;border-radius:999px;color:#475569;">' +
+          new Date(d.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) + ' — ' + d.count + ' (' + fmtRevenue(d.revenue) + ')</span>'
+        ).join('') + '</div>';
+    }
+
+    actionsEl.style.display = 'flex';
+    updateSelectedCount();
+    renderMissingRowsTable();
+  } catch (e) {
+    summaryEl.innerHTML = '<div style="padding:14px;background:#fef2f2;border:1px solid #fecaca;border-radius:var(--radius-sm);color:#991b1b;font-size:13px;">' + e.message + '</div>';
+    rowsEl.innerHTML = '';
+  }
+}
+
+function renderMissingRowsTable() {
+  const rowsEl = document.getElementById('dmMissingRows');
+  if (!rowsEl) return;
+  const rows = _dmMissingRowsCache.map((r, i) => {
+    const uncertain = r.platformConfident === false;
+    return '<tr>' +
+      '<td><input type="checkbox" class="dm-row-checkbox" data-idx="' + i + '" checked onchange="updateSelectedCount()" /></td>' +
+      '<td>' + (r.date || '—') + '</td>' +
+      '<td>' + (r.sku || '—') + '</td>' +
+      '<td style="color:#94a3b8;font-size:11px;">' + (r.order_id || '—') + '</td>' +
+      '<td>' + (r.mappedPlatform || '—') + (uncertain ? ' <span title="Could not confirm Neat vs Acutas / Meta vs Google from source tag — defaulted, worth checking" style="color:#d97706;">⚠</span>' : '') + '</td>' +
+      '<td>' + (r.status || '—') + '</td>' +
+      '<td style="text-align:right;font-weight:700;">' + fmtRevenue(Number(r.revenue) || 0) + '</td>' +
+    '</tr>';
+  }).join('');
+
+  rowsEl.innerHTML = '<table>' +
+    '<thead><tr><th></th><th>Date</th><th>SKU</th><th>Order ID</th><th>Platform</th><th>Status</th><th style="text-align:right;">Revenue</th></tr></thead>' +
+    '<tbody>' + rows + '</tbody>' +
+  '</table>';
+}
+
+function toggleAllMissingRows(checked) {
+  document.querySelectorAll('.dm-row-checkbox').forEach(cb => { cb.checked = checked; });
+  updateSelectedCount();
+}
+
+function updateSelectedCount() {
+  const checked = document.querySelectorAll('.dm-row-checkbox:checked').length;
+  const el = document.getElementById('dmSelectedCount');
+  if (el) el.textContent = checked + ' of ' + _dmMissingRowsCache.length + ' selected';
+}
+
+async function importSelectedRows() {
+  const statusEl = document.getElementById('dmImportStatus');
+  const selectedIdx = Array.from(document.querySelectorAll('.dm-row-checkbox:checked')).map(cb => Number(cb.dataset.idx));
+  if (!selectedIdx.length) { alert('Select at least one row to import.'); return; }
+  const rowsToImport = selectedIdx.map(i => _dmMissingRowsCache[i]);
+
+  if (!confirm('Import ' + rowsToImport.length + ' order(s) into this system? This can be re-run safely (already-imported rows are automatically skipped, not duplicated), but review the platform column first if you see any ⚠ marks.')) return;
+
+  statusEl.textContent = 'Importing…';
+  statusEl.style.color = '#64748b';
+  try {
+    const result = await apiFetch('/clients/' + state.clientSlug + '/reconciliation/import', {
+      method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rows: rowsToImport }),
+    });
+    statusEl.style.color = result.failed ? '#d97706' : '#059669';
+    statusEl.textContent = '✓ Processed ' + result.imported + ' of ' + result.requested + '.' + (result.failed ? ' ' + result.failed + ' failed — see console for details.' : '');
+    if (result.failures?.length) console.warn('[data migration] import failures:', result.failures);
+  } catch (e) {
+    statusEl.style.color = '#dc2626';
+    statusEl.textContent = 'Import failed: ' + e.message;
+  }
+}
+
+async function runLogicDifferencesCheck() {
+  const el = document.getElementById('dmLogicResults');
+  if (!el) return;
+  el.innerHTML = '<div class="skel skel-row" style="height:200px;"></div>';
+  try {
+    const result = await apiFetch('/clients/' + state.clientSlug + '/reconciliation/logic-differences');
+    if (!result.differenceCount) {
+      el.innerHTML = '<div style="padding:14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:var(--radius-sm);color:#059669;font-size:13px;font-weight:600;">✓ No logic differences found — every date with fully-matching orders also has matching revenue.</div>';
+      return;
+    }
+    const rows = result.differences.map(d =>
+      '<tr>' +
+        '<td>' + new Date(d.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) + '</td>' +
+        '<td>' + d.rowCount + '</td>' +
+        '<td>' + fmtRevenue(d.oldRevenue) + '</td>' +
+        '<td>' + fmtRevenue(d.newRevenue) + '</td>' +
+        '<td style="text-align:right;font-weight:700;color:' + (d.diff > 0 ? '#059669' : '#dc2626') + ';">' + (d.diff > 0 ? '+' : '') + fmtRevenue(d.diff) + '</td>' +
+      '</tr>'
+    ).join('');
+    el.innerHTML = '<div style="padding:10px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:var(--radius-sm);color:#991b1b;font-size:13px;margin-bottom:14px;">' + result.differenceCount + ' date(s) with matching orders but disagreeing revenue — likely a calculation bug, worth tracing like the earlier Google Ads/Meta discount fixes.</div>' +
+      '<table><thead><tr><th>Date</th><th>Orders</th><th>Old Revenue</th><th>New Revenue</th><th style="text-align:right;">Diff</th></tr></thead><tbody>' + rows + '</tbody></table>';
+  } catch (e) {
+    el.innerHTML = '<div style="padding:14px;background:#fef2f2;border:1px solid #fecaca;border-radius:var(--radius-sm);color:#991b1b;font-size:13px;">' + e.message + '</div>';
+  }
+}
+
 
 function openInventoryModal() {
   document.getElementById('inventoryModal')?.classList.add('open');
