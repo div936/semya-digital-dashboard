@@ -92,7 +92,51 @@ The previous round's timezone fix (IST-converting every raw file timestamp) was 
 
 **If you already deployed the previous (IST-conversion) version and uploaded files through it**, some rows may have been filed under the wrong date during that window — re-upload the affected files after this fix deploys to correct them (the upsert logic from the earlier revenue de-dup fix makes this safe).
 
-## This round's fix — Data Migration timing out on "Check All History" (the check step, not import)
+## This round's fix — Meta/Google misattribution (found the cause of the earlier "why does Meta/Google not show correctly" question)
+
+**Changed:** `main/backend/ingestion/fileIngestion.js`. No SQL, no frontend.
+
+### The bug — confirmed directly against your real uploaded file
+Platform was decided purely by **filename** — `Meta_File.csv` → every single row tagged `meta`, `Google_File.csv` → every row tagged `google`. But a real Shopify export genuinely contains a **mix** of both: pulled `Meta_File.csv` directly and found rows tagged `source-google` sitting right alongside mostly `source-facebook` ones, in the exact same file. Every Google-attributed order in a file uploaded under the Meta naming convention was silently being counted as Meta instead — this is exactly why `google` had zero revenue rows in your database despite Google Ads clearly being a real, active channel (you have real Google campaign spend data).
+
+### The fix
+Added per-row platform detection using each row's own `Tags` column (already silently preserved in `raw_extras`, just never read) — ported directly from the old dashboard's own stated logic for this file type: `source-facebook`/`source-instagram` → Meta, `source-google` → Google, untagged → Meta (same default the old system uses). Verified against your actual file: **5 of 36 rows** in that one sample would now correctly split off as Google instead of being lumped into Meta.
+
+### Important — this does NOT explain the row-count gap on its own
+This fixes *mis-attribution* (which channel gets credit), not *missing rows* — the file's total row count doesn't change, just how it's split between Meta and Google. The much larger gap we found (7,240 rows in this system vs. the old dashboard's 23,297 for "Website") is a **separate, likely genuine coverage gap** — most Website order history apparently hasn't been uploaded to this system at all via any correctly-named revenue file.
+
+**Recommended next step**, now that both fixes from this conversation are in place (duplication-safe import + correct Meta/Google splitting): run **Settings → Data Migration → Check All History** again. The "missing rows" it finds for Website-family orders will now be correctly pre-classified as Meta or Google (the same tag logic is already built into `mapOldRowToPlatform` in `reconciliationRouter.js`), and importing them is now safe from the duplication issue fixed last round.
+
+### Deploy order
+Backend only this time. **Re-upload your Meta/Google Website files after deploying** to get the corrected per-row split applied — this only affects newly-ingested data going forward, same limitation as every other ingestion-time fix in this conversation.
+
+
+
+**This is NOT the bug originally reported** ("standard inserts instead of upserts" — that was checked and disproven: the import always used `upsert` with `onConflict` on `row_hash`). The real mechanism took several rounds of evidence-gathering to pin down, documented here for the full trail:
+
+1. Checked for duplicate `row_hash` values → none found.
+2. Checked for duplicate `(order_id, sku)` pairs → none found.
+3. Checked for same SKU/date/price with different order IDs → found matches, but they were false positives (different real customers buying the same popular SKU at the same fixed price on the same day).
+4. **Pulled the actual `standard_order_id` values side by side for a real SKU** — this is what found it: every normal-upload row for Amazon/Acutas had `standard_order_id = NULL`. Normal uploads for this platform de-duplicate on `order_item_id` or fall back to a composite key — they never populate the plain order ID column at all for this export shape. Every *imported* row, by contrast, has a real order ID, since that's the only identifier the old dashboard's API provides.
+
+**The actual bug:** two rows representing the exact same real sale hash completely differently under `row_hash`, because one side has an order ID to hash and the other genuinely doesn't. Not a broken upsert — a join key (order ID) that was never comparable between these two specific data sources in the first place. This is why it concentrated almost entirely in Amazon+Acutas (11,196 rows vs the old dashboard's 6,154 — nearly double) while Blinkit came out exact (579 = 579, no overlap issue there at all).
+
+### Fix — `reconciliationRouter.js`
+The import endpoint now checks for an existing row by a **content fingerprint** (SKU + date + revenue + units) before importing anything — a match that doesn't depend on either side having a usable order ID. Fetched once per request for the whole batch, not per-row. A row matching an existing fingerprint is now skipped and reported separately (`skippedAsExisting`) instead of being inserted as a lookalike duplicate.
+
+### Cleanup — `main/backend/db/cleanup_import_fingerprint_duplicates.sql`
+Removes the duplicates already sitting in the database from before this fix, using the identical fingerprint logic. **Three steps, run in order**: a preview count (check the numbers look right — the inflated-revenue figure should land around the ₹32L gap we calculated from the two dashboards' totals), the actual delete, then a confirmation query that should return 0. Only ever deletes rows tagged as imported that match an existing non-imported row — never touches normal upload data, never removes an imported row that's genuinely unique.
+
+### Deploy order
+1. Run the SQL cleanup script (all three steps, in order — read the preview before deleting).
+2. Deploy the backend.
+3. Deploy the frontend.
+4. Re-check both dashboards' totals — Amazon+Acutas row counts should now be much closer to the old dashboard's 6,154, and the overall total should drop by roughly the inflated amount the cleanup script reports.
+
+### What's still open
+Meta/Website came out the opposite direction — **fewer** rows in the new system (7,240) than the old dashboard's Website count (23,297). That's a real gap, not duplication, and a separate investigation — worth returning to once this cleanup is confirmed and the Amazon-side numbers are verified correct.
+
+
 
 **The cause:** the old dashboard's `/data` endpoint returns its entire order history in one response with no pagination at all. For any real dataset, that can genuinely take longer than any single HTTP request should reasonably wait — including limits we don't fully control, like a hosting platform's own gateway timeout ceiling, which raising our own app-level timeout can't get around.
 

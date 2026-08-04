@@ -305,6 +305,35 @@ router.post('/:client_slug/reconciliation/import', rbacMiddleware, async (req, r
     return res.status(400).json({ error: `Send at most ${IMPORT_BATCH_LIMIT} rows per request — got ${rows.length}. The frontend should split a large import into multiple requests of this size.` });
   }
 
+  // BUG FIX — real duplication was confirmed in production: normal
+  // Amazon/Acutas file uploads frequently have NO usable
+  // standard_order_id at all (they de-dup on order_item_id, or fall
+  // to the composite tier when even that's missing) — but every
+  // imported row DOES have an order_id, since that's the only ID the
+  // old dashboard's API provides. Two rows for the exact same real
+  // sale therefore hash completely differently under row_hash and
+  // never collide, no matter how correct the upsert itself is. Row-ID
+  // matching simply isn't a reliable join key for this specific case.
+  //
+  // Fix: before importing, check for an already-existing row by a
+  // CONTENT fingerprint instead — same SKU, same date, same revenue,
+  // same units — which doesn't depend on either side having a usable
+  // order ID. Fetched once per request for every (sku, date) pair in
+  // this batch, not per-row, to avoid hundreds of round trips.
+  const skus  = [...new Set(rows.map(r => r.sku).filter(Boolean))];
+  const dates = [...new Set(rows.map(r => r.date).filter(Boolean))];
+  const { data: existingRows, error: existingErr } = await supabaseAdmin
+    .from('revenue_data')
+    .select('standard_sku, order_date, standard_revenue, standard_units')
+    .eq('client_id', client.id)
+    .in('standard_sku', skus)
+    .in('order_date', dates);
+  if (existingErr) return res.status(500).json({ error: 'Failed to check for existing rows before import: ' + existingErr.message });
+
+  const existingFingerprints = new Set(
+    (existingRows || []).map(r => fingerprint(r.standard_sku, r.order_date, r.standard_revenue, r.standard_units))
+  );
+
   // Note: with ignoreDuplicates:true, Supabase silently no-ops on an
   // existing row_hash rather than erroring — so "imported" below means
   // "processed without error," which includes rows that turned out to
@@ -312,11 +341,18 @@ router.post('/:client_slug/reconciliation/import', rbacMiddleware, async (req, r
   // landed after this list was generated). That's the correct,
   // safe behavior — it just means this count isn't a precise "brand
   // new rows added" figure, only a "no failures" one.
-  let imported = 0, failed = 0;
+  let imported = 0, failed = 0, skippedAsExisting = 0;
   const failures = [];
 
   const processOne = async (oldRow) => {
     try {
+      // Content-fingerprint match against something already here —
+      // even though it has no comparable order_id, this is almost
+      // certainly the same real sale under a different upload path.
+      // Skip it rather than let row_hash's blind spot duplicate it.
+      const fp = fingerprint(oldRow.sku, oldRow.date, Number(oldRow.revenue) || 0, Number(oldRow.qty) || 0);
+      if (existingFingerprints.has(fp)) { skippedAsExisting++; return; }
+
       const { platform } = mapOldRowToPlatform(oldRow);
       const normalised = {
         client_id:               client.id,
@@ -352,7 +388,7 @@ router.post('/:client_slug/reconciliation/import', rbacMiddleware, async (req, r
     await Promise.all(batch.map(processOne));
   }
 
-  return res.json({ ok: true, requested: rows.length, imported, failed, failures: failures.slice(0, 20) });
+  return res.json({ ok: true, requested: rows.length, imported, skippedAsExisting, failed, failures: failures.slice(0, 20) });
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -379,5 +415,14 @@ function annotateRow(row) {
 }
 
 function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
+
+// Content fingerprint for detecting "this is probably the same real
+// sale" independent of order ID — see the long comment on the import
+// route for why order ID alone can't be trusted as a join key here.
+// Revenue is fixed to 2 decimals so ₹597 and ₹597.00 fingerprint
+// identically regardless of which side sent which representation.
+function fingerprint(sku, date, revenue, units) {
+  return [sku || '', date || '', Number(revenue || 0).toFixed(2), Number(units || 0)].join('||');
+}
 
 export default router;

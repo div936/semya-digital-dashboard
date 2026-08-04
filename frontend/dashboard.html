@@ -7381,7 +7381,7 @@ async function importSelectedRows() {
     chunks.push(rowsToImport.slice(i, i + IMPORT_CHUNK_SIZE));
   }
 
-  let totalImported = 0, totalFailed = 0;
+  let totalImported = 0, totalFailed = 0, totalSkippedExisting = 0;
   const allFailures = [];
 
   for (let i = 0; i < chunks.length; i++) {
@@ -7394,6 +7394,7 @@ async function importSelectedRows() {
       });
       totalImported += result.imported;
       totalFailed += result.failed;
+      totalSkippedExisting += result.skippedAsExisting || 0;
       if (result.failures?.length) allFailures.push(...result.failures);
     } catch (e) {
       // Stop here rather than plowing through remaining chunks blind —
@@ -7408,7 +7409,9 @@ async function importSelectedRows() {
   }
 
   statusEl.style.color = totalFailed ? '#d97706' : '#059669';
-  statusEl.textContent = '✓ Processed ' + totalImported + ' of ' + rowsToImport.length + ' across ' + chunks.length + ' batch' + (chunks.length === 1 ? '' : 'es') + '.' + (totalFailed ? ' ' + totalFailed + ' row(s) failed — see console for details.' : '');
+  statusEl.textContent = '✓ Processed ' + totalImported + ' of ' + rowsToImport.length + ' across ' + chunks.length + ' batch' + (chunks.length === 1 ? '' : 'es') + '.' +
+    (totalSkippedExisting ? ' ' + totalSkippedExisting + ' row(s) were skipped — already present here (matched by SKU/date/amount, even without a comparable Order ID), so nothing was duplicated.' : '') +
+    (totalFailed ? ' ' + totalFailed + ' row(s) failed — see console for details.' : '');
   if (allFailures.length) console.warn('[data migration] import failures:', allFailures);
 }
 

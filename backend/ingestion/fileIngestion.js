@@ -684,6 +684,37 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
     // bulkInsert can upsert instead of blind-insert — see
     // computeRevenueDedupKey() for the 3-tier algorithm, ported from
     // the old dashboard's backend.
+    //
+    // Per-row Meta vs Google split for Website/Shopify exports — was
+    // missing entirely. Platform was being decided purely by FILENAME
+    // (Meta_File.csv → every row tagged 'meta', Google_File.csv →
+    // every row tagged 'google'), never by each row's own content —
+    // but a single real Shopify export genuinely contains a MIX of
+    // both (confirmed directly against an uploaded file: rows tagged
+    // "source-google" sitting right alongside mostly "source-facebook"
+    // ones in the same Meta_File.csv upload). Every Google-attributed
+    // order in a file uploaded under the Meta_File naming convention
+    // was silently being counted as Meta instead — not a missing-data
+    // problem, a mis-attribution one, and it's why 'google' had zero
+    // revenue rows despite Google Ads clearly being a real, active
+    // channel (real Google campaign spend exists in this system).
+    //
+    // Ported from the old dashboard's own stated logic for this exact
+    // file type: Tags containing "source-facebook" or "source-
+    // instagram" → Meta; "source-google" → Google; anything else
+    // (including no Tags at all) → Meta, same default the old system
+    // uses. Only touches rows the filename already routed to 'meta'
+    // or 'google' — never reclassifies Amazon/Flipkart/Blinkit rows,
+    // which don't have this per-row ambiguity at all.
+    for (const row of normalisedRows) {
+      if (row.platform !== 'meta' && row.platform !== 'google') continue;
+      const tags = String(row.raw_extras?.Tags || '').toLowerCase();
+      if (tags.includes('source-google')) row.platform = 'google';
+      else if (tags.includes('source-facebook') || tags.includes('source-instagram')) row.platform = 'meta';
+      // else: leave whatever the filename already assigned — matches
+      // the old system's own default of Meta for an untagged row.
+    }
+
     // Order-level discount allocation for Shopify-shaped exports
     // (Meta/Google) — must run BEFORE the dedup hash is computed, so
     // the corrected revenue is what actually gets fingerprinted and
