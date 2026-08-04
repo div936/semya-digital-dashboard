@@ -7246,6 +7246,25 @@ function setDataMigrationTab(tab) {
   });
 }
 
+// Generic poller for the backend's background-job pattern (see
+// reconciliationRouter.js for why this exists — the old dashboard's
+// full-ledger pull can take longer than any reasonable HTTP request
+// timeout, so the actual work runs after the initial request already
+// returned). Polls every 2s; onProgress is called on each poll with
+// elapsed seconds, so the UI can show it's still actively working
+// rather than looking stuck.
+async function pollJob(jobId, onProgress) {
+  const start = Date.now();
+  while (true) {
+    await new Promise(r => setTimeout(r, 2000));
+    const job = await apiFetch('/clients/' + state.clientSlug + '/reconciliation/jobs/' + jobId);
+    if (onProgress) onProgress(Math.round((Date.now() - start) / 1000));
+    if (job.status === 'done') return job.result;
+    if (job.status === 'error') throw new Error(job.error);
+    // else still 'running' — keep polling
+  }
+}
+
 async function runMissingOrdersCheck(mode) {
   const summaryEl = document.getElementById('dmMissingSummary');
   const byDateEl  = document.getElementById('dmMissingByDate');
@@ -7255,23 +7274,28 @@ async function runMissingOrdersCheck(mode) {
   if (!summaryEl) return;
 
   importStatusEl.textContent = '';
-  summaryEl.innerHTML = '<div class="skel skel-row" style="height:20px;margin-bottom:12px;"></div>';
+  summaryEl.innerHTML = '<div style="padding:14px;color:#64748b;font-size:13px;">Pulling the old dashboard\'s data' + (mode === 'all' ? ' — this reads its entire order history in one go, so it can take a while, especially if that service needs to wake up first' : '') + '… <span id="dmCheckElapsed">0s</span></div>';
   byDateEl.innerHTML = '';
-  rowsEl.innerHTML = '<div class="skel skel-row" style="height:200px;"></div>';
+  rowsEl.innerHTML = '';
   actionsEl.style.display = 'none';
   _dmMissingRowsCache = [];
 
-  const date = document.getElementById('dmSpecificDate')?.value;
-  const endpoint = mode === 'date'
-    ? '/clients/' + state.clientSlug + '/reconciliation/missing-rows?date=' + date
-    : '/clients/' + state.clientSlug + '/reconciliation/missing-rows/all';
+  const date = mode === 'date' ? document.getElementById('dmSpecificDate')?.value : undefined;
 
   try {
-    const result = await apiFetch(endpoint);
-    _dmMissingRowsCache = result.missingRows || [];
+    const { jobId } = await apiFetch('/clients/' + state.clientSlug + '/reconciliation/missing-rows/start', {
+      method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(date ? { date } : {}),
+    });
 
-    const oldTotal = mode === 'date' ? result.oldTotalRowsForDate : result.oldTotalRows;
-    const newTotal = mode === 'date' ? result.newTotalRowsForDate : result.newTotalRows;
+    const result = await pollJob(jobId, secs => {
+      const el = document.getElementById('dmCheckElapsed');
+      if (el) el.textContent = secs + 's';
+    });
+
+    _dmMissingRowsCache = result.missingRows || [];
+    const oldTotal = result.oldTotalRowsForDate;
+    const newTotal = result.newTotalRowsForDate;
 
     if (!result.missingCount) {
       summaryEl.innerHTML = '<div style="padding:14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:var(--radius-sm);color:#059669;font-size:13px;font-weight:600;">✓ Nothing missing — old dashboard has ' + oldTotal + ' order(s)' + (mode === 'date' ? ' for this date' : ' total') + ', all matched here too.</div>';
@@ -7335,6 +7359,8 @@ function updateSelectedCount() {
   if (el) el.textContent = checked + ' of ' + _dmMissingRowsCache.length + ' selected';
 }
 
+const IMPORT_CHUNK_SIZE = 300; // must match IMPORT_BATCH_LIMIT in reconciliationRouter.js
+
 async function importSelectedRows() {
   const statusEl = document.getElementById('dmImportStatus');
   const selectedIdx = Array.from(document.querySelectorAll('.dm-row-checkbox:checked')).map(cb => Number(cb.dataset.idx));
@@ -7343,28 +7369,62 @@ async function importSelectedRows() {
 
   if (!confirm('Import ' + rowsToImport.length + ' order(s) into this system? This can be re-run safely (already-imported rows are automatically skipped, not duplicated), but review the platform column first if you see any ⚠ marks.')) return;
 
-  statusEl.textContent = 'Importing…';
-  statusEl.style.color = '#64748b';
-  try {
-    const result = await apiFetch('/clients/' + state.clientSlug + '/reconciliation/import', {
-      method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rows: rowsToImport }),
-    });
-    statusEl.style.color = result.failed ? '#d97706' : '#059669';
-    statusEl.textContent = '✓ Processed ' + result.imported + ' of ' + result.requested + '.' + (result.failed ? ' ' + result.failed + ' failed — see console for details.' : '');
-    if (result.failures?.length) console.warn('[data migration] import failures:', result.failures);
-  } catch (e) {
-    statusEl.style.color = '#dc2626';
-    statusEl.textContent = 'Import failed: ' + e.message;
+  // Sending thousands of rows in one request reliably times out —
+  // the browser, Render, or both — long before it finishes. Split
+  // into chunks the backend is actually built to handle in one
+  // request, and send them one at a time so a failure partway
+  // through has a clear "got to row N of M" point to resume from,
+  // rather than an all-or-nothing request that either fully succeeds
+  // or leaves you with no idea how far it got.
+  const chunks = [];
+  for (let i = 0; i < rowsToImport.length; i += IMPORT_CHUNK_SIZE) {
+    chunks.push(rowsToImport.slice(i, i + IMPORT_CHUNK_SIZE));
   }
+
+  let totalImported = 0, totalFailed = 0;
+  const allFailures = [];
+
+  for (let i = 0; i < chunks.length; i++) {
+    statusEl.style.color = '#64748b';
+    statusEl.textContent = 'Importing batch ' + (i + 1) + ' of ' + chunks.length + '… (' + (i * IMPORT_CHUNK_SIZE) + ' of ' + rowsToImport.length + ' done so far)';
+    try {
+      const result = await apiFetch('/clients/' + state.clientSlug + '/reconciliation/import', {
+        method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: chunks[i] }),
+      });
+      totalImported += result.imported;
+      totalFailed += result.failed;
+      if (result.failures?.length) allFailures.push(...result.failures);
+    } catch (e) {
+      // Stop here rather than plowing through remaining chunks blind —
+      // report exactly how far it got, so a retry can pick up from a
+      // known point instead of re-importing everything from scratch
+      // (safe either way, since re-imports are de-duplicated, but
+      // there's no reason to redo work that already succeeded).
+      statusEl.style.color = '#dc2626';
+      statusEl.textContent = 'Stopped at batch ' + (i + 1) + ' of ' + chunks.length + ' — ' + totalImported + ' order(s) imported successfully before this failure: ' + e.message + '. Safe to click Import again — already-imported rows won\'t be duplicated.';
+      return;
+    }
+  }
+
+  statusEl.style.color = totalFailed ? '#d97706' : '#059669';
+  statusEl.textContent = '✓ Processed ' + totalImported + ' of ' + rowsToImport.length + ' across ' + chunks.length + ' batch' + (chunks.length === 1 ? '' : 'es') + '.' + (totalFailed ? ' ' + totalFailed + ' row(s) failed — see console for details.' : '');
+  if (allFailures.length) console.warn('[data migration] import failures:', allFailures);
 }
 
 async function runLogicDifferencesCheck() {
   const el = document.getElementById('dmLogicResults');
   if (!el) return;
-  el.innerHTML = '<div class="skel skel-row" style="height:200px;"></div>';
+  el.innerHTML = '<div style="padding:14px;color:#64748b;font-size:13px;">Pulling the old dashboard\'s data — this reads its entire order history in one go, so it can take a while… <span id="dmLogicElapsed">0s</span></div>';
   try {
-    const result = await apiFetch('/clients/' + state.clientSlug + '/reconciliation/logic-differences');
+    const { jobId } = await apiFetch('/clients/' + state.clientSlug + '/reconciliation/logic-differences/start', {
+      method: 'POST', headers: authHeaders(),
+    });
+    const result = await pollJob(jobId, secs => {
+      const elapsedEl = document.getElementById('dmLogicElapsed');
+      if (elapsedEl) elapsedEl.textContent = secs + 's';
+    });
+
     if (!result.differenceCount) {
       el.innerHTML = '<div style="padding:14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:var(--radius-sm);color:#059669;font-size:13px;font-weight:600;">✓ No logic differences found — every date with fully-matching orders also has matching revenue.</div>';
       return;
