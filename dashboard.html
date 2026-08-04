@@ -4403,6 +4403,25 @@ async function fetchAndRenderPS() {
   renderPS(data);
   tabCache['platform_sales'] = { data, timestamp: Date.now() };
   setBadgePS(isLive ? 'live' : 'empty');
+
+  // Platform Health (right sidebar) used to ONLY be refreshed by the
+  // SKU Performance tab's own fetch — meaning while looking at
+  // Platform Sales, that widget was silently showing a stale
+  // snapshot from whatever date range/filters were active the last
+  // time someone visited SKU Performance, not this tab's own data at
+  // all. That's why two different totals for the same platform could
+  // appear on screen simultaneously. Refreshing it here too, with
+  // Platform Sales' own current filters, so the sidebar actually
+  // matches whichever tab is presently being viewed.
+  try {
+    const campQp = new URLSearchParams();
+    if (psState.dateFrom) campQp.set('from', psState.dateFrom);
+    if (psState.dateTo)   campQp.set('to',   psState.dateTo);
+    const campResp = await apiFetch('/clients/' + clientSlug + '/campaign-insights?' + campQp.toString());
+    renderPlatformHealth(data.platforms || [], campResp?.campaigns || []);
+  } catch (e) {
+    console.warn('[PS] failed to refresh Platform Health sidebar:', e.message);
+  }
 }
 
 // Picks the right time-bucket from the platform-sales response and
