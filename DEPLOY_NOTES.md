@@ -92,7 +92,33 @@ The previous round's timezone fix (IST-converting every raw file timestamp) was 
 
 **If you already deployed the previous (IST-conversion) version and uploaded files through it**, some rows may have been filed under the wrong date during that window — re-upload the affected files after this fix deploys to correct them (the upsert logic from the earlier revenue de-dup fix makes this safe).
 
-## This round's feature — Data Migration, fully built (Settings-only, admin-only)
+## This round's fix — Data Migration timing out on "Check All History" (the check step, not import)
+
+**The cause:** the old dashboard's `/data` endpoint returns its entire order history in one response with no pagination at all. For any real dataset, that can genuinely take longer than any single HTTP request should reasonably wait — including limits we don't fully control, like a hosting platform's own gateway timeout ceiling, which raising our own app-level timeout can't get around.
+
+**The fix — background jobs, not a longer wait.** All three checks (missing-rows for a date, missing-rows for all history, logic-differences) now work as: `POST .../start` returns a job ID in milliseconds, the actual work happens afterward in the background, and the frontend polls `GET .../jobs/:jobId` every 2 seconds until it's done. This sidesteps every timeout that matters, since the slow part is no longer inside the lifetime of any single HTTP request at all.
+
+**Also added:** a 5-minute in-memory cache of the old dashboard's full ledger — running "Check All History" and then "Check for Logic Differences" shortly after doesn't mean pulling that same large payload twice.
+
+**What you'll see differently:** the button now shows a live elapsed-time counter ("Pulling the old dashboard's data… 14s") instead of appearing to hang — it's normal for this to take anywhere from several seconds to a couple of minutes depending on how much history exists and whether the old dashboard needs to cold-start.
+
+**Deploy backend then frontend, no SQL.** This is a separate fix from the import-batching note directly below — that one was already for the *import* step timing out; this one is for the *check* step (finding what's missing in the first place) timing out.
+
+## This round's fix — import timing out on large batches (9,000+ rows)
+
+**Changed:** `main/backend/routes/reconciliationRouter.js`, `main/frontend/dashboard.html`.
+
+**The problem:** importing was processing rows one database write at a time, sequentially, inside a single HTTP request — for something like 9,143 rows, that's thousands of round-trips in one request, which reliably times out (the browser, Render's own request limit, or both) long before finishing, no matter how patient anyone is.
+
+**The fix, two parts:**
+1. **Backend** now enforces a hard 300-row limit per request (a request over that gets a clear error, not a silent timeout), and processes each request's rows in **concurrent batches of 10** rather than one at a time — the same pattern `bulkInsert()` already uses in `fileIngestion.js` for normal file uploads.
+2. **Frontend** now automatically splits a large "Import Selected" click into multiple sequential requests of 300 rows each, showing real progress ("Importing batch 3 of 31…") instead of one giant request with no feedback until it either finishes or times out.
+
+**If a batch fails partway through**, it stops there and tells you exactly how many orders imported successfully before the failure — safe to just click Import again, since already-imported rows are automatically skipped (same de-dup guarantee as before), so nothing gets duplicated by resuming.
+
+**Deploy backend and frontend together** — the 300-row chunk size is hardcoded to match on both sides.
+
+
 
 **New:** `main/backend/routes/reconciliationRouter.js` (full rebuild — 4 endpoints now: two missing-orders variants, logic-differences, and import). **Changed:** `main/backend/ingestion/fileIngestion.js` (exported `computeRevenueDedupKey` for reuse), `main/frontend/dashboard.html` (moved out of Daily Targets entirely, now lives only in Settings → Data Migration).
 

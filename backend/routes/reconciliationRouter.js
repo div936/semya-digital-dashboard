@@ -5,23 +5,31 @@
 // enough to retire the old one. Admin-only throughout; lives entirely
 // under Settings → Data Migration on the frontend, nowhere else.
 //
-//   GET  /clients/:client_slug/reconciliation/missing-rows?date=X
-//     Row-level diff for one specific date.
+// BACKGROUND-JOB PATTERN: every check that needs the old dashboard's
+// full ledger runs as a background job instead of one blocking
+// request-response. THE REASON THIS MATTERS: the old dashboard's
+// /data endpoint returns its ENTIRE order history in a single
+// response with no pagination at all — for a real, mature dataset
+// that can genuinely take longer than any reasonable HTTP timeout,
+// including ones we don't fully control (a hosting platform's own
+// gateway timeout ceiling, which raising our own app-level timeout
+// can't get around). A "POST /start → poll /jobs/:id" pattern
+// sidesteps every timeout that matters: the initial POST returns in
+// milliseconds regardless of how long the actual work takes, since
+// the work happens after the response is already sent.
 //
-//   GET  /clients/:client_slug/reconciliation/missing-rows/all
-//     Same diff across the old dashboard's ENTIRE order history in
-//     one pass, grouped by date.
-//
-//   GET  /clients/:client_slug/reconciliation/logic-differences
-//     A DIFFERENT check: dates where the same orders exist in both
-//     systems (no rows missing) but the computed revenue disagrees —
-//     signals a calculation bug, not a data gap.
+//   POST /clients/:client_slug/reconciliation/missing-rows/start
+//     Body: { date? }  — omit for all-history, include for one date.
+//   POST /clients/:client_slug/reconciliation/logic-differences/start
+//   GET  /clients/:client_slug/reconciliation/jobs/:jobId
+//     Poll this until status is 'done' or 'error'.
 //
 //   POST /clients/:client_slug/reconciliation/import
-//     Body: { rows: [...] }  — an admin-reviewed subset of rows
-//     returned by one of the GETs above. Imports them using the exact
-//     same de-dup mechanism (row_hash) that protects normal file
-//     uploads from double-counting.
+//     Body: { rows: [...] }  — an admin-reviewed subset of rows from
+//     a completed job's result. Imports them using the exact same
+//     de-dup mechanism (row_hash) that protects normal file uploads
+//     from double-counting. Fast enough to stay a normal request —
+//     the slow part was ever fetching the old dashboard, not this.
 //
 // THE OLD DASHBOARD'S API IS PUBLIC — no auth on any route, confirmed
 // from its own source and from the live site loading with no login
@@ -29,6 +37,7 @@
 // all; if that ever changes, these routes need credentials added.
 // ─────────────────────────────────────────────────────────────────
 import { Router } from 'express';
+import crypto from 'crypto';
 import { rbacMiddleware } from '../middleware/rbac.js';
 import { supabaseAdmin }  from '../lib/supabase.js';
 import { todayIST } from '../lib/dateUtils.js';
@@ -37,6 +46,42 @@ import { computeRevenueDedupKey } from '../ingestion/fileIngestion.js';
 const router = Router({ mergeParams: true });
 
 const OLD_DASHBOARD_BASE = 'https://neat-everyday-performance-kd2j.onrender.com';
+
+// ── In-memory job store ─────────────────────────────────────────
+// Deliberately not persisted anywhere — this is an on-demand admin
+// tool, not something that needs to survive a server restart. Each
+// job is small (a status string + eventual result/error) and short-
+// lived; old entries are swept out after an hour so this can't slowly
+// leak memory across a long-running server process.
+const jobs = new Map(); // jobId -> { status: 'running'|'done'|'error', result?, error?, startedAt }
+
+function startJob(workFn) {
+  const jobId = crypto.randomUUID();
+  jobs.set(jobId, { status: 'running', startedAt: Date.now() });
+  workFn()
+    .then(result => jobs.set(jobId, { status: 'done', result, startedAt: jobs.get(jobId)?.startedAt }))
+    .catch(err => jobs.set(jobId, { status: 'error', error: err.message, startedAt: jobs.get(jobId)?.startedAt }));
+  return jobId;
+}
+
+setInterval(() => {
+  const cutoff = Date.now() - 60 * 60 * 1000;
+  for (const [id, job] of jobs.entries()) {
+    if (job.startedAt < cutoff) jobs.delete(id);
+  }
+}, 10 * 60 * 1000).unref();
+
+// ── Old-ledger cache ────────────────────────────────────────────
+// The three checks (missing-rows for a date, missing-rows for all
+// history, logic-differences) all need the SAME full pull from the
+// old dashboard. Running more than one of them back to back
+// shouldn't mean re-fetching that entire payload each time — cached
+// for 5 minutes, long enough to cover "check all history, then check
+// logic differences right after" without serving badly stale data on
+// an admin tool that's used occasionally, not continuously.
+let _oldLedgerCache = null;
+let _oldLedgerCacheAt = 0;
+const OLD_LEDGER_CACHE_MS = 5 * 60 * 1000;
 
 // ═══════════════════════════════════════════════════════════════════
 // PLATFORM MAPPING — ported directly from the old dashboard's own
@@ -70,73 +115,40 @@ function mapOldRowToPlatform(row) {
 }
 
 async function fetchOldLedger() {
-  const res = await fetch(`${OLD_DASHBOARD_BASE}/data`, { signal: AbortSignal.timeout(45000) });
+  if (_oldLedgerCache && (Date.now() - _oldLedgerCacheAt) < OLD_LEDGER_CACHE_MS) {
+    return _oldLedgerCache;
+  }
+  // 3 minutes is generous on purpose — this now runs inside a
+  // background job (see startJob above), not inside the lifetime of
+  // an HTTP request, so there's no risk of a client or gateway
+  // timeout cutting it off early. The old dashboard cold-starting
+  // (Render free tier, same as this app) plus a genuinely large
+  // payload can legitimately take a while; better to actually wait
+  // for it once than fail and have to retry.
+  const res = await fetch(`${OLD_DASHBOARD_BASE}/data`, { signal: AbortSignal.timeout(3 * 60 * 1000) });
   if (!res.ok) throw new Error(`Old dashboard responded ${res.status}`);
-  return res.json();
-}
-
-function oldDashboardErrorMessage(e) {
-  return e.name === 'TimeoutError'
-    ? 'Old dashboard did not respond in time (it may be cold-starting on Render\'s free tier — try again in a moment).'
-    : 'Failed to reach old dashboard: ' + e.message;
+  const data = await res.json();
+  _oldLedgerCache = data;
+  _oldLedgerCacheAt = Date.now();
+  return data;
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// GET /:client_slug/reconciliation/missing-rows?date=X — one date
+// Missing-orders check — the actual work, run inside a background job.
+// date === null means "all history"; otherwise scoped to one date.
 // ═══════════════════════════════════════════════════════════════════
-router.get('/:client_slug/reconciliation/missing-rows', rbacMiddleware, async (req, res) => {
-  if (!req.semya.isAdmin) return res.status(403).json({ error: 'Admin access required.' });
-  const { client } = req.semya;
-  const date = req.query.date || todayIST();
-
-  const { data: newRows, error: newErr } = await supabaseAdmin
-    .from('revenue_data').select('standard_order_id, standard_sku')
-    .eq('client_id', client.id).eq('order_date', date);
-  if (newErr) return res.status(500).json({ error: 'Failed to load this system\'s rows: ' + newErr.message });
+async function runMissingRowsCheck(clientId, date) {
+  let newQuery = supabaseAdmin.from('revenue_data').select('standard_order_id, standard_sku').eq('client_id', clientId);
+  if (date) newQuery = newQuery.eq('order_date', date);
+  const { data: newRows, error: newErr } = await newQuery;
+  if (newErr) throw new Error('Failed to load this system\'s rows: ' + newErr.message);
 
   const newKeys = new Set((newRows || []).filter(r => r.standard_order_id && r.standard_sku).map(r => r.standard_order_id + '||' + r.standard_sku));
 
-  let oldRows;
-  try { oldRows = await fetchOldLedger(); }
-  catch (e) { return res.status(502).json({ error: oldDashboardErrorMessage(e) }); }
-
-  const forDate = oldRows.filter(r => r.date === date);
-  const { missing, unmatched, missingRevenue } = diffAgainstKeys(forDate, newKeys);
-
-  return res.json({
-    date,
-    oldTotalRowsForDate: forDate.length,
-    newTotalRowsForDate: newRows?.length || 0,
-    missingCount: missing.length,
-    missingRevenueTotal: round2(missingRevenue),
-    missingRows: missing.map(annotateRow),
-    unmatchedRows: unmatched,
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════════
-// GET /:client_slug/reconciliation/missing-rows/all — every date
-// ═══════════════════════════════════════════════════════════════════
-router.get('/:client_slug/reconciliation/missing-rows/all', rbacMiddleware, async (req, res) => {
-  if (!req.semya.isAdmin) return res.status(403).json({ error: 'Admin access required.' });
-  const { client } = req.semya;
-
-  const { data: newRows, error: newErr } = await supabaseAdmin
-    .from('revenue_data').select('standard_order_id, standard_sku')
-    .eq('client_id', client.id);
-  if (newErr) return res.status(500).json({ error: 'Failed to load this system\'s rows: ' + newErr.message });
-
-  const newKeys = new Set((newRows || []).filter(r => r.standard_order_id && r.standard_sku).map(r => r.standard_order_id + '||' + r.standard_sku));
-
-  let oldRows;
-  try { oldRows = await fetchOldLedger(); }
-  catch (e) { return res.status(502).json({ error: oldDashboardErrorMessage(e) }); }
-
+  const allOldRows = await fetchOldLedger();
+  const oldRows = date ? allOldRows.filter(r => r.date === date) : allOldRows;
   const { missing, unmatched, missingRevenue } = diffAgainstKeys(oldRows, newKeys);
 
-  // Group missing rows by date for a scannable summary — the full
-  // list (potentially thousands of rows across a mature ledger) is
-  // still returned too, for the detail view / selecting rows to import.
   const byDateMap = new Map();
   for (const row of missing) {
     const d = row.date;
@@ -149,19 +161,30 @@ router.get('/:client_slug/reconciliation/missing-rows/all', rbacMiddleware, asyn
     .map(b => ({ ...b, revenue: round2(b.revenue) }))
     .sort((a, b) => b.date.localeCompare(a.date));
 
-  return res.json({
-    oldTotalRows: oldRows.length,
-    newTotalRows: newRows?.length || 0,
+  return {
+    date: date || null,
+    oldTotalRowsForDate: oldRows.length,
+    newTotalRowsForDate: newRows?.length || 0,
     missingCount: missing.length,
     missingRevenueTotal: round2(missingRevenue),
-    byDate,
+    byDate: date ? undefined : byDate, // only meaningful for the all-history view
     missingRows: missing.map(annotateRow),
     unmatchedRows: unmatched,
-  });
+  };
+}
+
+// POST /:client_slug/reconciliation/missing-rows/start
+// Body: { date? }  — omit for all-history.
+router.post('/:client_slug/reconciliation/missing-rows/start', rbacMiddleware, (req, res) => {
+  if (!req.semya.isAdmin) return res.status(403).json({ error: 'Admin access required.' });
+  const { client } = req.semya;
+  const date = req.body?.date || null;
+  const jobId = startJob(() => runMissingRowsCheck(client.id, date));
+  return res.json({ jobId });
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// GET /:client_slug/reconciliation/logic-differences
+// Logic-differences check — the actual work, run inside a background job.
 //
 // A different question from "what's missing": for dates where BOTH
 // systems have the exact same set of orders (verified by matching
@@ -172,18 +195,13 @@ router.get('/:client_slug/reconciliation/missing-rows/all', rbacMiddleware, asyn
 // bugs found earlier. Small differences (under ₹5 for the whole day)
 // are treated as rounding noise, not flagged.
 // ═══════════════════════════════════════════════════════════════════
-router.get('/:client_slug/reconciliation/logic-differences', rbacMiddleware, async (req, res) => {
-  if (!req.semya.isAdmin) return res.status(403).json({ error: 'Admin access required.' });
-  const { client } = req.semya;
-
+async function runLogicDifferencesCheck(clientId) {
   const { data: newRows, error: newErr } = await supabaseAdmin
     .from('revenue_data').select('standard_order_id, standard_sku, standard_revenue, order_date')
-    .eq('client_id', client.id);
-  if (newErr) return res.status(500).json({ error: 'Failed to load this system\'s rows: ' + newErr.message });
+    .eq('client_id', clientId);
+  if (newErr) throw new Error('Failed to load this system\'s rows: ' + newErr.message);
 
-  let oldRows;
-  try { oldRows = await fetchOldLedger(); }
-  catch (e) { return res.status(502).json({ error: oldDashboardErrorMessage(e) }); }
+  const oldRows = await fetchOldLedger();
 
   const newByDate = new Map();
   for (const row of (newRows || [])) {
@@ -227,8 +245,30 @@ router.get('/:client_slug/reconciliation/logic-differences', rbacMiddleware, asy
   }
 
   differences.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+  return { differenceCount: differences.length, differences };
+}
 
-  return res.json({ differenceCount: differences.length, differences });
+// POST /:client_slug/reconciliation/logic-differences/start
+router.post('/:client_slug/reconciliation/logic-differences/start', rbacMiddleware, (req, res) => {
+  if (!req.semya.isAdmin) return res.status(403).json({ error: 'Admin access required.' });
+  const { client } = req.semya;
+  const jobId = startJob(() => runLogicDifferencesCheck(client.id));
+  return res.json({ jobId });
+});
+
+// GET /:client_slug/reconciliation/jobs/:jobId — poll until done/error
+router.get('/:client_slug/reconciliation/jobs/:jobId', rbacMiddleware, (req, res) => {
+  if (!req.semya.isAdmin) return res.status(403).json({ error: 'Admin access required.' });
+  const job = jobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'Unknown job — it may have expired (jobs are kept for 1 hour) or the server restarted since it was started.' });
+  if (job.status === 'error') {
+    const isTimeout = /timeout|aborted/i.test(job.error || '');
+    const msg = isTimeout
+      ? 'Old dashboard did not respond in time (it may be cold-starting on Render\'s free tier — try again in a moment).'
+      : 'Failed to reach old dashboard: ' + job.error;
+    return res.json({ status: 'error', error: msg });
+  }
+  return res.json({ status: job.status, result: job.result });
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -242,12 +282,28 @@ router.get('/:client_slug/reconciliation/logic-differences', rbacMiddleware, asy
 // imported row that later ALSO arrives through a real file upload
 // can never become a duplicate; whichever lands second just updates
 // the same row instead of creating a new one.
+//
+// HARD LIMIT of 300 rows per request, enforced here rather than left
+// to whoever calls this: a real dataset can easily have thousands of
+// missing rows (9,000+ seen in practice), and processing them one
+// database write at a time in a single HTTP request WILL time out —
+// the browser, Render's own request timeout, or both — long before
+// it finishes, no matter how patient anyone is. The frontend chunks
+// large imports into multiple requests against this same endpoint;
+// this limit is what makes that the only viable way to call it,
+// rather than a suggestion that's easy to accidentally bypass.
 // ═══════════════════════════════════════════════════════════════════
+const IMPORT_BATCH_LIMIT = 300;
+const IMPORT_CONCURRENCY = 10; // parallel upserts within one request — mirrors bulkInsert()'s own pattern in fileIngestion.js
+
 router.post('/:client_slug/reconciliation/import', rbacMiddleware, async (req, res) => {
   if (!req.semya.isAdmin) return res.status(403).json({ error: 'Admin access required.' });
   const { client } = req.semya;
   const { rows } = req.body || {};
   if (!Array.isArray(rows) || !rows.length) return res.status(400).json({ error: 'rows must be a non-empty array.' });
+  if (rows.length > IMPORT_BATCH_LIMIT) {
+    return res.status(400).json({ error: `Send at most ${IMPORT_BATCH_LIMIT} rows per request — got ${rows.length}. The frontend should split a large import into multiple requests of this size.` });
+  }
 
   // Note: with ignoreDuplicates:true, Supabase silently no-ops on an
   // existing row_hash rather than erroring — so "imported" below means
@@ -259,7 +315,7 @@ router.post('/:client_slug/reconciliation/import', rbacMiddleware, async (req, r
   let imported = 0, failed = 0;
   const failures = [];
 
-  for (const oldRow of rows) {
+  const processOne = async (oldRow) => {
     try {
       const { platform } = mapOldRowToPlatform(oldRow);
       const normalised = {
@@ -286,6 +342,14 @@ router.post('/:client_slug/reconciliation/import', rbacMiddleware, async (req, r
       failed++;
       failures.push({ order_id: oldRow.order_id, sku: oldRow.sku, error: e.message });
     }
+  };
+
+  // Concurrent batches rather than one row at a time — this is what
+  // actually makes a 300-row request finish in a few seconds instead
+  // of 300x a single round-trip's latency.
+  for (let i = 0; i < rows.length; i += IMPORT_CONCURRENCY) {
+    const batch = rows.slice(i, i + IMPORT_CONCURRENCY);
+    await Promise.all(batch.map(processOne));
   }
 
   return res.json({ ok: true, requested: rows.length, imported, failed, failures: failures.slice(0, 20) });
