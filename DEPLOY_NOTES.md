@@ -92,7 +92,38 @@ The previous round's timezone fix (IST-converting every raw file timestamp) was 
 
 **If you already deployed the previous (IST-conversion) version and uploaded files through it**, some rows may have been filed under the wrong date during that window — re-upload the affected files after this fix deploys to correct them (the upsert logic from the earlier revenue de-dup fix makes this safe).
 
-## This round's fix — Meta/Google misattribution (found the cause of the earlier "why does Meta/Google not show correctly" question)
+## This round's fix — the real cause of numbers changing on a plain page refresh (severe, systemic)
+
+**This explains a lot of the fluctuation seen across recent rounds.** You confirmed no upload, import, or cleanup happened between two screenshots that still showed different totals — that's only possible if the underlying query itself is non-deterministic, and it was.
+
+### The bug
+`fetchAllRows()` — the shared helper every major endpoint in `clientRouter.js` uses to page through a client's full dataset (Platform Sales, SKU Performance, Campaign Insights, Geographic Analysis, Fraud Patterns) — paginates using `.range(from, to)` (`LIMIT`/`OFFSET` under the hood). **None of its five call sites included an `.order()` clause.** Without an explicit, unique sort order, Postgres makes no guarantee that two separate executions of the *identical* query return rows in the same order — meaning two consecutive page loads, with zero data changes in between, can genuinely land different rows on each page boundary: some silently skipped, others counted twice. This is a well-known, textbook pitfall with offset-based pagination, and it was present in every single paginated query in this file.
+
+### Fix
+Added `.order('id')` (the UUID primary key — guaranteed unique per row) to all five call sites, plus a warning comment directly on the `fetchAllRows` helper so this can't quietly recur if a new caller gets added later without one.
+
+### What this means for everything investigated in this conversation so far
+Some of the number fluctuations chased over the last several rounds may have been partly caused by this, layered on top of the real bugs that were also found and fixed (the fingerprint-dedup issue, the Meta/Google mis-split, etc.) — those were all still real and correctly fixed, verified against actual data each time. This pagination bug is a separate, additional source of instability that could have made some of those investigations noisier than they needed to be. Worth re-verifying key numbers again now that this is fixed, since a "genuine" number should now be stable across repeated page loads with no other changes.
+
+**Deploy just the backend for this one.** After deploying, refresh the same page twice in a row with nothing else changed — the numbers should now be identical both times, which is the direct test for whether this fix actually worked.
+
+
+
+**Confirmed from the code:** the `platforms` array was never sorted at all — it was whatever order `Object.values()` happened to return, which really just means "whichever platform's first row appeared earliest in the raw database query results." That's why Flipkart (2.6%) could sit above Blinkit (3.2%) — a real revenue-descending sort would never do that.
+
+**Fix, in `clientRouter.js`:** `aggregatePlatformSales()` now explicitly sorts platforms by `totalRevenue` descending before returning — every consumer of `/platform-sales` gets a consistent, sensible highest-to-lowest order for free, not just Platform Split specifically.
+
+**Deploy just the backend for this one.**
+
+
+
+**The bug, confirmed:** two different Google revenue figures appeared simultaneously on the same screen (Platform Split: ₹1,960, Platform Health: ₹3,786) because they were never the same data in the first place. `renderPlatformHealth()` (the sidebar widget) was only ever called from the **SKU Performance** tab's fetch function — never from Platform Sales. So while viewing Platform Sales, the sidebar was silently showing whatever date range/filters were active the last time someone visited SKU Performance, completely disconnected from the tab actually on screen.
+
+**Fix:** Platform Sales now also refreshes the Platform Health sidebar itself, using its own current date range and filters — fetching campaign spend data (`/campaign-insights`) alongside its existing `/platform-sales` call, then calling the same `renderPlatformHealth()` function SKU Performance already uses. Whichever tab you're actually looking at now updates that sidebar to match.
+
+**Deploy just the frontend.** Once live, Platform Health should always agree with whatever revenue numbers are shown on the tab currently in view — no more two different totals for the same platform on one screen.
+
+
 
 **Changed:** `main/backend/ingestion/fileIngestion.js`. No SQL, no frontend.
 

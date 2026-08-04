@@ -21,6 +21,18 @@ const router = Router({ mergeParams: true });
 // ─── PAGINATED FETCH ──────────────────────────────────────────────
 // Supabase free tier caps rows at 1000 per request (project-level Max Rows setting).
 // This helper fetches ALL rows by requesting pages until an empty page is returned.
+// BUG FIX: every caller of this MUST include a deterministic, unique
+// .order() clause (e.g. .order('id'), since id is the UUID primary
+// key) in the query it builds. Without one, Postgres/PostgREST make
+// NO guarantee about row order between separate query executions —
+// meaning two consecutive calls to this exact function, with zero
+// data changes in between, can genuinely return different rows on
+// each page boundary (some rows silently skipped, others counted
+// twice). This showed up in production as a plain page refresh
+// producing a different total revenue figure with no upload, import,
+// or cleanup having happened in between — confirmed the cause was
+// exactly this: none of this file's five callers had an .order()
+// clause at all before this comment was added.
 async function fetchAllRows(buildQuery, pageSize = 1000) {
   const allRows = [];
   let from = 0;
@@ -202,6 +214,7 @@ router.get(
         // into "Unknown".
         .select('platform, order_date, standard_revenue, standard_units, standard_status, standard_sku, standard_product_name, standard_order_id')
         .eq('client_id', client.id)
+        .order('id')
         .range(from, to);
       if (req.query.from)      q = q.or(`order_date.gte.${req.query.from},order_date.is.null`);
       if (req.query.to)        q = q.or(`order_date.lte.${req.query.to},order_date.is.null`);
@@ -259,6 +272,7 @@ router.get(
           .from('revenue_data')
           .select('standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status, standard_product_name, standard_order_id, raw_extras')
           .eq('client_id', client.id)
+          .order('id')
           .range(rangeFrom, rangeTo);
         if (sku)      q = q.eq('standard_sku', sku);
         if (platform) q = q.in('platform', expandPlatform(platform));
@@ -396,6 +410,7 @@ router.get(
         .from('revenue_data')
         .select('platform, standard_revenue, standard_units, standard_sku, standard_status, standard_fulfillment_channel, order_date, standard_order_id')
         .eq('client_id', client.id)
+        .order('id')
         .range(rangeFrom, rangeTo);
       if (from)     q = q.or(`order_date.gte.${from},order_date.is.null`);
       if (to)       q = q.or(`order_date.lte.${to},order_date.is.null`);
@@ -527,6 +542,7 @@ router.get(
         .from('revenue_data')
         .select('standard_city, standard_state, standard_revenue, standard_units, standard_sku, standard_status, platform, raw_extras')
         .eq('client_id', client.id)
+        .order('id')
         .range(rangeFrom, rangeTo);
       if (from)     q = q.or(`order_date.gte.${from},order_date.is.null`);
       if (to)       q = q.or(`order_date.lte.${to},order_date.is.null`);
@@ -624,6 +640,7 @@ router.get(
         .from('revenue_data')
         .select('platform, standard_status, standard_revenue, standard_sku, order_date, raw_extras')
         .eq('client_id', client.id)
+        .order('id')
         .range(rangeFrom, rangeTo);
       if (from) q = q.or(`order_date.gte.${from},order_date.is.null`);
       if (to)   q = q.or(`order_date.lte.${to},order_date.is.null`);
@@ -754,7 +771,14 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
     delete p._rowsWithoutOrderId;
   }
 
-  const platforms  = Object.values(byPlatform);
+  // Sorted highest revenue first — previously this was whatever order
+  // Object.values() happened to preserve, which is really just
+  // "whichever platform's first row appeared earliest in the raw
+  // query results." That's not a meaningful ordering for a "split"
+  // view at all (it could put a 2.6% platform above a 3.2% one purely
+  // by insertion accident) — sorted explicitly here so every consumer
+  // of this endpoint gets a consistent, sensible order for free.
+  const platforms  = Object.values(byPlatform).sort((a, b) => b.totalRevenue - a.totalRevenue);
   const grandTotal = platforms.reduce((s, p) => s + p.totalRevenue, 0);
 
   const bucketToArr = (bucket, labelKey) => Object.entries(bucket)
