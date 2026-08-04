@@ -92,7 +92,31 @@ The previous round's timezone fix (IST-converting every raw file timestamp) was 
 
 **If you already deployed the previous (IST-conversion) version and uploaded files through it**, some rows may have been filed under the wrong date during that window — re-upload the affected files after this fix deploys to correct them (the upsert logic from the earlier revenue de-dup fix makes this safe).
 
-## This round's fix — Platform Health showing 0.0x ROAS for Meta despite real revenue
+## This round's fix — Website ad spend showing ~4x too high (Google Ads rollup rows)
+
+**Confirmed with exact math against your uploaded Google Ads file:** real spend was ₹4,182.68 (matches the old dashboard exactly), but the new dashboard showed ~₹16.7K — because Google Ads campaign exports append several aggregate rows after the real per-campaign rows: `Total: Campaigns`, `Total: Account`, `Total: Search`, `Total: Performance Max`, etc. Each of those carries its own real `Cost` figure — a sum of some subset of the campaigns above it — but our ingestion was treating them as ordinary campaign rows and summing their spend right alongside the real campaigns, multiplying the reported total several times over. Verified precisely: summing every row (real campaigns + all the non-zero "Total:" rows) produces ₹16,730.72 — almost exactly what was shown.
+
+**Fix, in `fileIngestion.js`:** rows are now filtered before any other processing touches them — any row whose first column value starts with "Total" (case-insensitive) is dropped as a rollup/summary row, not a real campaign. Ran the exact fixed logic against your uploaded file: **₹4,182.68**, an exact match to the old dashboard.
+
+This is a general filter (not gated to Google specifically) since a real campaign name starting with the word "Total" is extremely unlikely and this exact row shape hasn't appeared in any other platform's export — but worth keeping an eye out if a future platform's real campaign naming ever collides with this.
+
+**Important — re-uploading alone won't remove what's already there.** The bad "Total: ..." rows already in your database have their own distinct campaign names, so a corrected re-upload doesn't overwrite or replace them — it just adds the correct rows alongside the existing bad ones. Clean those up directly first:
+
+```sql
+-- See exactly what's there before deleting, per client
+select campaign_name, campaign_date, standard_spend, platform
+from campaign_data
+where campaign_name ilike 'total%'
+order by campaign_date desc;
+
+-- Remove them
+delete from campaign_data
+where campaign_name ilike 'total%';
+```
+
+Run the `select` first to confirm these are genuinely all rollup rows (not a real campaign that happens to start with "Total") before running the `delete`.
+
+
 
 Same root cause class as the earlier "Website ROAS" fix, found in a different widget: `renderPlatformHealth()` was computing ROAS from each campaign row's own self-reported "conversion value" (`standard_revenue` inside the ad-spend file itself), not the real attributed revenue from actual orders shown right next to it. Meta's ad-spend export apparently doesn't populate a meaningful conversion-value column (common when full server-side purchase tracking isn't wired into the ads platform) — so despite real spend and real revenue existing, the self-reported figure used for the ratio was near zero.
 

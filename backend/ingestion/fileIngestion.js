@@ -583,10 +583,40 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
     // 3. Parse file into raw row objects (handles encoding/delimiter/
     //    header-row detection, and a file-level default date if the
     //    report doesn't have a per-row date column)
-    const { rows: rawRows, defaultDate } = parseFile(fileBuffer, originalName);
-    if (rawRows.length === 0) {
+    const { rows: rawRows0, defaultDate } = parseFile(fileBuffer, originalName);
+    if (rawRows0.length === 0) {
       await finaliseUpload(uploadId, 'success', 0, 0);
       return { uploadId, platform, dataType: filenameDataType, rowCount: 0, skippedRows: 0 };
+    }
+
+    // 3a. Drop rollup/summary rows before anything else touches them.
+    // Google Ads campaign exports append several aggregate rows after
+    // the real per-campaign data — "Total: Campaigns", "Total: Account",
+    // "Total: Search", "Total: Performance Max", etc. — each carrying
+    // its own real Cost/spend figure that's a SUM of (some subset of)
+    // the individual campaigns above it, not a new campaign. Left in,
+    // these get treated as ordinary rows and their spend gets summed
+    // right alongside the real campaigns' spend, multiplying the
+    // reported total several times over (confirmed directly against an
+    // uploaded file: real spend ₹4,182.68, but summing every row
+    // including 5 non-zero "Total: ..." rows on top of it produced
+    // ₹16,730.72 — very close to what the affected dashboard actually
+    // showed). Detected generically off the first column's value
+    // starting with "Total" (case-insensitive) — a live campaign name
+    // wouldn't naturally start with that word, and this same "Total:"
+    // row shape hasn't shown up in any other platform's export so far,
+    // so this is safe to apply across the board rather than gating it
+    // to Google specifically.
+    const rawRows = rawRows0.filter(row => {
+      const firstValue = String(Object.values(row)[0] ?? '').trim();
+      return !/^total\b/i.test(firstValue);
+    });
+    if (rawRows.length < rawRows0.length) {
+      console.log(`[ingestion] dropped ${rawRows0.length - rawRows.length} rollup/summary row(s) from ${originalName} (e.g. Google Ads "Total: ..." rows)`);
+    }
+    if (rawRows.length === 0) {
+      await finaliseUpload(uploadId, 'success', 0, 0);
+      return { uploadId, platform, dataType: filenameDataType, rowCount: 0, skippedRows: rawRows0.length };
     }
 
     // 3b. Content-based data-type check — a file's actual columns are a
