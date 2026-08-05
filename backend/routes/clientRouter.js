@@ -251,6 +251,50 @@ router.get(
     } else {
       summary.availableCategories = summary.categories.map(c => c.category);
     }
+
+    // Date-aligned ROAS — was previously computed on the frontend as
+    // "this platform's ENTIRE selected-range revenue ÷ whatever
+    // campaign spend happens to exist," which produced implausible
+    // figures (confirmed in production: 64.4x for Meta) whenever spend
+    // data has only been uploaded for a handful of recent days while
+    // revenue spans months. Fixed here, server-side, to only count
+    // revenue from the SAME dates that platform actually has spend
+    // recorded for — a fair like-for-like ratio instead of months of
+    // revenue divided by a few days of spend.
+    const { data: campaignRowsForRoas } = await supabaseAdmin
+      .from('campaign_data')
+      .select('platform, campaign_date, standard_spend')
+      .eq('client_id', client.id)
+      .gte('campaign_date', req.query.from || '1900-01-01')
+      .lte('campaign_date', req.query.to || '2999-12-31');
+
+    const spendDatesByPlatform = {};
+    const spendTotalByPlatform = {};
+    for (const row of (campaignRowsForRoas || [])) {
+      const p = row.platform;
+      if (!spendDatesByPlatform[p]) spendDatesByPlatform[p] = new Set();
+      if (row.campaign_date) spendDatesByPlatform[p].add(row.campaign_date);
+      spendTotalByPlatform[p] = (spendTotalByPlatform[p] || 0) + (Number(row.standard_spend) || 0);
+    }
+
+    const revenueOnSpendDatesByPlatform = {};
+    for (const row of dataForSummary) {
+      const p = row.platform;
+      const spendDates = spendDatesByPlatform[p];
+      if (spendDates && row.order_date && spendDates.has(row.order_date)) {
+        revenueOnSpendDatesByPlatform[p] = (revenueOnSpendDatesByPlatform[p] || 0) + (Number(row.standard_revenue) || 0);
+      }
+    }
+
+    for (const p of summary.platforms) {
+      const spend = spendTotalByPlatform[p.platform] || 0;
+      const revenueOnSpendDates = revenueOnSpendDatesByPlatform[p.platform] || 0;
+      p.spend = spend;
+      // null (not 0) when there's no spend at all for this platform in
+      // range — "no ROAS to show" is different from "ROAS is zero".
+      p.roas = spend > 0 ? +(revenueOnSpendDates / spend).toFixed(2) : null;
+    }
+
     return res.json(summary);
   }
 );

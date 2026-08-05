@@ -92,7 +92,17 @@ The previous round's timezone fix (IST-converting every raw file timestamp) was 
 
 **If you already deployed the previous (IST-conversion) version and uploaded files through it**, some rows may have been filed under the wrong date during that window — re-upload the affected files after this fix deploys to correct them (the upsert logic from the earlier revenue de-dup fix makes this safe).
 
-## This round's fix — the real cause of numbers changing on a plain page refresh (severe, systemic)
+## This round's fix — implausible ROAS figures (64.4x for Meta) from date-mismatched spend vs. revenue
+
+**Confirmed exactly as you diagnosed.** ROAS was being computed as *this platform's revenue across the entire selected date range* ÷ *whatever campaign spend happens to exist* — but campaign/ad-spend files have only been uploaded for a handful of recent days throughout this conversation, while revenue spans 8 months (especially after the historical migration import). Months of revenue divided by a few days of spend produces exactly the kind of inflated, meaningless ratio you saw.
+
+**Fix — in `clientRouter.js`'s `/platform-sales` endpoint:** ROAS is now computed server-side, using only revenue from the **same dates** that platform actually has campaign spend recorded for — a genuine like-for-like comparison, not months against days. Returned directly as `roas` (and `spend`) on each platform in the API response. `renderPlatformHealth()` on the frontend now prefers this server-computed value over the old date-mismatched calculation.
+
+**Known remaining gap:** the SKU Performance tab's own trigger of this same widget (a separate code path) hasn't been updated to provide the new `roas` field yet, so it still falls back to the old calculation when that tab loads Platform Health. Worth aligning in a follow-up — flagging honestly rather than claiming this is fully fixed everywhere.
+
+**Deploy order:** backend first (this is where the actual computation lives), then frontend. No SQL. As your ad-spend upload coverage grows to match your revenue history, these ROAS figures should become meaningfully more accurate automatically — the fix isn't a one-time patch, it's a correct formula that gets better as more real dates have both sides of the ratio.
+
+
 
 **This explains a lot of the fluctuation seen across recent rounds.** You confirmed no upload, import, or cleanup happened between two screenshots that still showed different totals — that's only possible if the underlying query itself is non-deterministic, and it was.
 
