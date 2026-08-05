@@ -173,11 +173,20 @@ router.get('/session-status', asyncHandler(async (req, res) => {
   if (error || !user) return res.status(401).json({ error: 'Invalid token.' });
 
   const { data: dbUser } = await supabaseAdmin
-    .from('users').select('is_active, access_expires_at').eq('email', user.email).single();
+    .from('users').select('is_active').eq('email', user.email).single();
 
   if (!dbUser) return res.json({ status: 'not_found' });
   if (!dbUser.is_active) return res.json({ status: 'inactive' });
-  if (dbUser.access_expires_at && new Date(dbUser.access_expires_at) < new Date()) {
+
+  let accessExpiresAt = null;
+  try {
+    const { data: expiryRow } = await supabaseAdmin
+      .from('users').select('access_expires_at').eq('email', user.email).single();
+    accessExpiresAt = expiryRow?.access_expires_at || null;
+  } catch (e) {
+    console.warn('[session-status] access_expires_at check failed (treating as no expiry):', e.message);
+  }
+  if (accessExpiresAt && new Date(accessExpiresAt) < new Date()) {
     return res.json({ status: 'expired' });
   }
   return res.json({ status: 'ok' });
@@ -350,11 +359,25 @@ router.get('/me', asyncHandler(async (req, res) => {
   const { data: { user }, error } = await supabaseAuth.auth.getUser(token);
   if (error || !user) return res.status(401).json({ error: 'Invalid or expired session.' });
 
+  // Same fail-safe split as rbac.js — see the long comment there for
+  // why this can never be one combined query again. This is the
+  // endpoint called immediately after every sign-in; it failing
+  // outright over a missing optional column is exactly what caused
+  // the login/dashboard redirect loop.
   const { data: dbUser } = await supabaseAdmin
-    .from('users').select('role, client_id, is_active, access_expires_at').eq('email', user.email).single();
+    .from('users').select('role, client_id, is_active').eq('email', user.email).single();
 
   if (!dbUser || !dbUser.is_active) return res.status(403).json({ error: 'Account not active.' });
-  if (dbUser.access_expires_at && new Date(dbUser.access_expires_at) < new Date()) {
+
+  let accessExpiresAt = null;
+  try {
+    const { data: expiryRow } = await supabaseAdmin
+      .from('users').select('access_expires_at').eq('email', user.email).single();
+    accessExpiresAt = expiryRow?.access_expires_at || null;
+  } catch (e) {
+    console.warn('[auth/me] access_expires_at check failed (treating as no expiry):', e.message);
+  }
+  if (accessExpiresAt && new Date(accessExpiresAt) < new Date()) {
     return res.status(403).json({ error: 'Your access has expired. Contact your account admin to renew it.', code: 'access_expired' });
   }
 

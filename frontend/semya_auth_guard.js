@@ -18,9 +18,24 @@
   const clientSlug = urlMatch ? urlMatch[1] : null;
   if (clientSlug) localStorage.setItem('semya_last_slug', clientSlug);
 
+  // BUG FIX (production outage): this used to only clear OUR OWN
+  // token (semya_token), not the underlying Supabase session itself.
+  // index.html has its own "already have a valid session → skip
+  // login, go straight to dashboard" check — so when the backend
+  // auth check below failed for ANY reason (the specific trigger was
+  // a missing database column from a deployment-order mistake, but
+  // this loop would happen for any backend failure), this page would
+  // redirect to login, and login would immediately bounce right back
+  // here because Supabase's own session was still valid, forever.
+  // Signing out of Supabase here too means a failed auth check always
+  // lands cleanly on a real login form, no matter what caused it.
   function redirectToLogin() {
     localStorage.removeItem(TOKEN_KEY);
-    window.location.replace(LOGIN_PAGE);
+    if (window._supabaseClient) {
+      window._supabaseClient.auth.signOut().finally(() => window.location.replace(LOGIN_PAGE));
+    } else {
+      window.location.replace(LOGIN_PAGE);
+    }
   }
 
   async function checkAuth() {

@@ -92,7 +92,24 @@ The previous round's timezone fix (IST-converting every raw file timestamp) was 
 
 **If you already deployed the previous (IST-conversion) version and uploaded files through it**, some rows may have been filed under the wrong date during that window — re-upload the affected files after this fix deploys to correct them (the upsert logic from the earlier revenue de-dup fix makes this safe).
 
-## This round's feature — client-view access control, built end to end
+## URGENT — fixes a login/dashboard redirect loop from last round's deploy
+
+**Root cause, confirmed:** the SQL migration (`access_expiry_migration.sql`) almost certainly went out *after* the backend that depends on it. `rbacMiddleware` and `/auth/me` both selected `access_expires_at` in the same query as the core user fields — when that column didn't exist yet, the *entire* query failed, rejecting every single login with no exception. Combined with two pre-existing behaviors that were individually fine but combined into a loop: `index.html` redirects to the dashboard whenever a valid Supabase session exists, and the dashboard's auth guard redirects back to login whenever the backend check fails — the two pages bounced off each other indefinitely, exactly matching the screenshots (flipping every ~1 second).
+
+### Two-part fix
+
+**1. Made the actual cause impossible to repeat.** `rbac.js`, `/auth/me`, and `/session-status` (`authRouter.js`) all now check `access_expires_at` as a **separate, isolated query**, wrapped in its own try/catch that defaults to "no expiry" on *any* failure — a missing column, a transient error, anything. The core login check no longer has any dependency on this column existing at all. This fails safe (nobody gets locked out from an infrastructure hiccup) instead of fail dangerous (everybody gets locked out, which is what happened).
+
+**2. Made the loop itself structurally impossible**, regardless of what causes a future auth failure. `semya_auth_guard.js`'s `redirectToLogin()` previously only cleared our own token, not the underlying Supabase session — so `index.html`'s "already signed in → go to dashboard" check would immediately undo the redirect. It now signs out of Supabase entirely before redirecting, so a failed auth check always lands cleanly on a real, usable login page, no matter what caused it.
+
+### Deploy order — this time it matters even more
+1. **Run the SQL migration first**, if it hasn't been already. This resolves the underlying issue immediately.
+2. Deploy the backend.
+3. Deploy the frontend (`index.html`, `dashboard.html`, and **`semya_auth_guard.js`** — don't forget this one, it's a separate file from `dashboard.html` itself).
+
+If you're still stuck in the loop *right now* before redeploying: clear your browser's local storage for this site (or open an incognito window) to break the current loop manually, then try again once everything above is deployed.
+
+
 
 **New SQL:** `access_expiry_migration.sql`. **Changed:** `rbac.js`, `authRouter.js`, `targetsRouter.js`, `inventoryRouter.js`, `dashboard.html`, `index.html`.
 

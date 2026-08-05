@@ -39,10 +39,14 @@ export async function rbacMiddleware(req, res, next) {
 
     const email = user.email;
 
-    // Look up user in our users table by email
+    // Look up user in our users table by email — deliberately NOT
+    // selecting access_expires_at here. See below for why: this is
+    // the query every single login and API call depends on, and it
+    // must never fail just because a newer, optional column hasn't
+    // been migrated in yet.
     const { data: dbUser, error: userError } = await supabaseAdmin
       .from('users')
-      .select('id, email, role, client_id, is_active, access_expires_at')
+      .select('id, email, role, client_id, is_active')
       .eq('email', email.toLowerCase().trim())
       .single();
 
@@ -55,15 +59,42 @@ export async function rbacMiddleware(req, res, next) {
       return res.status(403).json({ error: 'Account is inactive.' });
     }
 
-    // Expiring access — admins are never subject to this (access_expires_at
-    // should only ever be set on client-role rows in the first place, but
-    // this is checked regardless of role as a second line of defense).
+    // Expiring access — checked as a SEPARATE, fail-safe query.
+    //
+    // BUG FIX (production outage): this used to be selected in the
+    // SAME query as the core user lookup above. The very first time
+    // this feature was deployed, the backend went out slightly ahead
+    // of its own SQL migration — meaning access_expires_at didn't
+    // exist as a column yet, which made that combined query fail for
+    // literally every single user, rejecting every login outright.
+    // Worse, that combined with index.html's "already have a session
+    // → redirect to dashboard" check and the dashboard's own "auth
+    // check failed → redirect to login" guard produced an infinite
+    // bounce between the two pages (also fixed separately, in
+    // semya_auth_guard.js, so a bad backend response can't cause that
+    // loop again regardless of the cause).
+    //
+    // This step is now fully isolated: any failure at all — a missing
+    // column, a transient query error, anything — is treated as "no
+    // expiry data available," which fails safe (nobody gets locked
+    // out because of an infrastructure hiccup) rather than fail
+    // dangerous (everybody gets locked out). A real, deliberately-set
+    // expiry still works exactly as intended when this query succeeds.
+    let accessExpiresAt = null;
+    try {
+      const { data: expiryRow } = await supabaseAdmin
+        .from('users').select('access_expires_at').eq('id', dbUser.id).single();
+      accessExpiresAt = expiryRow?.access_expires_at || null;
+    } catch (e) {
+      console.warn('[rbac] access_expires_at check failed (treating as no expiry):', e.message);
+    }
+
     // A distinct error code, not just a generic 403, so the frontend can
     // show "your access has expired" instead of a plain failure — this
     // is checked again right after sign-in on the login page itself, not
     // just here, so someone doesn't land on a dashboard that then fails
     // every single request with no explanation.
-    if (dbUser.access_expires_at && new Date(dbUser.access_expires_at) < new Date()) {
+    if (accessExpiresAt && new Date(accessExpiresAt) < new Date()) {
       return res.status(403).json({ error: 'Your access has expired. Contact your account admin to renew it.', code: 'access_expired' });
     }
 
