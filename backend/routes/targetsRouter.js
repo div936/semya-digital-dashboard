@@ -29,14 +29,14 @@
 //   app.use('/clients', targetsRouter);
 // ─────────────────────────────────────────────────────────────────
 import { Router } from 'express';
-import { rbacMiddleware } from '../middleware/rbac.js';
+import { rbacMiddleware, requireTab } from '../middleware/rbac.js';
 import { supabaseAdmin }  from '../lib/supabase.js';
 import { todayIST } from '../lib/dateUtils.js';
 
 const router = Router({ mergeParams: true });
 
 // ─── GET /clients/:client_slug/targets ───────────────────────────
-router.get('/:client_slug/targets', rbacMiddleware, async (req, res) => {
+router.get('/:client_slug/targets', rbacMiddleware, requireTab('daily_targets'), async (req, res) => {
   const { client } = req.semya;
   const date = req.query.date || todayIST();
 

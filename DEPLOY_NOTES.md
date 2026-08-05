@@ -92,7 +92,41 @@ The previous round's timezone fix (IST-converting every raw file timestamp) was 
 
 **If you already deployed the previous (IST-conversion) version and uploaded files through it**, some rows may have been filed under the wrong date during that window — re-upload the affected files after this fix deploys to correct them (the upsert logic from the earlier revenue de-dup fix makes this safe).
 
-## This round's fix — implausible ROAS figures (64.4x for Meta) from date-mismatched spend vs. revenue
+## This round's feature — client-view access control, built end to end
+
+**New SQL:** `access_expiry_migration.sql`. **Changed:** `rbac.js`, `authRouter.js`, `targetsRouter.js`, `inventoryRouter.js`, `dashboard.html`, `index.html`.
+
+### 1. Login states — pending / approved / expired
+`/auth/check-access` (already existed) now also returns `'expired'`, checked against the real `access_expires_at` on the user record. The login page calls this **before** attempting sign-in, so a pending or expired account gets a clear, specific message instead of a generic "wrong password" — and an expired account gets a **"Request access again"** button, which re-enters the exact same approval queue a brand-new user goes through. Enforced twice more, server-side, so this can't be bypassed by skipping the frontend check: `rbacMiddleware` (every API call) and `/auth/me` (checked immediately after sign-in, before ever reaching the dashboard).
+
+### 2. Closed the two `requireTab` gaps found last round
+Daily Targets' data route and all 4 Inventory read routes now correctly check tab permission, matching every other module.
+
+### 3. "View as Client" is now a real replication, not a separate view
+The actual fix: `applyAdminVisibility()` — a single function that hides every `[data-role="admin"]` element based on `state.isAdmin && !getViewAsClient()`. **This closes the biggest gap found in planning**: those 10 admin-only elements (Client Administration, Financial Settings, Inventory Settings, Data Migration, Manage Data, Backfill Order IDs, AI Regenerate, the inventory "+ Enter stock" badge) were marked with `data-role="admin"` but nothing ever enforced it — they were fully visible to any client-role user the entire time. "View as Client" doesn't get its own separate hiding logic; it just makes this same function behave as if `isAdmin` were false, so it's guaranteed to match what a real client sees.
+
+### 4. Granular per-client visibility — planned, not built this round
+Honestly scoped out given the size of everything else here. The plan stands: extend `tab_permissions`' existing shape to cover named sub-features, not just whole tabs (e.g. `daily_targets.inventory_management` as its own toggleable key). Worth a dedicated follow-up round.
+
+### 5. Expiring access, admin-controlled
+- Approving a request now has an optional expiry date field right there in Client Administration → Pending Access Requests.
+- Approved employees show their current expiry (or "No expiry") with an **Extend** button — pick a new date, access resumes immediately, no re-approval needed.
+- If an admin does nothing, the account just stays expired — the person has to request access again themselves.
+
+### 6. Locked-section copy
+Updated to: *"This section isn't included in your plan yet — talk to your account manager to get access."*
+
+### Deploy order
+1. Run `access_expiry_migration.sql` first.
+2. Deploy backend.
+3. Deploy frontend.
+
+### Worth testing directly after deploying
+- Log in as a client-role account and confirm none of the 10 admin-only elements are visible anywhere.
+- Toggle "View as Client" as an admin and confirm the same elements disappear.
+- Approve a test request with a short expiry (e.g. tomorrow), then manually move the system date forward in Supabase (or just wait) and confirm the login page shows the expired state with the re-request button.
+
+
 
 **Confirmed exactly as you diagnosed.** ROAS was being computed as *this platform's revenue across the entire selected date range* ÷ *whatever campaign spend happens to exist* — but campaign/ad-spend files have only been uploaded for a handful of recent days throughout this conversation, while revenue spans 8 months (especially after the historical migration import). Months of revenue divided by a few days of spend produces exactly the kind of inflated, meaningless ratio you saw.
 

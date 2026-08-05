@@ -70,7 +70,7 @@ async function requireAdmin(req, res) {
 // response for the frontend to show directly to the admin instead
 // (copy/paste and send however they like), rather than silently
 // discarding it again.
-async function createOrInviteUser({ email, role, clientId, isLead = false }) {
+async function createOrInviteUser({ email, role, clientId, isLead = false, expiresAt = null }) {
   const cleanEmail = email.toLowerCase().trim();
   // Redirects through set-password.html instead of straight to the
   // dashboard — lets a first-time invite end with the person choosing
@@ -119,6 +119,9 @@ async function createOrInviteUser({ email, role, clientId, isLead = false }) {
     is_lead: role === 'admin' ? false : !!isLead,
     is_active: true,
     hashed_pw: 'MAGIC_LINK_AUTH',
+    // Admins are never subject to expiry, regardless of what was
+    // passed in — expiry is a client-account concept only.
+    access_expires_at: role === 'admin' ? null : expiresAt,
   }, { onConflict: 'email' });
   if (upsertErr) throw new Error('Failed to create/update user record: ' + upsertErr.message);
 
@@ -127,18 +130,81 @@ async function createOrInviteUser({ email, role, clientId, isLead = false }) {
 
 
 // ── POST /auth/check-access ───────────────────────────────────────
-// Returns: { status: 'approved' | 'pending' | 'new' }
+// Returns: { status: 'approved' | 'pending' | 'new' | 'expired' }
 router.post('/check-access', asyncHandler(async (req, res) => {
   const { email } = req.body || {};
   if (!email) return res.status(400).json({ error: 'Email required.' });
+  const cleanEmail = email.toLowerCase().trim();
 
   const { data } = await supabaseAdmin
     .from('access_requests')
     .select('status')
-    .eq('email', email.toLowerCase().trim())
+    .eq('email', cleanEmail)
     .single();
 
+  if (data?.status === 'approved') {
+    // Approved doesn't automatically mean currently valid — check the
+    // real, authoritative expiry on the user record itself (the
+    // access_requests row's own access_expires_at is a display copy
+    // for the admin UI, not what's actually enforced).
+    const { data: userRow } = await supabaseAdmin
+      .from('users').select('access_expires_at').eq('email', cleanEmail).single();
+    if (userRow?.access_expires_at && new Date(userRow.access_expires_at) < new Date()) {
+      return res.json({ status: 'expired' });
+    }
+  }
+
   return res.json({ status: data?.status || 'new' });
+}));
+
+
+// ── GET /auth/session-status — checked right after sign-in ────────
+// Catches an expired account immediately, before it ever reaches the
+// dashboard — rbacMiddleware enforces this too on every subsequent
+// API call, but this lets the login page show a clear "access
+// expired" message and sign the person back out, instead of them
+// landing on a dashboard that then fails every single request with
+// no explanation.
+router.get('/session-status', asyncHandler(async (req, res) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Auth required.' });
+
+  const { data: { user }, error } = await supabaseAuth.auth.getUser(token);
+  if (error || !user) return res.status(401).json({ error: 'Invalid token.' });
+
+  const { data: dbUser } = await supabaseAdmin
+    .from('users').select('is_active, access_expires_at').eq('email', user.email).single();
+
+  if (!dbUser) return res.json({ status: 'not_found' });
+  if (!dbUser.is_active) return res.json({ status: 'inactive' });
+  if (dbUser.access_expires_at && new Date(dbUser.access_expires_at) < new Date()) {
+    return res.json({ status: 'expired' });
+  }
+  return res.json({ status: 'ok' });
+}));
+
+
+// ── PATCH /auth/admin/access — admin extends or clears an existing
+// user's expiry (the "extend" side of the expire → extend-or-relapse
+// flow). Body: { email, expiresAt } — expiresAt null means "never
+// expires" going forward.
+router.patch('/admin/access', asyncHandler(async (req, res) => {
+  const admin = await requireAdmin(req, res); if (!admin) return;
+  const { email, expiresAt } = req.body || {};
+  if (!email) return res.status(400).json({ error: 'email is required.' });
+  const cleanEmail = email.toLowerCase().trim();
+
+  const { data: targetUser } = await supabaseAdmin.from('users').select('role').eq('email', cleanEmail).single();
+  if (!targetUser) return res.status(404).json({ error: 'No user found with that email.' });
+  if (targetUser.role === 'admin') return res.status(400).json({ error: 'Admin accounts are never subject to expiry.' });
+
+  const { error } = await supabaseAdmin.from('users').update({ access_expires_at: expiresAt || null }).eq('email', cleanEmail);
+  if (error) return res.status(500).json({ error: 'Failed to update access: ' + error.message });
+
+  // Keep the access_requests row's display copy in sync too.
+  await supabaseAdmin.from('access_requests').update({ access_expires_at: expiresAt || null }).eq('email', cleanEmail);
+
+  return res.json({ ok: true, email: cleanEmail, expiresAt: expiresAt || null });
 }));
 
 
@@ -208,7 +274,7 @@ router.get('/requests', asyncHandler(async (req, res) => {
 
   const { data } = await supabaseAdmin
     .from('access_requests')
-    .select('id, email, status, requested_at, client_id, clients(name,slug)')
+    .select('id, email, status, requested_at, client_id, access_expires_at, clients(name,slug)')
     .order('requested_at', { ascending: false });
 
   return res.json(data || []);
@@ -216,24 +282,27 @@ router.get('/requests', asyncHandler(async (req, res) => {
 
 
 // ── POST /auth/approve  — admin approves + assigns to client ──────
-// Body: { email, clientId, role }
+// Body: { email, clientId, role, expiresAt? }
+// expiresAt: ISO date string, or omit/null for "never expires".
 router.post('/approve', asyncHandler(async (req, res) => {
   const admin = await requireAdmin(req, res); if (!admin) return;
 
-  const { email, clientId, role } = req.body || {};
+  const { email, clientId, role, expiresAt } = req.body || {};
   const isAdmin = role === 'admin';
   if (!email) return res.status(400).json({ error: 'email is required.' });
   if (!isAdmin && !clientId) return res.status(400).json({ error: 'clientId is required unless role is "admin".' });
 
   const cleanEmail = email.toLowerCase().trim();
+  const cleanExpiresAt = isAdmin ? null : (expiresAt || null);
 
   // Update the originating access_requests row
   const { error: reqUpdateErr } = await supabaseAdmin.from('access_requests').update({
     status: 'approved', client_id: isAdmin ? null : clientId, reviewed_at: new Date().toISOString(),
+    access_expires_at: cleanExpiresAt,
   }).eq('email', cleanEmail);
   if (reqUpdateErr) console.warn('[auth/approve] access_requests update warning:', reqUpdateErr.message);
 
-  const result = await createOrInviteUser({ email: cleanEmail, role: isAdmin ? 'admin' : 'client', clientId });
+  const result = await createOrInviteUser({ email: cleanEmail, role: isAdmin ? 'admin' : 'client', clientId, expiresAt: cleanExpiresAt });
 
   let client = null;
   if (!isAdmin) {
@@ -282,9 +351,12 @@ router.get('/me', asyncHandler(async (req, res) => {
   if (error || !user) return res.status(401).json({ error: 'Invalid or expired session.' });
 
   const { data: dbUser } = await supabaseAdmin
-    .from('users').select('role, client_id, is_active').eq('email', user.email).single();
+    .from('users').select('role, client_id, is_active, access_expires_at').eq('email', user.email).single();
 
   if (!dbUser || !dbUser.is_active) return res.status(403).json({ error: 'Account not active.' });
+  if (dbUser.access_expires_at && new Date(dbUser.access_expires_at) < new Date()) {
+    return res.status(403).json({ error: 'Your access has expired. Contact your account admin to renew it.', code: 'access_expired' });
+  }
 
   let clientSlug = null;
   if (dbUser.client_id) {
@@ -403,7 +475,7 @@ router.get('/admin/employees', asyncHandler(async (req, res) => {
   const clientId = req.query.clientId;
   if (!clientId) return res.status(400).json({ error: 'clientId is required.' });
 
-  let query = supabaseAdmin.from('users').select('id, email, role, is_lead, is_active, created_at');
+  let query = supabaseAdmin.from('users').select('id, email, role, is_lead, is_active, created_at, access_expires_at');
   query = clientId === '__admin__'
     ? query.eq('role', 'admin').is('client_id', null)
     : query.eq('client_id', clientId);

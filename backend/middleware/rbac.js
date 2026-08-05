@@ -42,7 +42,7 @@ export async function rbacMiddleware(req, res, next) {
     // Look up user in our users table by email
     const { data: dbUser, error: userError } = await supabaseAdmin
       .from('users')
-      .select('id, email, role, client_id, is_active')
+      .select('id, email, role, client_id, is_active, access_expires_at')
       .eq('email', email.toLowerCase().trim())
       .single();
 
@@ -53,6 +53,18 @@ export async function rbacMiddleware(req, res, next) {
 
     if (!dbUser.is_active) {
       return res.status(403).json({ error: 'Account is inactive.' });
+    }
+
+    // Expiring access — admins are never subject to this (access_expires_at
+    // should only ever be set on client-role rows in the first place, but
+    // this is checked regardless of role as a second line of defense).
+    // A distinct error code, not just a generic 403, so the frontend can
+    // show "your access has expired" instead of a plain failure — this
+    // is checked again right after sign-in on the login page itself, not
+    // just here, so someone doesn't land on a dashboard that then fails
+    // every single request with no explanation.
+    if (dbUser.access_expires_at && new Date(dbUser.access_expires_at) < new Date()) {
+      return res.status(403).json({ error: 'Your access has expired. Contact your account admin to renew it.', code: 'access_expired' });
     }
 
     const { role, client_id: clientId } = dbUser;

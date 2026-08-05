@@ -30,7 +30,7 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import multer from 'multer';
 import xlsx from 'xlsx';
-import { rbacMiddleware } from '../middleware/rbac.js';
+import { rbacMiddleware, requireTab } from '../middleware/rbac.js';
 import { supabaseAdmin }  from '../lib/supabase.js';
 
 const router = Router({ mergeParams: true });
@@ -48,7 +48,7 @@ const upload = multer({
 // ═══════════════════════════════════════════════════════════════════
 // WAREHOUSES
 // ═══════════════════════════════════════════════════════════════════
-router.get('/:client_slug/inventory/warehouses', rbacMiddleware, async (req, res) => {
+router.get('/:client_slug/inventory/warehouses', rbacMiddleware, requireTab('utm_analytics'), async (req, res) => {
   const { data, error } = await supabaseAdmin
     .from('warehouses')
     .select('id, name, location, is_default, is_active, created_at')
@@ -126,7 +126,7 @@ router.delete('/:client_slug/inventory/warehouses/:id', rbacMiddleware, async (r
 // ═══════════════════════════════════════════════════════════════════
 // PLATFORM → WAREHOUSE MAPPING
 // ═══════════════════════════════════════════════════════════════════
-router.get('/:client_slug/inventory/platform-map', rbacMiddleware, async (req, res) => {
+router.get('/:client_slug/inventory/platform-map', rbacMiddleware, requireTab('utm_analytics'), async (req, res) => {
   const { data, error } = await supabaseAdmin
     .from('platform_warehouse_map')
     .select('platform, warehouse_id, warehouses(name)')
@@ -160,7 +160,7 @@ router.put('/:client_slug/inventory/platform-map', rbacMiddleware, async (req, r
 // ═══════════════════════════════════════════════════════════════════
 // STOCK LEVELS
 // ═══════════════════════════════════════════════════════════════════
-router.get('/:client_slug/inventory/stock', rbacMiddleware, async (req, res) => {
+router.get('/:client_slug/inventory/stock', rbacMiddleware, requireTab('utm_analytics'), async (req, res) => {
   const { warehouseId, sku } = req.query;
   let q = supabaseAdmin
     .from('inventory_stock')
@@ -356,7 +356,7 @@ router.post(
 // demand fluctuates and this has no visibility into pending
 // restocks or seasonal spikes.
 // ═══════════════════════════════════════════════════════════════════
-router.get('/:client_slug/inventory/alerts', rbacMiddleware, async (req, res) => {
+router.get('/:client_slug/inventory/alerts', rbacMiddleware, requireTab('utm_analytics'), async (req, res) => {
   const { client } = req.semya;
 
   const { data: stock, error: stockErr } = await supabaseAdmin
