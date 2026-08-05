@@ -1182,7 +1182,7 @@
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
               Client Administration
             </button>
-            <div id="viewAsClientRow" data-role="admin" style="display:none;align-items:center;justify-content:space-between;padding:8px 12px 8px 28px;font-size:11px;color:#475569;gap:8px;">
+            <div id="viewAsClientRow" style="display:none;align-items:center;justify-content:space-between;padding:8px 12px 8px 28px;font-size:11px;color:#475569;gap:8px;">
               <span id="viewAsClientLabel" style="display:flex;align-items:center;gap:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                 View as Client
@@ -4158,7 +4158,33 @@ function updateViewAsToggleUI() {
   if (label) label.textContent = on
     ? 'Viewing as: ' + (document.querySelector('#clientSwitcher option[value="' + state.clientSlug + '"]')?.textContent || 'client')
     : 'View as Client';
+
+  applyAdminVisibility();
 }
+
+// BUG FIX: every element marked data-role="admin" (Client
+// Administration, Financial Settings, Inventory Settings, Data
+// Migration, Manage Data, Backfill Order IDs, the AI Regenerate
+// button, and others) had that attribute set but NOTHING anywhere in
+// this file ever read it — meaning all of it was fully visible and
+// clickable to a client-role user the entire time. The backend
+// correctly rejected the actual WRITE actions behind isAdmin checks,
+// so nothing could actually be changed by a client, but the buttons
+// themselves — and some read-only data behind the read-only ones —
+// were exposed regardless of role.
+//
+// This is also THE mechanism "View as Client" now uses to be a real
+// replication of what a client sees, not a separate simulated view:
+// it doesn't get its own hiding logic, it just makes this function
+// behave exactly as if isAdmin were false, the same code path a real
+// client hits.
+function applyAdminVisibility() {
+  const showAdminUi = state.isAdmin && !getViewAsClient();
+  document.querySelectorAll('[data-role="admin"]').forEach(el => {
+    el.style.display = showAdminUi ? '' : 'none';
+  });
+}
+
 
 // Small icon next to any nav tab that's off — for a client user
 // this is the tab they can't open; for an admin it's a quick visual
@@ -4188,7 +4214,7 @@ function renderLockedPanel(tabKey, panel) {
   panel.innerHTML = '<div class="card" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:64px 24px;text-align:center;">' +
     '<div style="font-size:36px;margin-bottom:14px;">🔒</div>' +
     '<div style="font-size:15px;font-weight:700;color:#1e293b;margin-bottom:6px;">' + (labels[tabKey] || tabKey) + ' isn\'t available</div>' +
-    '<div style="font-size:12px;color:#94a3b8;max-width:320px;line-height:1.6;">This section hasn\'t been enabled for your account yet. Reach out to your account admin if you think you should have access.</div>' +
+    '<div style="font-size:12px;color:#94a3b8;max-width:320px;line-height:1.6;">This section isn\'t included in your plan yet — talk to your account manager to get access.</div>' +
   '</div>';
 }
 
@@ -5608,20 +5634,31 @@ async function loadCaEmployees(clientId) {
       list.innerHTML = '<div style="font-size:12px;color:#94a3b8;padding:8px 0;">No employees added yet.</div>';
       return;
     }
-    list.innerHTML = employees.map(e => (
+    list.innerHTML = employees.map(e => {
+      const isClientRole = e.role !== 'admin';
+      const expiryLabel = !isClientRole ? '' :
+        (e.access_expires_at
+          ? '<span style="font-size:9.5px;color:' + (new Date(e.access_expires_at) < new Date() ? '#dc2626' : '#64748b') + ';">' +
+              (new Date(e.access_expires_at) < new Date() ? 'Expired ' : 'Until ') + new Date(e.access_expires_at).toLocaleDateString('en-IN') +
+            '</span>'
+          : '<span style="font-size:9.5px;color:#94a3b8;">No expiry</span>');
+      return (
       '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 4px;border-bottom:1px solid #f1f5f9;">' +
         '<div style="display:flex;align-items:center;gap:8px;">' +
           '<span style="font-size:12px;color:#1e293b;">' + e.email + '</span>' +
           (e.is_lead ? '<span style="font-size:9px;font-weight:700;color:#d97706;background:#fff7ed;border:1px solid #fed7aa;padding:2px 6px;border-radius:99px;">LEAD</span>' : '') +
         '</div>' +
-        '<div style="display:flex;gap:6px;align-items:center;">' +
+        '<div style="display:flex;gap:8px;align-items:center;">' +
+          expiryLabel +
+          (isClientRole ? '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;" onclick="extendCaEmployeeAccess(' + jsAttr(e.email) + ')">Extend</button>' : '') +
           '<label style="font-size:10px;color:#94a3b8;display:flex;align-items:center;gap:4px;cursor:pointer;">' +
             '<input type="checkbox" ' + (e.is_lead ? 'checked' : '') + ' onchange="toggleCaEmployeeLead(' + jsAttr(e.id) + ',this.checked)" /> Lead' +
           '</label>' +
           '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;color:#dc2626;" onclick="removeCaEmployee(' + jsAttr(e.id) + ')">Remove</button>' +
         '</div>' +
       '</div>'
-    )).join('');
+      );
+    }).join('');
   } catch (e) {
     list.innerHTML = '<div style="font-size:12px;color:#94a3b8;padding:8px 0;">Failed to load employees.</div>';
   }
@@ -5669,6 +5706,27 @@ async function inviteCaEmployee() {
     alert('Failed to invite employee: ' + e.message);
   }
 }
+
+// The "extend" side of the expiry flow: pick a new date, access
+// resumes immediately, no fresh approval needed. If an admin instead
+// does nothing, the account just stays expired until the person
+// re-requests access — same queue a brand-new user goes through.
+async function extendCaEmployeeAccess(email) {
+  const current = prompt('Set access expiry for ' + email + ' (YYYY-MM-DD), or leave blank for "never expires":', '');
+  if (current === null) return; // cancelled
+  const expiresAt = current.trim() || null;
+  if (expiresAt && !/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) { alert('Enter a date as YYYY-MM-DD, or leave blank.'); return; }
+  try {
+    await apiFetch('/auth/admin/access', {
+      method: 'PATCH', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, expiresAt }),
+    });
+    loadCaEmployees(caState.clientId);
+  } catch (e) {
+    alert('Failed to update access: ' + e.message);
+  }
+}
+
 
 async function toggleCaEmployeeLead(userId, isLead) {
   try {
@@ -5764,8 +5822,12 @@ async function loadPendingRequests() {
         '<div class="request-row" id="req-' + r.id + '" style="display:flex;flex-direction:column;gap:10px;padding:14px 0;border-bottom:1px solid #f1f5f9;">',
         '<div><div class="request-email" style="font-weight:600;color:#1e293b;font-size:13px;">' + r.email + '</div>',
         '<div class="request-time" style="font-size:11px;color:#94a3b8;margin-top:2px;">Requested ' + ts + '</div></div>',
-        '<div class="request-actions" style="display:flex;gap:8px;align-items:center;">',
-        '<select class="client-assign-select" id="client-' + r.id + '" style="flex:1;min-width:0;padding:7px 10px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:12px;">' + clientOptStr + '</select>',
+        '<div class="request-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">',
+        '<select class="client-assign-select" id="client-' + r.id + '" style="flex:1;min-width:140px;padding:7px 10px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:12px;">' + clientOptStr + '</select>',
+        '<div style="display:flex;flex-direction:column;gap:2px;">',
+        '<label style="font-size:9.5px;color:#94a3b8;">Access until (optional)</label>',
+        '<input type="date" id="expiry-' + r.id + '" style="padding:6px 8px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:11px;" />',
+        '</div>',
         '<button class="btn btn-primary btn-approve" style="font-size:11px;padding:7px 14px;white-space:nowrap;" onclick="approveRequest(' + jsAttr(r.email) + ',' + jsAttr(r.id) + ')">Approve</button>',
         '<button class="btn btn-ghost btn-reject" style="font-size:11px;padding:7px 14px;color:#dc2626;white-space:nowrap;" onclick="rejectRequest(' + jsAttr(r.email) + ',' + jsAttr(r.id) + ')">Reject</button>',
         '</div></div>'
@@ -5784,7 +5846,11 @@ async function approveRequest(email, reqId) {
   if (!selected) { alert('Please select a client, or "Semya Admin", to assign this user to.'); return; }
 
   const isAdmin  = selected === '__admin__';
-  const payload  = isAdmin ? { email, role: 'admin' } : { email, role: 'client', clientId: selected };
+  const expiryInput = document.getElementById('expiry-' + reqId);
+  // Admins are never subject to expiry regardless of what's in the
+  // date field — only sent through for a client-role approval.
+  const expiresAt = (!isAdmin && expiryInput?.value) ? expiryInput.value : null;
+  const payload  = isAdmin ? { email, role: 'admin' } : { email, role: 'client', clientId: selected, expiresAt };
 
   const btn = document.querySelector('#req-' + reqId + ' .btn-approve');
   if (btn) { btn.disabled = true; btn.textContent = 'Approving...'; }

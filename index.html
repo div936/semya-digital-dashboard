@@ -110,6 +110,9 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         <span id="errorMsg">Something went wrong.</span>
       </div>
+      <button type="button" id="reRequestBtn" onclick="handleReRequest()" style="display:none;width:100%;height:38px;background:transparent;color:var(--primary);border:1.5px solid var(--border);border-radius:var(--radius);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;margin:-10px 0 18px;">
+        Request access again
+      </button>
 
       <div class="field">
         <label for="emailInput">Email address</label>
@@ -294,11 +297,15 @@
     document.getElementById(id).classList.add('active');
   }
 
-  function showError(msg) {
+  function showError(msg, showReRequest) {
     document.getElementById('errorMsg').textContent = msg;
     document.getElementById('errorAlert').classList.add('visible');
+    document.getElementById('reRequestBtn').style.display = showReRequest ? 'block' : 'none';
   }
-  function hideError() { document.getElementById('errorAlert').classList.remove('visible'); }
+  function hideError() {
+    document.getElementById('errorAlert').classList.remove('visible');
+    document.getElementById('reRequestBtn').style.display = 'none';
+  }
 
   function togglePw() {
     const input = document.getElementById('passwordInput');
@@ -322,6 +329,32 @@
 
     setLoading(true);
     try {
+      // Check approval/expiry status BEFORE attempting a password
+      // sign-in at all — better UX than letting Supabase's own
+      // generic "invalid login" error stand in for "you're not
+      // approved yet" or "your access has expired", which mean very
+      // different things to the person reading them.
+      try {
+        const statusRes = await fetch(API_BASE + '/auth/check-access', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+        const statusData = await statusRes.json();
+        if (statusData.status === 'pending') {
+          showError('Your access request is still awaiting admin approval. You\'ll be able to sign in once it\'s approved.');
+          return;
+        }
+        if (statusData.status === 'expired') {
+          showError('Your access has expired. Request access again to regain entry once an admin approves it.', true);
+          return;
+        }
+      } catch (e) {
+        // If this check itself fails, fall through to the normal
+        // sign-in attempt rather than blocking login entirely over a
+        // secondary check not responding.
+        console.warn('[login] check-access failed, proceeding to sign-in:', e.message);
+      }
+
       // Sign in with Supabase password auth
       const { data, error } = await _sb.auth.signInWithPassword({ email, password });
 
@@ -342,8 +375,19 @@
       });
 
       if (!res.ok) {
-        showError('Your account is not yet active. Please contact admin@semyadigital.com.');
-        await _sb.auth.signOut();
+        const errBody = await res.json().catch(() => ({}));
+        if (errBody.code === 'access_expired') {
+          // Caught here too, in case the account expired in the brief
+          // window between the check-access call above and finishing
+          // sign-in — same message, same re-request option, and sign
+          // back out since Supabase itself doesn't know about expiry
+          // and would otherwise leave a valid session sitting around.
+          await _sb.auth.signOut();
+          showError(errBody.error, true);
+        } else {
+          showError('Your account is not yet active. Please contact admin@semyadigital.com.');
+          await _sb.auth.signOut();
+        }
         return;
       }
 
@@ -363,6 +407,29 @@
       showError(err.message || 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  // Re-requesting access after expiry reuses the exact same endpoint
+  // a brand-new user hits — puts the account back in front of an
+  // admin for a fresh approve/extend decision, same flow either way.
+  async function handleReRequest() {
+    const email = (document.getElementById('emailInput').value || '').trim().toLowerCase();
+    if (!email) { showError('Enter your email above first, then click this again.', true); return; }
+    const btn = document.getElementById('reRequestBtn');
+    btn.disabled = true;
+    btn.textContent = 'Sending request...';
+    try {
+      await fetch(API_BASE + '/auth/request-access', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      showError('Access request sent — you\'ll be able to sign in once an admin approves it.');
+    } catch (e) {
+      showError('Failed to send the request: ' + e.message, true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Request access again';
     }
   }
 
