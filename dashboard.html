@@ -3811,13 +3811,28 @@ function renderPlatformHealth(byPlatform, campaigns) {
 
     // Group-level aggregates
     const groupRev   = group.children.reduce((s, cp) => s + (byPlatformMap[cp]?.totalRevenue || 0), 0);
-    const groupSpend = campaigns.filter(c => group.children.includes(c.platform))
-                                .reduce((s, c) => s + (c.standard_spend || 0), 0);
-    const groupRoas  = groupSpend > 0 ? groupRev / groupSpend : null;
     const groupPct   = total > 0 ? Math.min(groupRev / total * 100, 100) : 0;
 
+    // Group ROAS — weighted average of server-computed, date-aligned
+    // sub-platform ROAS values, not raw campaigns ÷ total revenue.
+    // Dividing total revenue by partial spend gives wildly inflated
+    // numbers (Meta showed 368.8x because 8 months of revenue was
+    // divided by the few days of spend that had been uploaded). The
+    // server already computed a date-aligned ROAS per sub-platform —
+    // using those here keeps the parent row consistent with its children.
+    let groupRoas = null;
+    { let wSpend = 0, wRev = 0;
+      for (const cp of group.children) {
+        const pd = byPlatformMap[cp];
+        if (!pd || pd.roas == null) continue;
+        const cs = campaigns.filter(c => c.platform === cp).reduce((s, c) => s + (c.standard_spend || 0), 0);
+        if (cs > 0) { wSpend += cs; wRev += cs * pd.roas; }
+      }
+      if (wSpend > 0) groupRoas = +(wRev / wSpend).toFixed(2);
+    }
+
     // Skip groups with no data at all
-    if (!groupRev && !groupSpend) return '';
+    if (!groupRev && groupRoas == null) return '';
 
     const isExpanded = group.children.length > 1;
     const isLast     = gi === HEALTH_GROUPS.length - 1;
