@@ -595,7 +595,7 @@ router.get(
     const geoRows = await fetchAllRows((rangeFrom, rangeTo) => {
       let q = supabaseAdmin
         .from('revenue_data')
-        .select('standard_city, standard_state, standard_revenue, standard_units, standard_sku, standard_status, platform, raw_extras')
+        .select('standard_city, standard_state, standard_revenue, standard_units, standard_sku, standard_status, platform, standard_order_id, raw_extras')
         .eq('client_id', client.id)
         .order('id')
         .range(rangeFrom, rangeTo);
