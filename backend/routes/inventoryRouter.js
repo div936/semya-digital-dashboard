@@ -224,18 +224,33 @@ router.patch('/:client_slug/inventory/stock', rbacMiddleware, async (req, res) =
 // existing warehouse names for this client (case-insensitive, exact
 // match on the trimmed name) — a row whose warehouse name doesn't
 // match anything gets skipped and reported back, never guessed at or
-// silently dropped into the wrong warehouse.
+// silently dropped into the wrong warehouse. Warehouse itself is
+// OPTIONAL — a client that tracks one overall stock pool rather than
+// separate warehouses can upload a file with no Warehouse column at
+// all, and every row lands in that client's default warehouse
+// instead.
+//
+// BRAND column, if present, is validated against the target client's
+// registered brand name(s) (clients.registered_brands) BEFORE any
+// row is processed — confirmed directly with the business that this
+// is a real safety requirement: uploading one client's inventory
+// file into a different client's account by mistake needs to be
+// impossible, not just unlikely. A client with no registered brands
+// configured skips this check entirely (fails open, not closed,
+// until an admin sets it up) rather than blocking every upload for
+// clients nobody's configured this for yet.
 //
 // Column names are matched loosely (case/spacing-insensitive) against
 // a few common variants, same spirit as columnMapper.js's approach
 // for revenue files, but far simpler since this only needs to
-// recognise four possible columns, not hundreds of platform variants.
+// recognise five possible columns, not hundreds of platform variants.
 // ═══════════════════════════════════════════════════════════════════
 const STOCK_COLUMN_ALIASES = {
   sku:       ['sku', 'product sku', 'item sku'],
   warehouse: ['warehouse', 'warehouse name'],
   quantity:  ['quantity', 'qty', 'qty on hand', 'quantity on hand', 'stock', 'on hand'],
   threshold: ['low stock threshold', 'alert below', 'threshold', 'reorder level', 'reorder point'],
+  brand:     ['brand', 'brand name'],
 };
 
 function resolveStockColumn(header, field) {
@@ -270,37 +285,77 @@ router.post(
     }
     if (!rawRows.length) return res.status(400).json({ error: 'File has no data rows.' });
 
-    // Map this file's actual column headers to our four known fields, once.
+    // Map this file's actual column headers to our known fields, once.
     const headers = Object.keys(rawRows[0]);
     const colMap = {};
     for (const field of Object.keys(STOCK_COLUMN_ALIASES)) {
       colMap[field] = headers.find(h => resolveStockColumn(h, field)) || null;
     }
-    if (!colMap.sku || !colMap.warehouse || !colMap.quantity) {
-      return res.status(400).json({ error: 'Could not find SKU, Warehouse, and Quantity columns in this file. Found headers: ' + headers.join(', ') });
+    if (!colMap.sku || !colMap.quantity) {
+      return res.status(400).json({ error: 'Could not find SKU and Quantity columns in this file. Found headers: ' + headers.join(', ') });
     }
 
+    // ── Brand validation — reject the WHOLE upload, not per-row, if
+    // this file's brand(s) don't match what this client is registered
+    // for. A partial reject (some rows accepted, some not) would be a
+    // worse outcome than refusing outright: if a file is genuinely
+    // the wrong client's data, none of it belongs here.
+    const { data: clientRow } = await supabaseAdmin
+      .from('clients').select('registered_brands').eq('id', client.id).single();
+    const registeredBrands = (clientRow?.registered_brands || []).map(b => b.trim().toLowerCase()).filter(Boolean);
+
+    if (colMap.brand && registeredBrands.length) {
+      const fileBrands = [...new Set(rawRows.map(r => String(r[colMap.brand] || '').trim()).filter(Boolean))];
+      const mismatched = fileBrands.filter(b => !registeredBrands.includes(b.toLowerCase()));
+      if (mismatched.length) {
+        return res.status(400).json({
+          error: `This file's brand${mismatched.length > 1 ? 's' : ''} (${mismatched.join(', ')}) ` +
+                 `${mismatched.length > 1 ? "don't" : "doesn't"} match what's registered for this client (${(clientRow.registered_brands || []).join(', ')}). ` +
+                 `If this file genuinely belongs here, check Client Administration to confirm the registered brand name, or fix the file if it was meant for a different client.`,
+        });
+      }
+    }
+
+    // ── Warehouse resolution — explicit column if present, otherwise
+    // fall back to this client's default warehouse for every row.
     const { data: warehouses } = await supabaseAdmin
-      .from('warehouses').select('id, name').eq('client_id', client.id);
+      .from('warehouses').select('id, name, is_default').eq('client_id', client.id);
     const warehouseByName = new Map((warehouses || []).map(w => [w.name.trim().toLowerCase(), w.id]));
+    const defaultWarehouseId = (warehouses || []).find(w => w.is_default)?.id || null;
+
+    if (!colMap.warehouse && !defaultWarehouseId) {
+      return res.status(400).json({ error: 'This file has no Warehouse column, and no default warehouse is set up for this client yet — add a warehouse on the UTM Analytics tab first (mark it Default), or add a Warehouse column to the file.' });
+    }
+
+    // ── Existing SKUs — fetched once, up front, so a re-upload never
+    // overwrites stock that's already being tracked and automatically
+    // adjusted by real sales. Confirmed directly with the business:
+    // this file only gets re-uploaded to add NEW SKUs to the catalog,
+    // not as a fresh full snapshot — so any SKU already present here
+    // must be left alone. Overwriting it would silently undo every
+    // automatic deduction that's happened since the last upload,
+    // resetting stock back to a stale number.
+    const { data: existingStock } = await supabaseAdmin
+      .from('inventory_stock').select('warehouse_id, standard_sku').eq('client_id', client.id);
+    const existingKeys = new Set((existingStock || []).map(r => r.warehouse_id + '||' + r.standard_sku));
 
     const skipped = [];
-    let updated = 0;
+    let inserted = 0, skippedAsExisting = 0;
 
     for (let i = 0; i < rawRows.length; i++) {
       const row = rawRows[i];
       const sku = String(row[colMap.sku] || '').trim();
-      const warehouseName = String(row[colMap.warehouse] || '').trim();
+      const warehouseName = colMap.warehouse ? String(row[colMap.warehouse] || '').trim() : '';
       const qtyRaw = row[colMap.quantity];
       const thresholdRaw = colMap.threshold ? row[colMap.threshold] : undefined;
 
-      if (!sku || !warehouseName || qtyRaw === '' || qtyRaw === undefined) {
-        skipped.push({ row: i + 2, warehouse: warehouseName || '(blank)', reason: 'missing SKU, warehouse, or quantity' });
+      if (!sku || qtyRaw === '' || qtyRaw === undefined) {
+        skipped.push({ row: i + 2, warehouse: warehouseName || '(default)', reason: 'missing SKU or quantity' });
         continue;
       }
-      const warehouseId = warehouseByName.get(warehouseName.toLowerCase());
+      const warehouseId = warehouseName ? warehouseByName.get(warehouseName.toLowerCase()) : defaultWarehouseId;
       if (!warehouseId) {
-        skipped.push({ row: i + 2, warehouse: warehouseName, reason: 'no warehouse with this exact name' });
+        skipped.push({ row: i + 2, warehouse: warehouseName || '(default)', reason: warehouseName ? 'no warehouse with this exact name' : 'no default warehouse configured' });
         continue;
       }
       const qty = Number(qtyRaw);
@@ -309,39 +364,40 @@ router.post(
         continue;
       }
 
-      const { data: existing } = await supabaseAdmin
-        .from('inventory_stock').select('quantity_on_hand')
-        .eq('client_id', client.id).eq('warehouse_id', warehouseId).eq('standard_sku', sku)
-        .single();
-
-      const update = { client_id: client.id, warehouse_id: warehouseId, standard_sku: sku, quantity_on_hand: qty, updated_at: new Date().toISOString() };
-      if (thresholdRaw !== undefined && thresholdRaw !== '' && !isNaN(Number(thresholdRaw))) {
-        update.low_stock_threshold = Number(thresholdRaw);
-      }
-
-      const { error: upsertErr } = await supabaseAdmin
-        .from('inventory_stock').upsert(update, { onConflict: 'client_id,warehouse_id,standard_sku' });
-      if (upsertErr) {
-        skipped.push({ row: i + 2, warehouse: warehouseName, reason: 'database error: ' + upsertErr.message });
+      // Already tracked — leave it alone, don't reset it.
+      if (existingKeys.has(warehouseId + '||' + sku)) {
+        skippedAsExisting++;
         continue;
       }
 
-      // Log this bulk-set quantity as a manual adjustment too, same
-      // as a single-row manual save — keeps the movement ledger
-      // complete regardless of which path changed the number.
-      const delta = qty - (existing?.quantity_on_hand ?? 0);
-      if (delta !== 0) {
+      const insertRow = { client_id: client.id, warehouse_id: warehouseId, standard_sku: sku, quantity_on_hand: qty, updated_at: new Date().toISOString() };
+      if (thresholdRaw !== undefined && thresholdRaw !== '' && !isNaN(Number(thresholdRaw))) {
+        insertRow.low_stock_threshold = Number(thresholdRaw);
+      }
+
+      const { error: insertErr } = await supabaseAdmin
+        .from('inventory_stock').upsert(insertRow, { onConflict: 'client_id,warehouse_id,standard_sku' });
+      if (insertErr) {
+        skipped.push({ row: i + 2, warehouse: warehouseName, reason: 'database error: ' + insertErr.message });
+        continue;
+      }
+
+      // Log the starting quantity for a brand-new SKU as a manual
+      // adjustment too, same as every other stock change — keeps the
+      // movement ledger complete.
+      if (qty !== 0) {
         await recordMovement({
           clientId: client.id, warehouseId, sku,
-          qtyDelta: delta, reason: 'manual_adjustment',
+          qtyDelta: qty, reason: 'manual_adjustment',
           sourceRowHash: crypto.randomUUID(),
         }).catch(() => {}); // best-effort — the stock value itself is already saved above regardless
       }
 
-      updated++;
+      existingKeys.add(warehouseId + '||' + sku); // so a duplicate row later in the SAME file doesn't double-insert
+      inserted++;
     }
 
-    return res.json({ ok: true, updated, skipped, totalRows: rawRows.length });
+    return res.json({ ok: true, inserted, skippedAsExisting, skipped, totalRows: rawRows.length });
   }
 );
 

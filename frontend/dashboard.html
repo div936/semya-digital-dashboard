@@ -2234,6 +2234,18 @@
       </div>
 
       <div id="caEmployeeSection" style="display:none;border-top:1px solid var(--color-border);padding-top:18px;">
+        <div id="caBrandsSection">
+          <div class="acl-section-label">
+            Registered Brand(s) — <span id="caBrandsClientName" style="color:#1e293b;"></span>
+          </div>
+          <p style="font-size:11.5px;color:#64748b;margin:6px 0 10px;">Used to validate inventory file uploads for this client — a file whose Brand column doesn't match one of these is rejected outright, to prevent uploading one client's inventory into another's account by mistake. Leave blank to skip this check.</p>
+          <div style="display:flex;gap:8px;margin-bottom:22px;">
+            <input type="text" id="caBrandsInput" placeholder="e.g. DALUCI, or comma-separated for more than one" style="flex:1;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
+            <button class="btn btn-primary" onclick="saveCaClientBrands()">Save</button>
+          </div>
+          <div id="caBrandsSaveStatus" style="font-size:12px;margin:-14px 0 18px;"></div>
+        </div>
+
         <div class="acl-section-label">
           Employees — <span id="caSelectedClientName" style="color:#1e293b;"></span>
         </div>
@@ -2729,7 +2741,7 @@
     <div id="stockSaveStatus" style="font-size:12px;margin:-14px 0 20px;"></div>
 
     <div class="acl-section-label">Or Upload Stock Counts in Bulk (Excel/CSV)</div>
-    <p style="font-size:12px;color:#64748b;margin:8px 0 12px;">Columns needed: <strong>SKU</strong>, <strong>Warehouse</strong> (must match an existing warehouse name exactly), <strong>Quantity</strong>, and optionally <strong>Low Stock Threshold</strong>. Any row with a warehouse name that doesn't match an existing warehouse is skipped and reported, not guessed at.</p>
+    <p style="font-size:12px;color:#64748b;margin:8px 0 12px;">Columns needed: <strong>SKU</strong> and <strong>Quantity</strong>. Optional: <strong>Warehouse</strong> (must match an existing name exactly — omit this column entirely if this client tracks one overall stock pool rather than separate warehouses, and every row lands in the default warehouse instead), <strong>Low Stock Threshold</strong>, and <strong>Brand</strong> (checked against this client's registered brand name(s), if any are set in Client Administration — a mismatched file is rejected outright, not partially processed). <strong>Only adds brand-new SKUs</strong> — a SKU already being tracked here is left alone, never reset by a re-upload, since real sales are continuously adjusting it in the background.</p>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
       <label style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:var(--theme-accent-soft);border:1px solid var(--theme-primary);color:var(--theme-primary);border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer;">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -3754,41 +3766,89 @@ async function renderSidebarSummary(scopes) {
 // ─── RENDER PLATFORM HEALTH ───────────────────────────────────────
 function renderPlatformHealth(byPlatform, campaigns) {
   const list  = document.getElementById('platformHealthList');
+  if (!list) return;
+
+  // Build a lookup by platform string for quick access
+  const byPlatformMap = {};
+  for (const p of byPlatform) byPlatformMap[p.platform] = p;
   const total = byPlatform.reduce((s, p) => s + p.totalRevenue, 0);
-  list.innerHTML = byPlatform.map(p => {
-    const m    = PLATFORM_META[p.platform] || { label: p.platform.toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
-    const pct  = total > 0 ? Math.round(p.totalRevenue / total * 100) : 0;
-    // Prefer the server-computed, DATE-ALIGNED roas (see
-    // /platform-sales in clientRouter.js) — only counts revenue from
-    // the same dates that platform actually has spend recorded for,
-    // instead of dividing an entire selected range's revenue by
-    // however few days happen to have campaign data uploaded. That
-    // mismatch was exactly why Meta showed an implausible 64.4x here:
-    // months of revenue against only a handful of days of real spend.
-    // Falls back to the old (date-mismatched) calculation only if a
-    // caller hasn't been updated to provide p.roas yet.
-    let roas;
-    if (p.roas !== undefined) {
-      roas = p.roas ?? 0;
-    } else {
-      const camp = campaigns.filter(c => c.platform === p.platform);
-      const spend = camp.reduce((s, c) => s + (c.standard_spend || 0), 0);
-      roas = spend > 0 ? p.totalRevenue / spend : 0;
+
+  // Hierarchical groups — same parent/child logic as Platform Attainment:
+  // Amazon = Neat + Acutas, Website = Meta + Google, others standalone.
+  const healthGroups = [
+    { key: 'amazon',   label: 'Amazon',   pillClass: 'pill-amz',      color: '#ff9900', children: ['amazon', 'acutas'] },
+    { key: 'flipkart', label: 'Flipkart', pillClass: 'pill-flipkart', color: '#0077ff', children: null },
+    { key: 'blinkit',  label: 'Blinkit',  pillClass: 'pill-blinkit',  color: '#fbbf24', children: null },
+    { key: 'website',  label: 'Website',  pillClass: 'pill-website',  color: '#1877f2', children: ['meta', 'google'] },
+  ];
+
+  const getROAS = (p) => {
+    const data = byPlatformMap[p];
+    if (!data) return null;
+    if (data.roas !== undefined) return data.roas || 0;
+    const camp = campaigns.filter(c => c.platform === p);
+    const spend = camp.reduce((s, c) => s + (c.standard_spend || 0), 0);
+    return spend > 0 ? data.totalRevenue / spend : 0;
+  };
+
+  const roasColor = (r) => r >= 3 ? '#059669' : r >= 1.5 ? '#d97706' : '#dc2626';
+
+  const miniBar = (rev, tot, col) => {
+    const pct = tot > 0 ? Math.min(rev/tot*100, 100) : 0;
+    return '<div style="width:60px;height:5px;background:#e2eaf2;border-radius:99px;overflow:hidden;"><div style="width:' + pct + '%;height:100%;background:' + col + ';border-radius:99px;"></div></div>';
+  };
+
+  list.innerHTML = healthGroups.map(group => {
+    const childPlatforms = group.children || [group.key];
+    const groupRev = childPlatforms.reduce((s, p) => s + (byPlatformMap[p]?.totalRevenue || 0), 0);
+    if (!groupRev && !childPlatforms.some(p => byPlatformMap[p])) return ''; // skip entirely missing groups
+
+    const groupPct = total > 0 ? Math.round(groupRev / total * 100) : 0;
+
+    // Compute group-level ROAS (weighted by spend across children)
+    const campForGroup = campaigns.filter(c => childPlatforms.includes(c.platform));
+    const groupSpend = campForGroup.reduce((s, c) => s + (c.standard_spend || 0), 0);
+    const groupRoas = groupSpend > 0 ? groupRev / groupSpend : null;
+    const roasCol = groupRoas != null ? roasColor(groupRoas) : '#94a3b8';
+
+    // Parent row
+    let html = '<div style="margin-bottom:' + (group.children ? '4px' : '10px') + ';">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;">' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+          '<span class="platform-pill ' + group.pillClass + '">' + group.label + '</span>' +
+          '<span style="font-size:11px;color:#64748b;">' + fmtRevenue(groupRev) + '</span>' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:6px;">' +
+          miniBar(groupRev, total, group.color) +
+          '<span style="font-size:10px;color:' + roasCol + ';font-weight:700;">' + (groupRoas != null && groupRoas > 0 ? fmtRoas(groupRoas) : '—') + '</span>' +
+        '</div>' +
+      '</div>';
+
+    // Child rows — indented, smaller, thinner bar, only if children exist and have data
+    if (group.children && group.children.length > 1) {
+      const childRows = group.children.map(cp => {
+        const cm  = PLATFORM_META[cp] || { label: cp.toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
+        const rev = byPlatformMap[cp]?.totalRevenue || 0;
+        const cr  = getROAS(cp);
+        const ccol = cr != null && cr > 0 ? roasColor(cr) : '#94a3b8';
+        if (!rev) return ''; // skip truly empty children
+        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:3px 0 3px 14px;border-left:2px solid #f1f5f9;">' +
+          '<div style="display:flex;align-items:center;gap:6px;">' +
+            '<span class="platform-pill ' + cm.pillClass + '" style="font-size:8px;padding:1px 6px;">' + cm.label + '</span>' +
+            '<span style="font-size:10.5px;color:#94a3b8;">' + fmtRevenue(rev) + '</span>' +
+          '</div>' +
+          '<div style="display:flex;align-items:center;gap:6px;">' +
+            '<div style="width:50px;height:3px;background:#e2eaf2;border-radius:99px;overflow:hidden;"><div style="width:' + (groupRev > 0 ? Math.min(rev/groupRev*100,100) : 0) + '%;height:100%;background:' + cm.color + ';border-radius:99px;"></div></div>' +
+            '<span style="font-size:9.5px;color:' + ccol + ';font-weight:700;">' + (cr != null && cr > 0 ? fmtRoas(cr) : '—') + '</span>' +
+          '</div>' +
+        '</div>';
+      }).filter(Boolean).join('');
+      if (childRows) html += '<div style="margin-top:3px;margin-bottom:8px;">' + childRows + '</div>';
     }
-    const color = roasColor(roas);
-    return `<div style="display:flex;align-items:center;justify-content:space-between;">
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span class="platform-pill ${m.pillClass}">${m.label}</span>
-        <span style="font-size:11px;color:#64748b;">${fmtRevenue(p.totalRevenue)}</span>
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;">
-        <div style="width:60px;height:5px;background:#e2eaf2;border-radius:99px;overflow:hidden;">
-          <div style="width:${pct}%;height:100%;background:${m.color};border-radius:99px;"></div>
-        </div>
-        <span style="font-size:10px;color:${color};font-weight:700;">${roas > 0 ? fmtRoas(roas) : '—'}</span>
-      </div>
-    </div>`;
-  }).join('');
+
+    html += '</div>';
+    return html;
+  }).filter(Boolean).join('');
 }
 
 // ─── AGGREGATE RAW REVENUE ROWS → summary shape ───────────────────
@@ -5090,6 +5150,40 @@ async function fetchAndRenderDT() {
   // a failure in either can't affect the KPI cards' loading state.
   loadDTCampaignRanking(date, myToken).catch(e => console.warn('[DT] campaign ranking failed:', e.message));
   loadDT7DayTrend(date, myToken).catch(e => console.warn('[DT] 7-day trend failed:', e.message));
+
+  // Platform Health sidebar — updated to reflect this specific date,
+  // not whatever date range the last-visited tab was using. The
+  // sidebar was only ever refreshed by Platform Sales and SKU
+  // Performance; when Daily Targets is viewed it either shows stale
+  // data from a prior tab or (worse) shows the 0.0x Google ROAS that
+  // was visible, because the ROAS is date-aligned and Google only
+  // has spend on a handful of days — the right fix isn't to fudge
+  // the number but to actually reload the sidebar for this exact date.
+  // Uses a 1-day window (just the selected date) so Platform Health
+  // reads "how did each platform do TODAY" matching the rest of the
+  // tab, not a rolling window that would disagree with the KPI cards.
+  try {
+    const [phRevResp, phCampResp] = await Promise.all([
+      apiFetch('/clients/' + clientSlug + '/platform-sales?from=' + date + '&to=' + date),
+      apiFetch('/clients/' + clientSlug + '/campaign-insights?from=' + date + '&to=' + date),
+    ]);
+    if (phRevResp?.platforms) {
+      // Compute date-aligned ROAS same way Platform Sales does,
+      // so the sidebar numbers are consistent across every tab.
+      const campRows = phCampResp?.campaigns || [];
+      const spendByPlatform = {};
+      for (const c of campRows) {
+        spendByPlatform[c.platform] = (spendByPlatform[c.platform] || 0) + (Number(c.standard_spend) || 0);
+      }
+      for (const p of (phRevResp.platforms || [])) {
+        p.spend = spendByPlatform[p.platform] || 0;
+        p.roas  = p.spend > 0 ? +(p.totalRevenue / p.spend).toFixed(2) : null;
+      }
+      renderPlatformHealth(phRevResp.platforms, campRows);
+    }
+  } catch (e) {
+    console.warn('[DT] Platform Health sidebar update failed:', e.message);
+  }
 }
 
 // Highest-to-lowest gross-sales campaign ranking, with the date each
@@ -5330,39 +5424,96 @@ function renderDT(targets, achieved) {
   // single "Website" row here (matching how the rest of the app treats
   // them as one attribution channel), while Amazon and Acutas stay as
   // separate rows since nothing asked for those to be merged too.
-  const progressGroups = [
-    { key: 'amazon',   platforms: ['amazon'] },
-    { key: 'acutas',   platforms: ['acutas'] },
-    { key: 'flipkart', platforms: ['flipkart'] },
-    { key: 'blinkit',  platforms: ['blinkit'] },
-    { key: 'website',  platforms: ['meta', 'google'] },
+  // Platform Attainment — hierarchical: parents (Amazon, Website)
+  // expand into their sub-platforms (Neat/Acutas, Meta/Google),
+  // while standalone platforms (Flipkart, Blinkit) stay flat.
+  // Each parent shows a combined total bar; the children show
+  // individual contribution bars indented underneath it.
+  const attainmentGroups = [
+    {
+      key: 'amazon', label: 'Amazon', pillClass: 'pill-amz', color: '#ff9900',
+      children: ['amazon', 'acutas'],
+    },
+    { key: 'flipkart', label: 'Flipkart', pillClass: 'pill-flipkart', color: '#0077ff', children: null },
+    { key: 'blinkit',  label: 'Blinkit',  pillClass: 'pill-blinkit',  color: '#fbbf24', children: null },
+    {
+      key: 'website', label: 'Website', pillClass: 'pill-website', color: '#1877f2',
+      children: ['meta', 'google'],
+    },
   ];
-  document.getElementById('dtPlatformProgress').innerHTML = progressGroups.map(group => {
-    const p        = group.key;
-    const m        = PLATFORM_META[p] || { label: p.toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
-    const tgt      = group.platforms.reduce((sum, gp) => sum + (targets[gp]?.target || 0), 0);
-    const ach      = group.platforms.reduce((sum, gp) => sum + (achieved[gp]?.revenue || targets[gp]?.achieved || 0), 0);
-    const spendA   = group.platforms.reduce((sum, gp) => sum + (targets[gp]?.spendActual || 0), 0);
-    const spendT   = group.platforms.reduce((sum, gp) => sum + (targets[gp]?.spendTarget || 0), 0);
-    const pct      = tgt > 0 ? Math.min((ach / tgt * 100), 150) : 0;  // cap bar at 150%
-    const pctLabel = tgt > 0 ? (ach / tgt * 100).toFixed(1) : '0';
-    const pctCls   = pct >= 100 ? 'over' : pct >= 80 ? 'on' : pct >= 50 ? 'under' : 'low';
-    // ROAS only shown for Website — see the comment on overallRoas
-    // above for why: it's a paid-traffic efficiency metric, not
-    // meaningful for Amazon/Flipkart/Blinkit's mostly-organic sales.
-    // The old dashboard never computes or shows a ROAS figure for
-    // those platforms at all, only for Website (Meta+Google).
-    // Shown for every platform now, not just Website — the earlier
-    // restriction (matching the old dashboard's headline "Total ROAS"
-    // definition) was about which number gets top billing as THE
-    // ROAS figure, not about hiding per-platform efficiency data
-    // entirely. Per-platform ROAS here is still useful context even
-    // though it's not what the KPI card above means by "Website ROAS."
-    const roasP    = spendA > 0 ? (ach / spendA) : null;
-    const spendLine = (spendA > 0 || spendT > 0)
-      ? '<div style="font-size:10.5px;color:#94a3b8;margin-top:3px;">Spend: ' + fmtRevenue(spendA) + (spendT ? ' / ' + fmtRevenue(spendT) + ' plan' : '') + (roasP != null ? ' · ROAS ' + fmtRoas(roasP) : '') + '</div>'
-      : '';
-    return '<div class="progress-wrap"><div class="progress-header"><span class="progress-label"><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></span><div class="progress-vals"><span class="progress-achieved">' + fmtRevenue(ach) + '</span><span style="color:#94a3b8;font-size:11px;">/</span><span class="progress-target">' + fmtRevenue(tgt) + '</span><span class="progress-pct ' + pctCls + '">' + pctLabel + '%</span></div></div><div class="progress-track"><div class="progress-fill" style="width:' + Math.min(pct, 100) + '%;background:' + m.color + ';opacity:' + (pct < 50 ? 0.5 : 1) + ';"></div></div>' + spendLine + '</div>';
+
+  const progressBar = (ach, tgt, color) => {
+    const pct = tgt > 0 ? Math.min(ach / tgt * 100, 150) : 0;
+    const opacity = pct < 50 ? 0.5 : 1;
+    return '<div class="progress-track"><div class="progress-fill" style="width:' + Math.min(pct, 100) + '%;background:' + color + ';opacity:' + opacity + ';"></div></div>';
+  };
+
+  const pctLabel = (ach, tgt) => {
+    if (!tgt) return '<span class="progress-pct low">0%</span>';
+    const p = ach / tgt * 100;
+    const cls = p >= 100 ? 'over' : p >= 80 ? 'on' : p >= 50 ? 'under' : 'low';
+    return '<span class="progress-pct ' + cls + '">' + p.toFixed(1) + '%</span>';
+  };
+
+  const spendRoasLine = (spendA, spendT, roasP) => {
+    if (!spendA && !spendT) return '';
+    return '<div style="font-size:10.5px;color:#94a3b8;margin-top:3px;">Spend: ' + fmtRevenue(spendA) +
+      (spendT ? ' / ' + fmtRevenue(spendT) + ' plan' : '') +
+      (roasP != null ? ' · ROAS ' + fmtRoas(roasP) : '') + '</div>';
+  };
+
+  document.getElementById('dtPlatformProgress').innerHTML = attainmentGroups.map(group => {
+    const childPlatforms = group.children || [group.key];
+    const tgt   = childPlatforms.reduce((s, p) => s + (targets[p]?.target   || 0), 0);
+    const ach   = childPlatforms.reduce((s, p) => s + (achieved[p]?.revenue || targets[p]?.achieved || 0), 0);
+    const spendA = childPlatforms.reduce((s, p) => s + (targets[p]?.spendActual || 0), 0);
+    const spendT = childPlatforms.reduce((s, p) => s + (targets[p]?.spendTarget || 0), 0);
+    const roasP  = spendA > 0 ? ach / spendA : null;
+
+    // Parent row
+    let html = '<div class="progress-wrap">' +
+      '<div class="progress-header">' +
+        '<span class="progress-label"><span class="platform-pill ' + group.pillClass + '" style="font-size:9px;padding:2px 7px;">' + group.label + '</span></span>' +
+        '<div class="progress-vals"><span class="progress-achieved">' + fmtRevenue(ach) + '</span>' +
+          '<span style="color:#94a3b8;font-size:11px;">/</span>' +
+          '<span class="progress-target">' + fmtRevenue(tgt) + '</span>' +
+          pctLabel(ach, tgt) +
+        '</div>' +
+      '</div>' +
+      progressBar(ach, tgt, group.color) +
+      spendRoasLine(spendA, spendT, roasP);
+
+    // Child rows — only rendered when the group has real children
+    // (more than one sub-platform). Skipped entirely when both
+    // children are zero to avoid a noisy empty sub-list.
+    if (group.children && group.children.length > 1) {
+      const childHtml = group.children.map(cp => {
+        const cm    = PLATFORM_META[cp] || { label: cp.toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
+        const ctgt  = targets[cp]?.target   || 0;
+        const cach  = achieved[cp]?.revenue || targets[cp]?.achieved || 0;
+        const cspendA = targets[cp]?.spendActual || 0;
+        const cspendT = targets[cp]?.spendTarget || 0;
+        const croasP  = cspendA > 0 ? cach / cspendA : null;
+        if (!ctgt && !cach && !cspendA) return ''; // skip entirely empty children
+        return '<div style="padding:8px 0 4px 16px;border-left:2px solid #f1f5f9;">' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">' +
+            '<span class="platform-pill ' + cm.pillClass + '" style="font-size:8.5px;padding:1.5px 6px;">' + cm.label + '</span>' +
+            '<div style="display:flex;align-items:center;gap:6px;font-size:11px;">' +
+              '<span style="color:#475569;">' + fmtRevenue(cach) + '</span>' +
+              '<span style="color:#cbd5e1;">/</span>' +
+              '<span style="color:#94a3b8;">' + fmtRevenue(ctgt) + '</span>' +
+              pctLabel(cach, ctgt) +
+            '</div>' +
+          '</div>' +
+          '<div class="progress-track" style="height:3px;"><div class="progress-fill" style="height:3px;width:' + Math.min(ctgt > 0 ? cach/ctgt*100 : 0, 100) + '%;background:' + cm.color + ';"></div></div>' +
+          spendRoasLine(cspendA, cspendT, croasP) +
+        '</div>';
+      }).join('');
+      if (childHtml.trim()) html += '<div style="margin-top:6px;">' + childHtml + '</div>';
+    }
+
+    html += '</div>'; // close progress-wrap
+    return html;
   }).join('');
 
   renderDTAdSpendBreakdown(targets);
@@ -5539,6 +5690,7 @@ function updateCaAccessHeader() {
 }
 
 // ── Client list + create ────────────────────────────────────────
+let _caClientsCache = [];
 async function loadCaClients() {
   const list = document.getElementById('caClientList');
   if (!list) return;
@@ -5553,6 +5705,7 @@ async function loadCaClients() {
   try {
     const resp = await apiFetch('/auth/admin/clients');
     const clients = resp?.clients || [];
+    _caClientsCache = clients; // so selectCaClient can look up registered_brands without another fetch
     const clientsHtml = !clients.length
       ? '<div style="text-align:center;padding:16px 0;color:#94a3b8;font-size:12px;">No clients yet — add one below.</div>'
       : clients.map(c => (
@@ -5575,6 +5728,10 @@ function selectCaSemyaAdmins() {
   caState.clientId = '__admin__'; caState.clientSlug = null; caState.clientName = 'Semya (Admins)';
   document.getElementById('caEmployeeSection').style.display = '';
   document.getElementById('caSelectedClientName').textContent = 'Semya (Admins)';
+  // Registered Brands is a per-client concept (inventory-upload
+  // validation) — doesn't apply to Semya's own internal team.
+  const brandsSection = document.getElementById('caBrandsSection');
+  if (brandsSection) brandsSection.style.display = 'none';
   loadCaClients();
   loadCaEmployees('__admin__');
 }
@@ -5616,10 +5773,37 @@ async function createCaClient() {
 function selectCaClient(id, slug, name) {
   caState.clientId = id; caState.clientSlug = slug; caState.clientName = name;
   document.getElementById('caEmployeeSection').style.display = '';
+  const brandsSection = document.getElementById('caBrandsSection');
+  if (brandsSection) brandsSection.style.display = '';
   document.getElementById('caSelectedClientName').textContent = name;
+  document.getElementById('caBrandsClientName').textContent = name;
+  const cached = _caClientsCache.find(c => c.id === id);
+  const brandsInput = document.getElementById('caBrandsInput');
+  if (brandsInput) brandsInput.value = (cached?.registered_brands || []).join(', ');
+  document.getElementById('caBrandsSaveStatus').textContent = '';
   updateCaAccessHeader();
   loadCaClients();     // re-render so the "Manage"/"Selected" state updates
   loadCaEmployees(id);
+}
+
+async function saveCaClientBrands() {
+  if (!caState.clientId || caState.clientId === '__admin__') { alert('Select a client first.'); return; }
+  const input = document.getElementById('caBrandsInput');
+  const statusEl = document.getElementById('caBrandsSaveStatus');
+  const registeredBrands = (input?.value || '').split(',').map(b => b.trim()).filter(Boolean);
+  statusEl.textContent = 'Saving…'; statusEl.style.color = '#64748b';
+  try {
+    await apiFetch('/auth/admin/clients/' + caState.clientId, {
+      method: 'PATCH', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ registeredBrands }),
+    });
+    const cached = _caClientsCache.find(c => c.id === caState.clientId);
+    if (cached) cached.registered_brands = registeredBrands;
+    statusEl.textContent = '✓ Saved'; statusEl.style.color = '#059669';
+    setTimeout(() => { statusEl.textContent = ''; }, 2000);
+  } catch (e) {
+    statusEl.textContent = 'Failed: ' + e.message; statusEl.style.color = '#dc2626';
+  }
 }
 
 // ── Employees ────────────────────────────────────────────────────
@@ -7690,7 +7874,17 @@ async function uploadStockBulkFile(input) {
   try {
     const res = await fetch(API_BASE + '/clients/' + state.clientSlug + '/inventory/stock/bulk-upload', {
       method: 'POST',
-      headers: authHeaders(), // no Content-Type — browser sets the multipart boundary itself
+      // BUG FIX: this used to call authHeaders(), which unconditionally
+      // sets Content-Type: application/json — completely wrong for a
+      // multipart file upload, and exactly why this failed. Setting an
+      // explicit Content-Type here overrides the browser's own
+      // multipart boundary generation, so the server's global JSON
+      // body parser tried to parse the raw multipart data as JSON and
+      // choked on it — producing the garbled "------WebKit..." parse
+      // error. Only the Authorization header is needed; the browser
+      // sets Content-Type (with the correct boundary) on its own for
+      // a FormData body, and must be left alone to do so.
+      headers: { 'Authorization': 'Bearer ' + getToken() },
       credentials: 'include',
       body: formData,
     });
@@ -7699,9 +7893,10 @@ async function uploadStockBulkFile(input) {
 
     if (statusEl) {
       statusEl.style.color = result.skipped.length ? '#d97706' : '#059669';
-      statusEl.innerHTML = '✓ Updated ' + result.updated + ' SKU' + (result.updated === 1 ? '' : 's') + '.' +
+      statusEl.innerHTML = '✓ Added ' + result.inserted + ' new SKU' + (result.inserted === 1 ? '' : 's') + '.' +
+        (result.skippedAsExisting ? ' ' + result.skippedAsExisting + ' row(s) were already tracked here and left untouched.' : '') +
         (result.skipped.length
-          ? '<br>Skipped ' + result.skipped.length + ' row(s) — unmatched warehouse name: ' + result.skipped.slice(0, 5).map(s => s.warehouse + ' (row ' + s.row + ')').join(', ') + (result.skipped.length > 5 ? ', …' : '')
+          ? '<br>Couldn\'t process ' + result.skipped.length + ' row(s): ' + result.skipped.slice(0, 5).map(s => s.reason + ' (row ' + s.row + ')').join(', ') + (result.skipped.length > 5 ? ', …' : '')
           : '');
     }
     input.value = '';

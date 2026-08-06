@@ -473,7 +473,7 @@ router.get('/admin/clients', asyncHandler(async (req, res) => {
   const admin = await requireAdmin(req, res); if (!admin) return;
 
   const { data: clients, error } = await supabaseAdmin
-    .from('clients').select('id, slug, name').order('name');
+    .from('clients').select('id, slug, name, registered_brands').order('name');
   if (error) return res.status(500).json({ error: 'Failed to load clients.' });
 
   const { data: users } = await supabaseAdmin
@@ -485,6 +485,24 @@ router.get('/admin/clients', asyncHandler(async (req, res) => {
   return res.json({
     clients: (clients || []).map(c => ({ ...c, employeeCount: counts[c.id] || 0 })),
   });
+}));
+
+
+// ── PATCH /auth/admin/clients/:id — update a client's registered
+// brand name(s), used to validate inventory file uploads belong to
+// the right client. Body: { registeredBrands: string[] }
+router.patch('/admin/clients/:id', asyncHandler(async (req, res) => {
+  const admin = await requireAdmin(req, res); if (!admin) return;
+  const { registeredBrands } = req.body || {};
+  const cleaned = Array.isArray(registeredBrands)
+    ? registeredBrands.map(b => String(b).trim()).filter(Boolean)
+    : [];
+
+  const { error } = await supabaseAdmin
+    .from('clients').update({ registered_brands: cleaned.length ? cleaned : null }).eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: 'Failed to update: ' + error.message });
+
+  return res.json({ ok: true, registeredBrands: cleaned });
 }));
 
 

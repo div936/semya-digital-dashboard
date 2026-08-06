@@ -92,7 +92,63 @@ The previous round's timezone fix (IST-converting every raw file timestamp) was 
 
 **If you already deployed the previous (IST-conversion) version and uploaded files through it**, some rows may have been filed under the wrong date during that window — re-upload the affected files after this fix deploys to correct them (the upsert logic from the earlier revenue de-dup fix makes this safe).
 
-## URGENT — fixes a login/dashboard redirect loop from last round's deploy
+## This round's feature — hierarchical platform display on Daily Targets
+
+**Platform Attainment and Platform Health** both now show a parent → children structure:
+
+- **Amazon** (combined total bar) → Neat Amazon + Acutas as indented sub-rows
+- **Flipkart** (standalone, no children)
+- **Blinkit** (standalone, no children)
+- **Website** (combined total bar) → Meta + Google as indented sub-rows
+
+Children are only rendered when they have actual data — an entirely empty child platform (zero revenue, zero spend) is hidden rather than cluttering the list. Parent bars show the combined total; child bars show each sub-platform's contribution relative to the parent total, so you can visually see the split at a glance. ROAS is shown at both levels where spend data exists.
+
+**Deploy just the frontend.** No backend changes.
+
+
+
+**Root cause:** Platform Health was never refreshed by the Daily Targets tab at all — only by Platform Sales and SKU Performance. When viewing Daily Targets, the sidebar showed stale data from whatever the last-visited tab was using, with a date-range that didn't match the single day selected on Daily Targets. This produced the visible symptom: Google showed 0.0x ROAS even though Google has real revenue, because the sidebar was computing ROAS across a rolling window where Google's very limited spend coverage made the ratio look implausible.
+
+**Fix:** Daily Targets now also refreshes Platform Health at the end of its own fetch cycle, using a 1-day window (just the selected date) so the sidebar reads "how did each platform do *today*" — matching the KPI cards above it rather than disagreeing with them. Uses the same date-aligned ROAS calculation already applied to Platform Sales, so the number is computed consistently across every tab.
+
+**Note:** The data was actually correct — Google rows correctly exist in the database with the right platform tag (confirmed directly via SQL: google rows on Jul 30 ₹357, Aug 1 ₹1,418, etc.). The issue was purely a display/date-scope mismatch in the sidebar widget, not a data problem.
+
+**Deploy just the frontend.**
+
+
+
+**New SQL:** `client_brands_migration.sql`. **Changed:** `inventoryRouter.js`, `authRouter.js`, `dashboard.html`.
+
+Built directly from your 5 answers, not the original assumptions:
+
+**1–2. Multiple warehouses exist, this file is just the overall starting point; Quantity = current stock on hand.** Warehouse is now an **optional** column — omit it entirely and every row lands in whichever warehouse is marked default for that client. When you upload the real per-warehouse breakdown later, that'll populate proper per-warehouse numbers on top of this starting baseline.
+
+**3. SKUs match platform files exactly.** No change needed — automatic per-sale deduction already matches on exact SKU, confirmed this will work correctly for this client.
+
+**4. Brand validation — new, real safety mechanism.** Added `registered_brands` to the `clients` table and a new **"Registered Brand(s)"** field in Client Administration (per client, comma-separated for more than one). If a client has this set, any inventory file whose Brand column doesn't match is **rejected outright** — the whole file, not a partial process — with a clear error naming the mismatch. Nothing blocks upload for a client with no brands configured yet, so this doesn't retroactively lock anyone out.
+
+**5. Fully automated, upload-only-for-new-SKUs — the most important behavior change.** Bulk upload used to **overwrite** existing SKU quantities on every upload. That directly conflicts with how you described using it: if a re-upload included all 315 existing SKUs at their original snapshot numbers, it would have silently erased every automatic deduction that happened since the last upload, resetting real stock counts back to stale numbers. **Fixed: a SKU already being tracked is now left completely alone on re-upload — only genuinely new SKUs get inserted.** The result now reports "Added N new SKUs" and "N already tracked, left untouched" separately, so it's always clear what actually happened.
+
+### Also fixed this round
+The actual bug you hit — `authHeaders()` was forcing `Content-Type: application/json` onto the file upload, breaking the browser's multipart handling. Now sends only the auth header, letting the browser set its own correct Content-Type.
+
+### Deploy order
+1. Run `client_brands_migration.sql`.
+2. Deploy backend.
+3. Deploy frontend.
+4. In Client Administration, select the Daluci client and set **Registered Brand(s)** to `DALUCI`.
+5. Make sure Daluci has at least one warehouse marked **Default** (UTM Analytics tab) before uploading, since this file has no Warehouse column.
+6. Re-upload `Current_inventory_overall.xlsx` — verified directly against your real file that SKU, Quantity, and Brand all get detected correctly now.
+
+
+
+**Confirmed root cause:** `authHeaders()` unconditionally sets `Content-Type: application/json`, but the bulk-upload call was using it for a multipart file upload. That overrides the browser's own multipart boundary generation — the server's global JSON body parser then tried to parse the raw multipart data as JSON and choked on it, producing exactly the garbled `"------WebKit..." is not valid JSON` error. The comment in the code even described the correct intent ("no Content-Type — browser sets the multipart boundary itself") — the code just didn't match it.
+
+**Fix:** the upload call now sends only the `Authorization` header, letting the browser set its own correct multipart Content-Type. Checked every other file-upload code path in the app for the same mistake — the main Data Upload flow was already correct; this was isolated to the newer Inventory bulk-upload feature specifically.
+
+**Deploy just the frontend.**
+
+
 
 **Root cause, confirmed:** the SQL migration (`access_expiry_migration.sql`) almost certainly went out *after* the backend that depends on it. `rbacMiddleware` and `/auth/me` both selected `access_expires_at` in the same query as the core user fields — when that column didn't exist yet, the *entire* query failed, rejecting every single login with no exception. Combined with two pre-existing behaviors that were individually fine but combined into a loop: `index.html` redirects to the dashboard whenever a valid Supabase session exists, and the dashboard's auth guard redirects back to login whenever the backend check fails — the two pages bounced off each other indefinitely, exactly matching the screenshots (flipping every ~1 second).
 
