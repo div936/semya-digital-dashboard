@@ -3765,7 +3765,7 @@ async function renderSidebarSummary(scopes) {
 
 // ─── RENDER PLATFORM HEALTH ───────────────────────────────────────
 function renderPlatformHealth(byPlatform, campaigns) {
-  const list  = document.getElementById('platformHealthList');
+  const list = document.getElementById('platformHealthList');
   if (!list) return;
 
   // Build a lookup by platform string for quick access
@@ -3773,77 +3773,103 @@ function renderPlatformHealth(byPlatform, campaigns) {
   for (const p of byPlatform) byPlatformMap[p.platform] = p;
   const total = byPlatform.reduce((s, p) => s + p.totalRevenue, 0);
 
-  // Hierarchical groups — same parent/child logic as Platform Attainment:
-  // Amazon = Neat + Acutas, Website = Meta + Google, others standalone.
-  const healthGroups = [
-    { key: 'amazon',   label: 'Amazon',   pillClass: 'pill-amz',      color: '#ff9900', children: ['amazon', 'acutas'] },
-    { key: 'flipkart', label: 'Flipkart', pillClass: 'pill-flipkart', color: '#0077ff', children: null },
-    { key: 'blinkit',  label: 'Blinkit',  pillClass: 'pill-blinkit',  color: '#fbbf24', children: null },
-    { key: 'website',  label: 'Website',  pillClass: 'pill-website',  color: '#1877f2', children: ['meta', 'google'] },
+  // Define groups in the same parent → children pattern as
+  // Platform Attainment: Amazon + Website have sub-platforms,
+  // Flipkart and Blinkit are standalone.
+  const HEALTH_GROUPS = [
+    { parentKey: 'amazon',   children: ['amazon', 'acutas'] },
+    { parentKey: 'flipkart', children: ['flipkart'] },
+    { parentKey: 'blinkit',  children: ['blinkit'] },
+    { parentKey: 'website',  children: ['meta', 'google'] },
   ];
 
-  const getROAS = (p) => {
-    const data = byPlatformMap[p];
+  // Parent display labels and colours — defined here because
+  // PLATFORM_META tracks individual sub-platform colours, not the
+  // group-level display name needed for a combined parent row.
+  const PARENT_META = {
+    amazon:   { label: 'Amazon',   color: '#ff9900', pillClass: 'pill-amz'  },
+    flipkart: { label: 'Flipkart', color: '#0077ff', pillClass: 'pill-fk'   },
+    blinkit:  { label: 'Blinkit',  color: '#fbbf24', pillClass: 'pill-bk'   },
+    website:  { label: 'Website',  color: '#1877f2', pillClass: 'pill-meta' },
+  };
+
+  // Helper: compute ROAS for a single sub-platform using server
+  // value first, campaign-spend fallback second (matching the
+  // date-aligned approach already established everywhere else).
+  const subRoas = (cp) => {
+    const data = byPlatformMap[cp];
     if (!data) return null;
-    if (data.roas !== undefined) return data.roas || 0;
-    const camp = campaigns.filter(c => c.platform === p);
-    const spend = camp.reduce((s, c) => s + (c.standard_spend || 0), 0);
-    return spend > 0 ? data.totalRevenue / spend : 0;
+    if (data.roas !== undefined) return data.roas || null;
+    const spend = campaigns.filter(c => c.platform === cp)
+                           .reduce((s, c) => s + (c.standard_spend || 0), 0);
+    return spend > 0 ? data.totalRevenue / spend : null;
   };
 
-  const roasColor = (r) => r >= 3 ? '#059669' : r >= 1.5 ? '#d97706' : '#dc2626';
+  list.style.gap = '0'; // override the 10px gap — we handle spacing internally
+  list.innerHTML = HEALTH_GROUPS.map((group, gi) => {
+    const pm = PARENT_META[group.parentKey];
 
-  const miniBar = (rev, tot, col) => {
-    const pct = tot > 0 ? Math.min(rev/tot*100, 100) : 0;
-    return '<div style="width:60px;height:5px;background:#e2eaf2;border-radius:99px;overflow:hidden;"><div style="width:' + pct + '%;height:100%;background:' + col + ';border-radius:99px;"></div></div>';
-  };
+    // Group-level aggregates
+    const groupRev   = group.children.reduce((s, cp) => s + (byPlatformMap[cp]?.totalRevenue || 0), 0);
+    const groupSpend = campaigns.filter(c => group.children.includes(c.platform))
+                                .reduce((s, c) => s + (c.standard_spend || 0), 0);
+    const groupRoas  = groupSpend > 0 ? groupRev / groupSpend : null;
+    const groupPct   = total > 0 ? Math.min(groupRev / total * 100, 100) : 0;
 
-  list.innerHTML = healthGroups.map(group => {
-    const childPlatforms = group.children || [group.key];
-    const groupRev = childPlatforms.reduce((s, p) => s + (byPlatformMap[p]?.totalRevenue || 0), 0);
-    if (!groupRev && !childPlatforms.some(p => byPlatformMap[p])) return ''; // skip entirely missing groups
+    // Skip groups with no data at all
+    if (!groupRev && !groupSpend) return '';
 
-    const groupPct = total > 0 ? Math.round(groupRev / total * 100) : 0;
+    const isExpanded = group.children.length > 1;
+    const isLast     = gi === HEALTH_GROUPS.length - 1;
 
-    // Compute group-level ROAS (weighted by spend across children)
-    const campForGroup = campaigns.filter(c => childPlatforms.includes(c.platform));
-    const groupSpend = campForGroup.reduce((s, c) => s + (c.standard_spend || 0), 0);
-    const groupRoas = groupSpend > 0 ? groupRev / groupSpend : null;
-    const roasCol = groupRoas != null ? roasColor(groupRoas) : '#94a3b8';
+    // ROAS badge — consistently formatted
+    const roasBadge = (r) => {
+      if (r == null || r <= 0) return '<span style="font-size:10px;color:#cbd5e1;font-family:var(--font-mono);font-weight:700;">—</span>';
+      const col = roasColor(r);
+      return '<span style="font-size:10px;color:' + col + ';font-family:var(--font-mono);font-weight:700;">' + fmtRoas(r) + '</span>';
+    };
+
+    // Proportional bar — shared helper
+    const bar = (fill, bg, h, r) => {
+      const w = Math.min(fill, 100);
+      return '<div style="flex:1;height:' + h + 'px;background:#f1f5f9;border-radius:99px;overflow:hidden;min-width:40px;">' +
+             '<div style="width:' + w + '%;height:100%;background:' + bg + ';border-radius:99px;transition:width .3s ease;' + (r ? 'opacity:.6;' : '') + '"></div></div>';
+    };
 
     // Parent row
-    let html = '<div style="margin-bottom:' + (group.children ? '4px' : '10px') + ';">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;">' +
-        '<div style="display:flex;align-items:center;gap:8px;">' +
-          '<span class="platform-pill ' + group.pillClass + '">' + group.label + '</span>' +
-          '<span style="font-size:11px;color:#64748b;">' + fmtRevenue(groupRev) + '</span>' +
-        '</div>' +
-        '<div style="display:flex;align-items:center;gap:6px;">' +
-          miniBar(groupRev, total, group.color) +
-          '<span style="font-size:10px;color:' + roasCol + ';font-weight:700;">' + (groupRoas != null && groupRoas > 0 ? fmtRoas(groupRoas) : '—') + '</span>' +
-        '</div>' +
+    let html = '<div style="padding:' + (gi > 0 ? '10px' : '0') + ' 0 0 0;' + (!isLast && !isExpanded ? 'border-bottom:1px solid #f8fafc;padding-bottom:10px;' : '') + '">' +
+      '<div style="display:flex;align-items:center;gap:8px;">' +
+        '<span class="platform-pill ' + pm.pillClass + '" style="font-size:9.5px;padding:2px 8px;min-width:62px;text-align:center;">' + pm.label + '</span>' +
+        '<span style="font-size:11.5px;font-weight:600;color:#1e293b;flex:1;">' + fmtRevenue(groupRev) + '</span>' +
+        bar(groupPct, pm.color, 4, false) +
+        roasBadge(groupRoas) +
       '</div>';
 
-    // Child rows — indented, smaller, thinner bar, only if children exist and have data
-    if (group.children && group.children.length > 1) {
-      const childRows = group.children.map(cp => {
-        const cm  = PLATFORM_META[cp] || { label: cp.toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
-        const rev = byPlatformMap[cp]?.totalRevenue || 0;
-        const cr  = getROAS(cp);
-        const ccol = cr != null && cr > 0 ? roasColor(cr) : '#94a3b8';
-        if (!rev) return ''; // skip truly empty children
-        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:3px 0 3px 14px;border-left:2px solid #f1f5f9;">' +
-          '<div style="display:flex;align-items:center;gap:6px;">' +
-            '<span class="platform-pill ' + cm.pillClass + '" style="font-size:8px;padding:1px 6px;">' + cm.label + '</span>' +
-            '<span style="font-size:10.5px;color:#94a3b8;">' + fmtRevenue(rev) + '</span>' +
-          '</div>' +
-          '<div style="display:flex;align-items:center;gap:6px;">' +
-            '<div style="width:50px;height:3px;background:#e2eaf2;border-radius:99px;overflow:hidden;"><div style="width:' + (groupRev > 0 ? Math.min(rev/groupRev*100,100) : 0) + '%;height:100%;background:' + cm.color + ';border-radius:99px;"></div></div>' +
-            '<span style="font-size:9.5px;color:' + ccol + ';font-weight:700;">' + (cr != null && cr > 0 ? fmtRoas(cr) : '—') + '</span>' +
-          '</div>' +
+    // Children — only when group has more than one sub-platform
+    if (isExpanded) {
+      const childRows = group.children.map((cp, ci) => {
+        const cm   = PLATFORM_META[cp] || { label: cp.toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
+        const rev  = byPlatformMap[cp]?.totalRevenue || 0;
+        const cr   = subRoas(cp);
+        // Sub-bar: proportion of THIS child's revenue relative to the parent group
+        const pct  = groupRev > 0 ? Math.min(rev / groupRev * 100, 100) : 0;
+        const isLastChild = ci === group.children.length - 1;
+        if (!rev && cr == null) return ''; // skip truly empty children
+        return '<div style="display:flex;align-items:center;gap:7px;padding:5px 0 5px 10px;' +
+               'border-left:2px solid #f1f5f9;' +
+               (!isLastChild ? '' : '') + '">' +
+          '<span class="platform-pill ' + cm.pillClass + '" style="font-size:8.5px;padding:1.5px 7px;min-width:54px;text-align:center;opacity:.9;">' + cm.label + '</span>' +
+          '<span style="font-size:10.5px;color:#475569;flex:1;">' + fmtRevenue(rev) + '</span>' +
+          bar(pct, cm.color, 3, true) +
+          roasBadge(cr) +
         '</div>';
       }).filter(Boolean).join('');
-      if (childRows) html += '<div style="margin-top:3px;margin-bottom:8px;">' + childRows + '</div>';
+
+      if (childRows) {
+        html += '<div style="margin-top:4px;' + (!isLast ? 'border-bottom:1px solid #f8fafc;padding-bottom:4px;' : '') + '">' + childRows + '</div>';
+      } else if (!isLast) {
+        html += '<div style="border-bottom:1px solid #f8fafc;margin-top:6px;"></div>';
+      }
     }
 
     html += '</div>';
