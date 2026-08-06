@@ -482,9 +482,24 @@ export function extractOrderId(rawExtras) {
 // standard_state from a sibling row of the same order that has one.
 // Mutates and returns the same array.
 export function backfillLocationByOrder(rows) {
+  // Groups rows by platform + orderId and fills in blank standard_city /
+  // standard_state from a sibling row of the same order that has one.
+  //
+  // BUG FIX: previously used extractOrderId(r.raw_extras) as the only
+  // join key — but for Shopify/Meta rows, the Shopify "Name" column
+  // (the order number, e.g. "NEAT-16276") is MAPPED to standard_order_id
+  // and therefore NOT present in raw_extras at all. extractOrderId only
+  // searches raw_extras, so the join always returned null for these rows
+  // and the backfill silently did nothing — explaining why "Unknown" was
+  // appearing as a top city for Meta data even though the first line-item
+  // row of each order has a fully-populated Shipping City field.
+  // Fixed to use r.standard_order_id first (the canonical field for
+  // order identity), falling back to raw_extras for platforms that store
+  // order ID in a non-standard column.
   const groups = new Map();
   for (const r of rows) {
-    const orderId = extractOrderId(r.raw_extras);
+    const orderId = (r.standard_order_id && String(r.standard_order_id).trim())
+      || extractOrderId(r.raw_extras);
     if (!orderId) continue;
     const key = r.platform + '|' + orderId;
     if (!groups.has(key)) groups.set(key, []);
@@ -492,8 +507,8 @@ export function backfillLocationByOrder(rows) {
   }
   for (const group of groups.values()) {
     if (group.length < 2) continue;
-    const knownCity  = group.find((r) => r.standard_city)?.standard_city  || null;
-    const knownState = group.find((r) => r.standard_state)?.standard_state || null;
+    const knownCity  = group.find((r) => r.standard_city  && r.standard_city.trim())?.standard_city  || null;
+    const knownState = group.find((r) => r.standard_state && r.standard_state.trim())?.standard_state || null;
     if (!knownCity && !knownState) continue;
     for (const r of group) {
       if (!r.standard_city  && knownCity)  r.standard_city  = knownCity;
