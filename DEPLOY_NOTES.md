@@ -92,6 +92,10 @@ The previous round's timezone fix (IST-converting every raw file timestamp) was 
 
 **If you already deployed the previous (IST-conversion) version and uploaded files through it**, some rows may have been filed under the wrong date during that window — re-upload the affected files after this fix deploys to correct them (the upsert logic from the earlier revenue de-dup fix makes this safe).
 
+## This round's fix — "No SKU Data (ad platform)" hiding ₹60L+ of Meta revenue in Top Products
+
+**Confirmed via SQL:** 15,570 Meta rows with `standard_sku = NULL`, totalling ₹60,42,299. Root cause: Shopify exports always include a `Lineitem sku` column but the cell is blank for some orders. The SKU→product-name fallback only fired when the column was completely absent, not when it was present but empty. Fixed in both `columnMapper.js` (ingest time) and `clientRouter.js` (display time for already-stored rows). See deploy notes for an optional SQL backfill.
+
 ## This round's feature — hierarchical platform display on Daily Targets
 
 **Platform Attainment and Platform Health** both now show a parent → children structure:

@@ -551,9 +551,20 @@ function aggregateCampaignInsights(campaignRows, revenueRows) {
   // ── Product-wise revenue, for the platforms in this view ───────
   const byProduct = {};
   for (const row of revenueRows) {
-    const sku = row.standard_sku || 'No SKU Data (ad platform)';
-    const key = row.platform + '|' + sku;
-    if (!byProduct[key]) byProduct[key] = { sku, platform: row.platform, revenue: 0, units: 0 };
+    // Use SKU as the primary key, fall back to product name when SKU
+    // is null or blank. This is common for Shopify/Meta exports where
+    // the Lineitem sku cell is empty for some orders but Lineitem name
+    // is always populated — using the product name as a display key
+    // is more useful than grouping everything into a single "No SKU"
+    // bucket, which hid ₹60L+ of Meta revenue behind a meaningless
+    // label and made the Top Products table almost useless for Meta.
+    const displayKey = (row.standard_sku && row.standard_sku.trim())
+      ? row.standard_sku.trim()
+      : (row.standard_product_name && row.standard_product_name.trim())
+        ? row.standard_product_name.trim()
+        : 'Unknown product';
+    const key = row.platform + '|' + displayKey;
+    if (!byProduct[key]) byProduct[key] = { sku: displayKey, platform: row.platform, revenue: 0, units: 0 };
     byProduct[key].revenue += Number(row.standard_revenue) || 0;
     byProduct[key].units   += Number(row.standard_units)   || 0;
   }
@@ -778,9 +789,13 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
     // different platforms can both have an unmapped/"Unknown" SKU;
     // keying by SKU alone would silently merge their revenue into a
     // single row attributed to whichever platform was seen first.
-    const sku = row.standard_sku || 'No SKU Data (ad platform)';
-    const prodKey = p + '|' + sku;
-    if (!byProduct[prodKey]) byProduct[prodKey] = { sku, platform: p, revenue: 0, units: 0 };
+    const displaySku = (row.standard_sku && row.standard_sku.trim())
+      ? row.standard_sku.trim()
+      : (row.standard_product_name && row.standard_product_name.trim())
+        ? row.standard_product_name.trim()
+        : 'Unknown product';
+    const prodKey = p + '|' + displaySku;
+    if (!byProduct[prodKey]) byProduct[prodKey] = { sku: displaySku, platform: p, revenue: 0, units: 0 };
     byProduct[prodKey].revenue += rev;
     byProduct[prodKey].units   += u;
 
@@ -797,7 +812,7 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
     // A real product name/SKU that just didn't match any keyword is a
     // different, fixable problem (the keyword list is missing a
     // product line) and shouldn't be hidden inside the same bucket.
-    const hasProductSignal = !!(row.standard_product_name || (row.standard_sku && row.standard_sku !== 'No SKU Data (ad platform)'));
+    const hasProductSignal = !!(row.standard_product_name || (row.standard_sku && row.standard_sku.trim()));
     let category = inferCategory(row.standard_product_name, row.standard_sku);
     if (category === 'Uncategorized' && !hasProductSignal) {
       category = 'No Product Data (Ad Platforms)';

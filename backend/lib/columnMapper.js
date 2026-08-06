@@ -588,8 +588,20 @@ export function normaliseRow(rawRow, map) {
   // as standard_product_name above) — so a long descriptive title never
   // wins over an actual short SKU just because of column order, but is
   // still available as a last resort when no real SKU exists.
-  if (map === REVENUE_MAP && standardFields.standard_sku === undefined && standardFields.standard_product_name !== undefined) {
-    standardFields.standard_sku = standardFields.standard_product_name;
+  // BUG FIX: previously only triggered when standard_sku was UNDEFINED
+  // (i.e. the column didn't exist at all in the file). Shopify exports
+  // always have a Lineitem sku column, but the cell can be BLANK for
+  // some orders — that mapped to an empty string, which was stored as
+  // NULL in the database and displayed as "No SKU Data (ad platform)".
+  // Now also triggers for an empty/whitespace SKU so product name
+  // correctly fills in for those rows too, both at ingest time (fixing
+  // new uploads) and at query time in clientRouter.js (fixing display
+  // for rows already stored before this fix was deployed).
+  if (map === REVENUE_MAP && standardFields.standard_product_name !== undefined) {
+    const skuVal = standardFields.standard_sku;
+    if (skuVal === undefined || skuVal === null || String(skuVal).trim() === '') {
+      standardFields.standard_sku = standardFields.standard_product_name;
+    }
   }
 
   return { standardFields, rawExtras };
