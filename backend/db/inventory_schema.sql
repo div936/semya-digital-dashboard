@@ -105,9 +105,7 @@ CREATE TABLE IF NOT EXISTS inventory_movements (
 CREATE INDEX IF NOT EXISTS idx_inventory_movements_sku ON inventory_movements (client_id, standard_sku, created_at DESC);
 
 
--- Seed a single default "Main Warehouse" per existing client, so
--- there's always somewhere for a sale to deduct from immediately
--- after this migration runs, before anyone's configured anything.
-INSERT INTO warehouses (client_id, name, is_default, is_active)
-SELECT id, 'Main Warehouse', TRUE, TRUE FROM clients
-ON CONFLICT (client_id, name) DO NOTHING;
+-- No default warehouse seeded — warehouses are named after real
+-- physical locations (e.g. state names) and added via the UTM
+-- Analytics tab or inventory file upload. A generic placeholder
+-- like "Main Warehouse" would show 0 stock and cause confusion.

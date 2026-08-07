@@ -296,22 +296,47 @@ router.post(
     }
 
     // ── Brand validation — reject the WHOLE upload, not per-row, if
-    // this file's brand(s) don't match what this client is registered
-    // for. A partial reject (some rows accepted, some not) would be a
-    // worse outcome than refusing outright: if a file is genuinely
-    // the wrong client's data, none of it belongs here.
+    // this file's brand doesn't match this client.
+    //
+    // Brand name = client name (e.g. "Daluci" file → Daluci client).
+    // Valid brands for a client are built from two sources, in priority:
+    //   1. clients.registered_brands — explicit overrides set in admin
+    //   2. clients.name — the client's own name, always valid as a brand
+    // This means brand→client mapping is automatic with zero config:
+    // uploading a "Daluci" branded file into the Neat Everyday client
+    // is rejected outright because "Daluci" ≠ "Neat Everyday".
     const { data: clientRow } = await supabaseAdmin
-      .from('clients').select('registered_brands').eq('id', client.id).single();
-    const registeredBrands = (clientRow?.registered_brands || []).map(b => b.trim().toLowerCase()).filter(Boolean);
+      .from('clients').select('name, registered_brands').eq('id', client.id).single();
+    // Build the allowed brand list: explicit overrides + client name itself
+    const explicitBrands = (clientRow?.registered_brands || []).map(b => b.trim().toLowerCase()).filter(Boolean);
+    const clientNameBrand = (clientRow?.name || '').trim().toLowerCase();
+    const registeredBrands = explicitBrands.length
+      ? explicitBrands
+      : clientNameBrand ? [clientNameBrand] : [];
 
     if (colMap.brand && registeredBrands.length) {
       const fileBrands = [...new Set(rawRows.map(r => String(r[colMap.brand] || '').trim()).filter(Boolean))];
       const mismatched = fileBrands.filter(b => !registeredBrands.includes(b.toLowerCase()));
       if (mismatched.length) {
+        // Check if this brand belongs to a different client — give a
+        // helpful error pointing to the right client if so.
+        const { data: brandOwner } = await supabaseAdmin
+          .from('clients')
+          .select('name, slug')
+          .or(
+            mismatched.map(b => `name.ilike.${b}`).join(',') +
+            (mismatched.length ? ',' : '') +
+            `registered_brands.cs.{${mismatched.join(',')}}`
+          )
+          .neq('id', client.id)
+          .limit(1)
+          .maybeSingle();
+        const suggestion = brandOwner
+          ? ` This file looks like it belongs to the "${brandOwner.name}" client instead.`
+          : '';
         return res.status(400).json({
-          error: `This file's brand${mismatched.length > 1 ? 's' : ''} (${mismatched.join(', ')}) ` +
-                 `${mismatched.length > 1 ? "don't" : "doesn't"} match what's registered for this client (${(clientRow.registered_brands || []).join(', ')}). ` +
-                 `If this file genuinely belongs here, check Client Administration to confirm the registered brand name, or fix the file if it was meant for a different client.`,
+          error: `This file's brand (${mismatched.join(', ')}) doesn't match this client ("${clientRow.name}").${suggestion} ` +
+                 `Please upload this file under the correct client account.`,
         });
       }
     }
@@ -324,7 +349,7 @@ router.post(
     const defaultWarehouseId = (warehouses || []).find(w => w.is_default)?.id || null;
 
     if (!colMap.warehouse && !defaultWarehouseId) {
-      return res.status(400).json({ error: 'This file has no Warehouse column, and no default warehouse is set up for this client yet — add a warehouse on the UTM Analytics tab first (mark it Default), or add a Warehouse column to the file.' });
+      return res.status(400).json({ error: 'This file has no Warehouse column and no default warehouse is configured. Add a Warehouse column to your file with the warehouse name (e.g. the state/location name), then add that warehouse under UTM Analytics first.' });
     }
 
     // ── Existing SKUs — fetched once, up front, so a re-upload never
