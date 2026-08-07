@@ -1993,6 +1993,11 @@
             <div class="ai-tab-title">&#9888; Cancellation Pattern Watch</div>
             <div class="ai-tab-meta" id="fraudTabMeta">Loading…</div>
           </div>
+          <button id="fraudExportBtn" onclick="exportFraudPatterns()"
+            style="display:none;align-items:center;gap:5px;padding:6px 12px;font-size:11px;font-weight:600;
+                   background:#fff;border:1.5px solid #e2e8f0;border-radius:7px;cursor:pointer;color:#374151;white-space:nowrap;">
+            &#8681; Export Excel
+          </button>
         </div>
         <div style="font-size:11px;color:#94a3b8;padding:0 2px 10px;">
           Flags buyer contacts (matched by phone, or by name + pincode where phone isn't available) with repeated cancellations, or multiple different names ordering from the same contact. Only covers platforms whose files include buyer details — Amazon/Acutas reports never do.
@@ -6372,6 +6377,10 @@ function renderFraudPatterns(resp) {
   const list = document.getElementById('fraudPatternList');
   if (!resp || !list) return;
 
+  // Store for export
+  _lastFraudData = resp;
+  const exportBtn = document.getElementById('fraudExportBtn');
+
   const flagged = resp.flagged || [];
   const multiName = flagged.filter(f => f.identities.length > 1);
 
@@ -6386,8 +6395,10 @@ function renderFraudPatterns(resp) {
 
   if (!flagged.length) {
     list.innerHTML = '<div style="text-align:center;padding:16px 0;color:#94a3b8;font-size:12px;">Nothing flagged right now.</div>';
+    if (exportBtn) exportBtn.style.display = 'none';
     return;
   }
+  if (exportBtn) exportBtn.style.display = 'flex';
 
   // Multi-name matches are the stronger signal — show those first,
   // then highest revenue-at-risk. Cap the list so it stays scannable.
@@ -6418,6 +6429,56 @@ function renderFraudPatterns(resp) {
 }
 
 
+
+// Store fraud data globally so export can access it
+let _lastFraudData = null;
+
+function exportFraudPatterns() {
+  if (!_lastFraudData || !_lastFraudData.flagged || !_lastFraudData.flagged.length) return;
+
+  const rows = [
+    ['Contact(s)', 'Platform', 'Reason', 'Revenue at Risk (₹)', 'Cancel Rate (%)', 'Signal Strength']
+  ];
+
+  const sorted = [..._lastFraudData.flagged].sort((a, b) => {
+    const aMulti = a.identities.length > 1 ? 1 : 0;
+    const bMulti = b.identities.length > 1 ? 1 : 0;
+    return bMulti - aMulti || b.totalRevenueAtRisk - a.totalRevenueAtRisk;
+  });
+
+  sorted.forEach(f => {
+    rows.push([
+      f.identities.join(' / '),
+      (f.platform || '').toUpperCase(),
+      f.reason,
+      f.totalRevenueAtRisk,
+      f.cancelRate,
+      f.identities.length > 1 ? 'High (multiple names)' : 'Medium (repeat cancellations)'
+    ]);
+  });
+
+  // Build CSV
+  const csv = rows.map(r =>
+    r.map(cell => {
+      const s = String(cell == null ? '' : cell);
+      return s.includes(',') || s.includes('"') || s.includes('
+')
+        ? '"' + s.replace(/"/g, '""') + '"'
+        : s;
+    }).join(',')
+  ).join('
+');
+
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'cancellation_pattern_watch_' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 async function regenerateInsights() {
   const { clientSlug } = state; if (!clientSlug) return;
