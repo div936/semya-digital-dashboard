@@ -391,7 +391,11 @@ function allocateOrderLevelDiscount(rows) {
   return rows;
 }
 
-export function computeRevenueDedupKey(row) {
+// lineItemSeq is an optional 0-based position of this row within its
+// order group (platform + orderId). Callers that pre-compute it pass it
+// in; callers that don't get undefined, which preserves the old behaviour
+// for tiers that don't need it.
+export function computeRevenueDedupKey(row, lineItemSeq) {
   const orderItemId = row.standard_order_item_id && String(row.standard_order_item_id) !== '0'
     ? String(row.standard_order_item_id).trim()
     : '';
@@ -402,7 +406,19 @@ export function computeRevenueDedupKey(row) {
     return { hash: hash(`order_item_id:${orderItemId}`), method: 'order_item_id' };
   }
   if (orderId) {
-    return { hash: hash(`order_id_sku:${orderId}|${sku}`), method: 'order_id_sku' };
+    // BUG FIX: Shopify exports can legitimately have multiple line-item
+    // rows for the same order_id + sku (e.g. two units of the same
+    // product fulfilled separately, or a partial-fulfilment duplicate
+    // row). Previously both rows produced the same hash
+    // ("order_id_sku:NEAT-xxxxx|SKU"), causing a Postgres
+    // "ON CONFLICT DO UPDATE command cannot affect row a second time"
+    // error that silently failed the entire upload batch.
+    // Fix: include the 0-based line-item sequence within the order so
+    // each physical row gets a unique hash even when order+sku repeats.
+    // lineItemSeq is pre-computed by the caller by counting how many
+    // rows with the same platform+orderId appeared before this one.
+    const seq = lineItemSeq !== undefined ? lineItemSeq : 0;
+    return { hash: hash(`order_id_sku:${orderId}|${sku}|${seq}`), method: 'order_id_sku' };
   }
 
   const revenueStr = row.standard_revenue != null && row.standard_revenue !== ''
@@ -723,10 +739,18 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
       ? allocateOrderLevelDiscount(normalisedRows)
       : normalisedRows;
 
+    // Pre-compute each row's 0-based position within its order group
+    // (platform + standard_order_id) so computeRevenueDedupKey can
+    // include it in the tier-2 hash, preventing collisions when the
+    // same order has multiple line-items with the same SKU.
+    const orderSeqCounter = new Map();
     const rows = dataType === 'campaign'
       ? mergeDuplicateCampaignRows(normalisedRows)
       : discountAdjustedRows.map(row => {
-          const { hash: row_hash, method: dedup_method } = computeRevenueDedupKey(row);
+          const orderKey = (row.platform || '') + '|' + (row.standard_order_id || '');
+          const seq = orderSeqCounter.get(orderKey) || 0;
+          orderSeqCounter.set(orderKey, seq + 1);
+          const { hash: row_hash, method: dedup_method } = computeRevenueDedupKey(row, seq);
           return { ...row, row_hash, dedup_method };
         });
 
