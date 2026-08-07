@@ -378,12 +378,33 @@ function allocateOrderLevelDiscount(rows) {
 
   for (const group of byOrder.values()) {
     if (group.total == null) continue; // no Total found anywhere in this order — leave rows as-is (pre-discount lineitem price)
-    const lineitemSum = group.rows.reduce((s, r) => s + (r.standard_revenue || 0), 0);
+    // BUG FIX: lineitemSum was previously the sum of standard_revenue
+    // (= Lineitem price, a per-UNIT figure) without multiplying by
+    // standard_units. For a multi-qty line (e.g. qty=2, price=419),
+    // this understated the gross line total (used 419 instead of 838),
+    // making the ratio far too high (1336/419 = 3.19x vs correct
+    // 1336/838 = 1.59x) and massively over-inflating stored revenue —
+    // showing e.g. ₹39.4K on the dashboard for a day Shopify reported
+    // as ₹33,747. Fixed: use price×qty as the gross line revenue for
+    // the denominator so the ratio is correct. standard_revenue itself
+    // stays per-unit after allocation (ratio applied to unit price only),
+    // consistent with how inventory deduction and SKU reporting use it.
+    const lineitemSum = group.rows.reduce((s, r) => {
+      const units = Number(r.standard_units) || 1;
+      return s + ((r.standard_revenue || 0) * units);
+    }, 0);
     if (lineitemSum <= 0) continue;
     const ratio = group.total / lineitemSum;
     for (const row of group.rows) {
       if (row.standard_revenue != null) {
-        row.standard_revenue = Math.round(row.standard_revenue * ratio * 100) / 100;
+        // Store total line revenue (unit_price × qty × discount_ratio), not
+        // per-unit price. This makes standard_revenue consistent with every
+        // other platform (Amazon/Flipkart already store total line revenue),
+        // so clientRouter can always sum standard_revenue directly without
+        // needing to multiply by standard_units — which it doesn't do, and
+        // which would be wrong for Amazon/Flipkart rows that are already totals.
+        const units = Number(row.standard_units) || 1;
+        row.standard_revenue = Math.round(row.standard_revenue * units * ratio * 100) / 100;
       }
     }
   }
