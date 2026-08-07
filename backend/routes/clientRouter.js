@@ -217,8 +217,22 @@ router.get(
         .eq('client_id', client.id)
         .order('id')
         .range(from, to);
-      if (req.query.from)      q = q.or(`order_date.gte.${req.query.from},order_date.is.null`);
-      if (req.query.to)        q = q.or(`order_date.lte.${req.query.to},order_date.is.null`);
+      // FIX: two separate .or() calls with the same PostgREST key causes
+      // the second to silently overwrite the first — the FROM filter was
+      // being completely ignored, returning all rows up to the TO date
+      // regardless of the FROM date. Combined into one .or() with nested
+      // AND so both bounds are enforced in a single filter parameter.
+      if (req.query.from || req.query.to) {
+        const from = req.query.from;
+        const to   = req.query.to;
+        if (from && to) {
+          q = q.or(`and(order_date.gte.${from},order_date.lte.${to}),order_date.is.null`);
+        } else if (from) {
+          q = q.or(`order_date.gte.${from},order_date.is.null`);
+        } else {
+          q = q.or(`order_date.lte.${to},order_date.is.null`);
+        }
+      }
       if (platform)            q = q.in('platform', expandPlatform(platform));
       return q;
     }).catch(e => { throw e; });
@@ -334,8 +348,16 @@ router.get(
           .range(rangeFrom, rangeTo);
         if (sku)      q = q.eq('standard_sku', sku);
         if (platform) q = q.in('platform', expandPlatform(platform));
-        if (from)     q = q.or(`order_date.gte.${from},order_date.is.null`);
-        if (to)       q = q.or(`order_date.lte.${to},order_date.is.null`);
+        // FIX: combined into single .or() — see platform-sales fix above
+        if (from || to) {
+          if (from && to) {
+            q = q.or(`and(order_date.gte.${from},order_date.lte.${to}),order_date.is.null`);
+          } else if (from) {
+            q = q.or(`order_date.gte.${from},order_date.is.null`);
+          } else {
+            q = q.or(`order_date.lte.${to},order_date.is.null`);
+          }
+        }
         return q;
       }),
       (() => {
@@ -470,8 +492,16 @@ router.get(
         .eq('client_id', client.id)
         .order('id')
         .range(rangeFrom, rangeTo);
-      if (from)     q = q.or(`order_date.gte.${from},order_date.is.null`);
-      if (to)       q = q.or(`order_date.lte.${to},order_date.is.null`);
+      // FIX: combined into single .or() — see platform-sales fix above
+      if (from || to) {
+        if (from && to) {
+          q = q.or(`and(order_date.gte.${from},order_date.lte.${to}),order_date.is.null`);
+        } else if (from) {
+          q = q.or(`order_date.gte.${from},order_date.is.null`);
+        } else {
+          q = q.or(`order_date.lte.${to},order_date.is.null`);
+        }
+      }
       if (platform) q = q.in('platform', expandPlatform(platform));
       return q;
     }).catch((e) => { throw e; });
@@ -622,8 +652,16 @@ router.get(
         .eq('client_id', client.id)
         .order('id')
         .range(rangeFrom, rangeTo);
-      if (from)     q = q.or(`order_date.gte.${from},order_date.is.null`);
-      if (to)       q = q.or(`order_date.lte.${to},order_date.is.null`);
+      // FIX: combined into single .or() — see platform-sales fix above
+      if (from || to) {
+        if (from && to) {
+          q = q.or(`and(order_date.gte.${from},order_date.lte.${to}),order_date.is.null`);
+        } else if (from) {
+          q = q.or(`order_date.gte.${from},order_date.is.null`);
+        } else {
+          q = q.or(`order_date.lte.${to},order_date.is.null`);
+        }
+      }
       if (sku)      q = q.eq('standard_sku', sku);
       if (platform) q = q.in('platform', expandPlatform(platform));
       return q;
@@ -677,8 +715,7 @@ router.get(
         .select('standard_sku, platform, standard_revenue, standard_units, standard_city, raw_extras, order_date')
         .eq('client_id', client.id)
         .eq(...(sku ? ['standard_sku', sku] : ['client_id', client.id]))
-        .or(`order_date.gte.${from || '2000-01-01'},order_date.is.null`)
-        .or(`order_date.lte.${to   || '2099-01-01'},order_date.is.null`),
+        .or(`and(order_date.gte.${from || '2000-01-01'},order_date.lte.${to || '2099-01-01'}),order_date.is.null`),
       supabaseAdmin
         .from('campaign_data')
         .select('platform, standard_spend, standard_revenue, standard_clicks, standard_impressions, raw_extras, campaign_date')
@@ -720,8 +757,16 @@ router.get(
         .eq('client_id', client.id)
         .order('id')
         .range(rangeFrom, rangeTo);
-      if (from) q = q.or(`order_date.gte.${from},order_date.is.null`);
-      if (to)   q = q.or(`order_date.lte.${to},order_date.is.null`);
+      // FIX: combined into single .or()
+      if (from || to) {
+        if (from && to) {
+          q = q.or(`and(order_date.gte.${from},order_date.lte.${to}),order_date.is.null`);
+        } else if (from) {
+          q = q.or(`order_date.gte.${from},order_date.is.null`);
+        } else {
+          q = q.or(`order_date.lte.${to},order_date.is.null`);
+        }
+      }
       return q;
     }).catch((e) => { return res.status(500).json({ error: 'Failed to fetch data for pattern detection: ' + e.message }); });
 
