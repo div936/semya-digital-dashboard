@@ -1301,6 +1301,12 @@
               <div id="psProductOptionsList"></div>
             </div>
           </div>
+          <!-- Discount toggle — gross vs net revenue -->
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-text-secondary);white-space:nowrap;cursor:pointer;padding:0 4px;">
+            <input type="checkbox" id="psApplyDiscountsToggle" onchange="onPsDiscountToggle()" style="cursor:pointer;">
+            Apply discounts
+          </label>
+
           <span class="fetch-badge loading" id="psFetchBadge" style="margin-left:auto;">
             <span class="fetch-dot"></span><span id="psFetchText">Loading</span>
           </span>
@@ -4329,7 +4335,7 @@ function updateSidebarForTab(tabKey) {
 // ═══════════════════════════════════════════════════════════════════
 // PLATFORM SALES
 // ═══════════════════════════════════════════════════════════════════
-const psState = { platform: '', dateFrom: '', dateTo: '', trendPeriod: 'week', excludeStatuses: [], category: '', _lastData: null };
+const psState = { platform: '', dateFrom: '', dateTo: '', trendPeriod: 'week', excludeStatuses: [], category: '', applyDiscounts: false, _lastData: null };
 
 const MOCK_PS = {
   platforms: [
@@ -4386,6 +4392,12 @@ function onPsStatusChange() {
   fetchAndRenderPS();
 }
 
+function onPsDiscountToggle() {
+  psState.applyDiscounts = document.getElementById('psApplyDiscountsToggle')?.checked || false;
+  tabCache['platform_sales'] = null;
+  fetchAndRenderPS();
+}
+
 // ── Product/category filter ─────────────────────────────────────
 let _psAllCategories = []; // full list, populated from availableCategories on first live fetch
 
@@ -4432,6 +4444,7 @@ async function fetchAndRenderPS() {
   if (psState.dateFrom) qp.set('from', psState.dateFrom);
   if (psState.dateTo)   qp.set('to',   psState.dateTo);
   if (psState.excludeStatuses.length) qp.set('excludeStatuses', psState.excludeStatuses.join(','));
+  if (psState.applyDiscounts) qp.set('applyDiscounts', 'true');
   if (psState.category) qp.set('category', psState.category);
   const q = qp.toString() ? '?' + qp.toString() : '';
   let data = null; let isLive = false;

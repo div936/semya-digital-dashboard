@@ -206,13 +206,14 @@ router.get(
     const { client } = req.semya;
     const { from, to, platform } = req.query;
 
+    const applyDiscounts = req.query.applyDiscounts === 'true';
+
     const data = await fetchAllRows((from, to) => {
       let q = supabaseAdmin
         .from('revenue_data')
-        // standard_sku added so Platform Sales can show a real
-        // product-wise breakdown instead of bucketing everything
-        // into "Unknown".
-        .select('platform, order_date, standard_revenue, standard_units, standard_status, standard_sku, standard_product_name, standard_order_id')
+        // raw_extras included so discount (Lineitem discount from Shopify)
+        // can be applied at query time when applyDiscounts=true.
+        .select('platform, order_date, standard_revenue, standard_units, standard_status, standard_sku, standard_product_name, standard_order_id, raw_extras')
         .eq('client_id', client.id)
         .order('id')
         .range(from, to);
@@ -240,6 +241,19 @@ router.get(
     const dataForSummary = categoryFilter
       ? data.filter(row => inferCategory(row.standard_product_name, row.standard_sku) === categoryFilter)
       : data;
+
+    // Apply per-line discount (Lineitem discount from Shopify raw_extras)
+    // when the user has toggled "Apply discounts" on. Only affects
+    // Shopify-shaped rows (those with a Lineitem discount in raw_extras).
+    // Amazon/Flipkart/Blinkit already store net revenue — no adjustment.
+    if (applyDiscounts) {
+      for (const row of data) {
+        const disc = Number(row.raw_extras?.['Lineitem discount'] || 0);
+        if (disc > 0) row.standard_revenue = Math.max(0, (row.standard_revenue || 0) - disc);
+      }
+    }
+    // Drop raw_extras before aggregation — not needed downstream
+    for (const row of data) delete row.raw_extras;
 
     const summary = aggregatePlatformSales(dataForSummary, excludeStatuses);
     // Dropdown needs the FULL category list regardless of which one is

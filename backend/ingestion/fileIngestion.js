@@ -359,56 +359,24 @@ function mergeDuplicateCampaignRows(rows) {
 // column at all — nothing here changes their behaviour.
 // ═══════════════════════════════════════════════════════════════════
 function allocateOrderLevelDiscount(rows) {
-  const byOrder = new Map();
+  // ARCHITECTURE: standard_revenue stores GROSS line revenue for Shopify rows:
+  //   standard_revenue = Lineitem price × Lineitem quantity
+  // This matches Shopify's own "Gross Sales" figure and the old dashboard's
+  // formula exactly. The per-line discount (Lineitem discount) stays in
+  // raw_extras untouched and is subtracted at query time by clientRouter
+  // when the user has "Apply discounts" toggled on — giving them the choice
+  // between gross and net revenue without needing a separate DB column.
+  //
+  // For Shopify rows: standard_revenue is already set to Lineitem price
+  // (per-unit) by normaliseRow. Here we multiply by standard_units to get
+  // the total gross line revenue, making it consistent with Amazon/Flipkart
+  // which already store total line amounts in their revenue column.
   for (const row of rows) {
-    const orderId = row.standard_order_id;
-    if (!orderId) continue;
-    const total = row.raw_extras?.Total;
-    if (total === undefined) continue; // not a Shopify-shaped row
-    if (!byOrder.has(orderId)) byOrder.set(orderId, { rows: [], total: null });
-    const group = byOrder.get(orderId);
-    group.rows.push(row);
-    // Only one row per order actually carries this value — take
-    // whichever isn't blank, across the whole group.
-    if (group.total === null && total !== '' ) {
-      const n = Number(String(total).replace(/[₹$,\s]/g, ''));
-      if (!isNaN(n)) group.total = n;
-    }
+    if (row.raw_extras?.Total === undefined) continue; // not a Shopify-shaped row
+    if (row.standard_revenue == null) continue;
+    const units = Number(row.standard_units) || 1;
+    row.standard_revenue = Math.round(row.standard_revenue * units * 100) / 100;
   }
-
-  for (const group of byOrder.values()) {
-    if (group.total == null) continue; // no Total found anywhere in this order — leave rows as-is (pre-discount lineitem price)
-    // BUG FIX: lineitemSum was previously the sum of standard_revenue
-    // (= Lineitem price, a per-UNIT figure) without multiplying by
-    // standard_units. For a multi-qty line (e.g. qty=2, price=419),
-    // this understated the gross line total (used 419 instead of 838),
-    // making the ratio far too high (1336/419 = 3.19x vs correct
-    // 1336/838 = 1.59x) and massively over-inflating stored revenue —
-    // showing e.g. ₹39.4K on the dashboard for a day Shopify reported
-    // as ₹33,747. Fixed: use price×qty as the gross line revenue for
-    // the denominator so the ratio is correct. standard_revenue itself
-    // stays per-unit after allocation (ratio applied to unit price only),
-    // consistent with how inventory deduction and SKU reporting use it.
-    const lineitemSum = group.rows.reduce((s, r) => {
-      const units = Number(r.standard_units) || 1;
-      return s + ((r.standard_revenue || 0) * units);
-    }, 0);
-    if (lineitemSum <= 0) continue;
-    const ratio = group.total / lineitemSum;
-    for (const row of group.rows) {
-      if (row.standard_revenue != null) {
-        // Store total line revenue (unit_price × qty × discount_ratio), not
-        // per-unit price. This makes standard_revenue consistent with every
-        // other platform (Amazon/Flipkart already store total line revenue),
-        // so clientRouter can always sum standard_revenue directly without
-        // needing to multiply by standard_units — which it doesn't do, and
-        // which would be wrong for Amazon/Flipkart rows that are already totals.
-        const units = Number(row.standard_units) || 1;
-        row.standard_revenue = Math.round(row.standard_revenue * units * ratio * 100) / 100;
-      }
-    }
-  }
-
   return rows;
 }
 
@@ -446,7 +414,13 @@ export function computeRevenueDedupKey(row, lineItemSeq) {
     ? Number(row.standard_revenue).toFixed(2) : '';
   const unitsStr = row.standard_units != null && row.standard_units !== ''
     ? String(row.standard_units) : '';
-  const composite = `composite:${row.order_date ?? ''}|${sku}|${row.standard_state ?? ''}|${unitsStr}|${revenueStr}`;
+  // BUG FIX: revenue removed from composite hash. Previously including
+  // revenue meant a cancellation that zeroed the revenue produced a
+  // different hash — causing a new row to be inserted instead of the
+  // existing row being updated. Without revenue, the hash is stable
+  // across status/revenue changes so re-uploading a cancelled order
+  // correctly updates standard_status in place.
+  const composite = `composite:${row.order_date ?? ''}|${sku}|${row.standard_state ?? ''}|${unitsStr}`;
   return { hash: hash(composite), method: 'composite' };
 }
 
@@ -750,6 +724,54 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
       else if (tags.includes('source-facebook') || tags.includes('source-instagram')) row.platform = 'meta';
       // else: leave whatever the filename already assigned — matches
       // the old system's own default of Meta for an untagged row.
+    }
+
+    // ── Shopify status normalisation ────────────────────────────────────────
+    // Shopify exports only populate Financial Status and Cancelled at on the
+    // FIRST line-item row of each order — every other line-item of a
+    // multi-product order has these fields blank. Forward-fill them within
+    // each order group so every row gets the correct status.
+    // Then map raw Shopify statuses to canonical values matching the old
+    // dashboard's logic exactly:
+    //   voided or refunded Financial Status  → 'Cancelled'
+    //   non-empty Cancelled at               → 'Cancelled'
+    //   paid + fulfilled                     → 'Delivered'
+    //   everything else                      → 'Pending'
+    // This ensures voided/refunded orders are excluded from revenue totals
+    // by the status filter (same as the old dashboard behaviour) rather than
+    // being silently counted as paid revenue.
+    if (dataType === 'revenue') {
+      // Forward-fill Financial Status and Cancelled at within each order
+      const orderStatusMap = new Map();   // orderId → { finStatus, cancelledAt }
+      for (const row of normalisedRows) {
+        const oid = row.standard_order_id;
+        if (!oid) continue;
+        const fin = String(row.raw_extras?.['Financial Status'] || '').trim();
+        const ca  = String(row.raw_extras?.['Cancelled at']    || '').trim();
+        if (!orderStatusMap.has(oid)) orderStatusMap.set(oid, { finStatus: '', cancelledAt: '' });
+        const entry = orderStatusMap.get(oid);
+        if (!entry.finStatus  && fin) entry.finStatus  = fin;
+        if (!entry.cancelledAt && ca && ca !== 'nan' && ca !== 'none') entry.cancelledAt = ca;
+      }
+      for (const row of normalisedRows) {
+        if (row.platform !== 'meta' && row.platform !== 'google') continue;
+        const oid = row.standard_order_id;
+        if (!oid) continue;
+        const { finStatus, cancelledAt } = orderStatusMap.get(oid) || {};
+        const fin = (finStatus || '').toLowerCase();
+        const ful = String(row.raw_extras?.['Fulfillment Status'] || '').toLowerCase();
+        let status;
+        if (fin === 'voided' || fin === 'refunded' || cancelledAt) {
+          status = 'Cancelled';
+        } else if (fin === 'paid' && ful === 'fulfilled') {
+          status = 'Delivered';
+        } else if (fin === 'paid') {
+          status = 'Paid';
+        } else {
+          status = 'Pending';
+        }
+        row.standard_status = status;
+      }
     }
 
     // Order-level discount allocation for Shopify-shaped exports
