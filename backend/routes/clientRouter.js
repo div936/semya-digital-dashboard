@@ -532,11 +532,20 @@ function aggregateCampaignInsights(campaignRows, revenueRows) {
 
   // ── Fulfilment channel split (Amazon FBA vs Merchant) ──────────
   // Only meaningful for platforms whose export includes it — currently
-  // Amazon/Acutas. Rows without the field are counted separately as
-  // "Not specified" rather than silently dropped.
+  // Amazon/Acutas. Rows without the field used to all collapse into a
+  // single shared "Not specified" bucket regardless of platform, which
+  // made it look like a third of all orders had missing fulfilment
+  // data. In reality Meta/Website/Flipkart/Blinkit never report this
+  // field at all — it's not missing, it's simply not applicable to
+  // them. Label those rows by their own platform instead, and reserve
+  // "Not specified" for the genuine case: an Amazon/Acutas row whose
+  // export happened to leave this field blank.
+  const FULFILLMENT_AWARE_PLATFORMS = new Set(['amazon', 'acutas']);
   const byFulfillment = {};
   for (const row of revenueRows) {
-    const ch = row.standard_fulfillment_channel || 'Not specified';
+    const isAware = FULFILLMENT_AWARE_PLATFORMS.has((row.platform || '').toLowerCase());
+    const ch = row.standard_fulfillment_channel
+      || (isAware ? 'Not specified' : (row.platform || 'Unknown platform'));
     if (!byFulfillment[ch]) byFulfillment[ch] = { channel: ch, revenue: 0, units: 0, orders: 0, _orderIds: new Set(), _rowsWithoutOrderId: 0 };
     byFulfillment[ch].revenue += Number(row.standard_revenue) || 0;
     byFulfillment[ch].units   += Number(row.standard_units)   || 0;

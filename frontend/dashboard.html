@@ -4933,14 +4933,33 @@ async function fetchAndRenderGEO() {
   try {
     const resp = await apiFetch('/clients/' + clientSlug + '/geographic' + q);
     if (Array.isArray(resp) && resp.length) {
-      // Aggregate raw rows by city
+      // Aggregate raw rows by city.
+      // BUG FIX: previously used first-row-wins for the state field —
+      // if Postgres returned rows for the same city in a slightly
+      // different order across requests (which can happen at pagination
+      // page boundaries even with .order('id') on a UUID primary key,
+      // since UUID ordering isn't strictly sequential), the displayed
+      // state for a city could flip between requests with zero data
+      // changes. Fixed by counting state occurrences per city and
+      // using the majority state — the one that appears on the most
+      // revenue rows — which is stable regardless of row order.
       const byCity = {};
       resp.forEach(r => {
         const k = r.standard_city || 'Unknown';
-        if (!byCity[k]) byCity[k] = { city: k, state: r.standard_state || '', revenue: 0, units: 0, orders: 0 };
+        if (!byCity[k]) byCity[k] = { city: k, _stateCounts: {}, revenue: 0, units: 0, orders: 0 };
+        const st = r.standard_state || '';
+        if (st) byCity[k]._stateCounts[st] = (byCity[k]._stateCounts[st] || 0) + 1;
         byCity[k].revenue += Number(r.standard_revenue) || 0;
         byCity[k].units   += Number(r.standard_units)   || 0;
         byCity[k].orders  += 1;
+      });
+      // Resolve majority state and clean up the counting object
+      Object.values(byCity).forEach(c => {
+        const counts = c._stateCounts;
+        c.state = Object.keys(counts).length
+          ? Object.keys(counts).reduce((a, b) => counts[a] >= counts[b] ? a : b)
+          : '';
+        delete c._stateCounts;
       });
       cities = Object.values(byCity).sort((a, b) => b.revenue - a.revenue);
       isLive = true;
