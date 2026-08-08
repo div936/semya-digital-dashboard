@@ -2,6 +2,9 @@
 <!-- SEMYA FRONTEND BUILD: V38-onclick-quote-fix -->
 <html lang="en">
 <head>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Neat Everyday — SKU Performance | Semya Digital</title>
@@ -1220,6 +1223,10 @@
             <button class="avatar-dropdown-item" style="padding-left:28px;font-size:11px;" data-role="admin" onclick="closeAvatarMenu(); runOrderIdBackfill();">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
               Backfill Order IDs <span style="color:#94a3b8;">(one-time)</span>
+            </button>
+            <button class="avatar-dropdown-item" style="padding-left:28px;font-size:11px;" data-role="admin" onclick="closeAvatarMenu(); exportFraudPatterns();">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export Cancellation Watch
             </button>
           </div>
           <button class="avatar-dropdown-item danger" onclick="closeAvatarMenu(); window.semyaLogout();">
@@ -6463,12 +6470,29 @@ function renderFraudPatterns(resp) {
 let _lastFraudData = null;
 
 function exportFraudPatterns() {
-  if (!_lastFraudData || !_lastFraudData.flagged || !_lastFraudData.flagged.length) return;
+  if (!_lastFraudData || !_lastFraudData.flagged || !_lastFraudData.flagged.length) {
+    alert('No cancellation pattern data to export. Please open AI Insights tab first to load the data.');
+    return;
+  }
 
-  const rows = [
-    ['Contact(s)', 'Platform', 'Reason', 'Revenue at Risk (₹)', 'Cancel Rate (%)', 'Signal Strength']
-  ];
+  // Header row — matches what's visible on the Cancellation Pattern Watch card
+  const rows = [[
+    'Contact / Names Linked',
+    'Platform',
+    'Signal Type',
+    'Total Orders',
+    'Cancelled Orders',
+    'Cancel Rate (%)',
+    'Revenue at Risk (₹)',
+    'Reason',
+    'Sample Order 1',
+    'Sample Order 2',
+    'Sample Order 3',
+    'Sample Order 4',
+    'Sample Order 5',
+  ]];
 
+  // Sort: multiple-name contacts first (highest risk), then by revenue at risk
   const sorted = [..._lastFraudData.flagged].sort((a, b) => {
     const aMulti = a.identities.length > 1 ? 1 : 0;
     const bMulti = b.identities.length > 1 ? 1 : 0;
@@ -6476,17 +6500,33 @@ function exportFraudPatterns() {
   });
 
   sorted.forEach(f => {
+    // Format sample orders: "NEAT-16307 | 2026-08-07 | ₹535 | Cancelled"
+    const sampleOrders = (f.sampleOrders || []).map(o =>
+      [o.orderId || o.order_id || '-',
+       o.date || o.order_date || '-',
+       '₹' + (o.revenue || 0),
+       o.cancelled ? 'Cancelled' : 'Active'
+      ].join(' | ')
+    );
+
     rows.push([
       f.identities.join(' / '),
-      (f.platform || '').toUpperCase(),
-      f.reason,
-      f.totalRevenueAtRisk,
+      (f.platform || '').charAt(0).toUpperCase() + (f.platform || '').slice(1),
+      f.signal === 'phone' ? 'Same phone number' : 'Same name + pincode',
+      (f.sampleOrders || []).length > 0 ? (f.reason.match(/(\d+) of (\d+)/)?.[2] || '') : '',
+      (f.sampleOrders || []).filter(o => o.cancelled).length || '',
       f.cancelRate,
-      f.identities.length > 1 ? 'High (multiple names)' : 'Medium (repeat cancellations)'
+      f.totalRevenueAtRisk,
+      f.reason,
+      sampleOrders[0] || '',
+      sampleOrders[1] || '',
+      sampleOrders[2] || '',
+      sampleOrders[3] || '',
+      sampleOrders[4] || '',
     ]);
   });
 
-  // Build CSV
+  // Build CSV with proper quoting
   const csv = rows.map(r =>
     r.map(cell => {
       const s = String(cell == null ? '' : cell);
