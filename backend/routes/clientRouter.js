@@ -750,33 +750,18 @@ router.get(
     const { client } = req.semya;
     const { from, to } = req.query;
 
-    // PERFORMANCE FIX: the old query fetched the entire raw_extras JSON
-    // for every row (potentially 2–5 KB each × 28,000 rows = 140 MB).
-    // The fraud detector only needs four fields from raw_extras:
-    // phone, name, pincode, and "Cancelled at". We extract exactly
-    // those four using Postgres JSON operators in the SELECT, so only
-    // ~100 bytes per row are transferred instead of the full blob.
-    // Also: skip platforms whose exports never include buyer PII
-    // (Amazon/Acutas) at the DB level — no point fetching them.
+    // PERFORMANCE FIX: skip Amazon/Acutas at DB level (they never have
+    // buyer PII so the fraud detector skips them anyway) — this cuts
+    // ~40% of rows from the scan immediately. We still fetch full
+    // raw_extras for the remaining platforms because extractIdentity()
+    // needs 26 different possible key names across platforms and
+    // trying to extract them individually via SQL operators is brittle
+    // and easy to miss. The real speedup comes from excluding the
+    // platforms with no PII, not from column projection.
     const rows = await fetchAllRows((rangeFrom, rangeTo) => {
       let q = supabaseAdmin
         .from('revenue_data')
-        .select(`
-          platform,
-          standard_status,
-          standard_revenue,
-          standard_sku,
-          order_date,
-          raw_extras->Phone                as raw_phone,
-          raw_extras->Name                 as raw_name,
-          raw_extras->Pincode              as raw_pincode,
-          "raw_extras"->>'Cancelled at'   as raw_cancelled_at,
-          "raw_extras"->>'Billing Phone'  as raw_billing_phone,
-          "raw_extras"->>'Shipping Phone' as raw_shipping_phone,
-          "raw_extras"->>'Customer Phone' as raw_customer_phone,
-          "raw_extras"->>'Buyer Name'     as raw_buyer_name,
-          "raw_extras"->>'Billing Name'   as raw_billing_name
-        `)
+        .select('platform, standard_status, standard_revenue, standard_sku, order_date, raw_extras')
         .eq('client_id', client.id)
         .not('platform', 'in', '("amazon","acutas")')
         .order('id')
@@ -795,27 +780,7 @@ router.get(
 
     if (res.headersSent) return;
 
-    // Reconstruct the minimal raw_extras shape the fraud detector expects
-    const shaped = rows.map(r => ({
-      platform:         r.platform,
-      standard_status:  r.standard_status,
-      standard_revenue: r.standard_revenue,
-      standard_sku:     r.standard_sku,
-      order_date:       r.order_date,
-      raw_extras: {
-        Phone:            r.raw_phone,
-        Name:             r.raw_name,
-        Pincode:          r.raw_pincode,
-        'Cancelled at':   r.raw_cancelled_at,
-        'Billing Phone':  r.raw_billing_phone,
-        'Shipping Phone': r.raw_shipping_phone,
-        'Customer Phone': r.raw_customer_phone,
-        'Buyer Name':     r.raw_buyer_name,
-        'Billing Name':   r.raw_billing_name,
-      },
-    }));
-
-    const result = detectSuspiciousPatterns(shaped);
+    const result = detectSuspiciousPatterns(rows);
     return res.json(result);
   }
 );
