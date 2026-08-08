@@ -763,7 +763,7 @@ router.get(
         .from('revenue_data')
         .select('platform, standard_status, standard_revenue, standard_sku, order_date, raw_extras')
         .eq('client_id', client.id)
-        .not('platform', 'in', '("amazon","acutas")')
+        .not('platform', 'in', '(amazon,acutas)')
         .order('id')
         .range(rangeFrom, rangeTo);
       if (from || to) {
