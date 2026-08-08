@@ -89,7 +89,14 @@ router.get('/:client_slug/targets', rbacMiddleware, requireTab('daily_targets'),
   // the old system's TARGETS endpoint uses (its marketing-summary
   // endpoint uses a wider exclusion list for a different report; this
   // one mirrors the narrower, Daily-Targets-specific version).
-  const CANCELLED_STATUSES = new Set(['cancelled', 'canceled']);
+  const CANCELLED_STATUSES = new Set([
+    'cancelled', 'canceled',                    // all cancelled orders
+    'shipped - returned to seller',             // amazon returned
+    'shipped - returning to seller',            // amazon in-transit return
+    'return requested',                         // flipkart
+    'refunded', 'voided',                       // shopify/meta (should already be mapped
+                                                // to Cancelled on ingest, but belt+braces)
+  ]);
   const actuals = {};
   for (const row of (revenueRows || [])) {
     if (row.standard_status && CANCELLED_STATUSES.has(String(row.standard_status).toLowerCase())) continue;
