@@ -5196,8 +5196,12 @@ async function fetchAndRenderDT() {
   } catch(e) { console.warn('[DT] targets API miss:', e.message); }
 
   try {
-    // Try to load today's actual revenue from sku-performance with today as date range
-    const resp = await apiFetch('/clients/' + clientSlug + '/platform-sales?from=' + date + '&to=' + date);
+    // Try to load today's actual revenue from platform-sales with today as date range.
+    // Always exclude Cancelled/Returned orders from Daily Targets — attainment should
+    // only count revenue that was actually collected, not orders that were cancelled
+    // or refunded. Pending is included since it represents real orders placed today.
+    const excludeForDT = 'Cancelled,Shipped%20-%20Returned%20to%20Seller,Shipped%20-%20Returning%20to%20Seller,Return%20Requested,refunded,voided';
+    const resp = await apiFetch('/clients/' + clientSlug + '/platform-sales?from=' + date + '&to=' + date + '&excludeStatuses=' + excludeForDT);
     if (resp && resp.platforms && resp.platforms.length) {
       achieved = {};
       resp.platforms.forEach(p => { achieved[p.platform] = { revenue: p.totalRevenue, units: p.totalUnits }; });
