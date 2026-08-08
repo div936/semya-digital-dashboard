@@ -3170,11 +3170,25 @@ function _stopToast() {
   showWakeToast(false);
 }
 
-// Fire a background ping to warm Render's free-tier server early
-function warmServer() {
-  fetch(API_BASE + '/health')
-    .then(r => { if (r.ok) { _serverResponded = true; _stopToast(); } })
-    .catch(() => {});
+// Warm Render's free-tier server BEFORE firing any real data
+// requests, and actually wait for it. This used to be fire-and-forget
+// while boot() immediately fired several concurrent requests (client
+// switcher, tab permissions, the active tab's own fetch) — on a cold
+// instance every one of those hit its own 45s timeout independently,
+// each doing its own 5s-wait-then-retry, compounding into minutes
+// and easily exceeding Render's stated 50s+ cold-start delay. A
+// single awaited warm-up call turns that thundering herd into one
+// wait, after which everything else runs against an already-warm
+// server.
+async function warmServer() {
+  try {
+    const res = await fetchWithTimeout(API_BASE + '/health', {}, 60000);
+    if (res.ok) { _serverResponded = true; _stopToast(); }
+  } catch (e) {
+    console.warn('[warmServer] health check failed or timed out:', e.message);
+    // Don't block boot forever on this — proceed anyway; individual
+    // apiFetch calls still have their own timeout/retry as a fallback.
+  }
 }
 
 // --- Auto-refresh + keep-alive -------------------------------------
@@ -3196,7 +3210,7 @@ function startAutoRefresh() {
   if (_keepAliveInterval || _autoRefreshInterval) return; // already running
 
   _keepAliveInterval = setInterval(() => {
-    fetch(API_BASE + '/health').catch(() => {});
+    fetch(API_BASE + '/health').catch((e) => console.warn('[keep-alive] ping failed, server may spin down:', e.message));
   }, KEEP_ALIVE_MS);
 
   _autoRefreshInterval = setInterval(() => {
@@ -3286,7 +3300,7 @@ async function apiFetch(path, opts, _retryCount = 0) {
   if (!_serverResponded) _startToastCountdown();
 
   try {
-    let res = await fetchWithTimeout(url, { ...opts, headers, credentials: 'include' }, 35000);
+    let res = await fetchWithTimeout(url, { ...opts, headers, credentials: 'include' }, 45000);
 
     // Mark server as alive — stops the toast for all future requests
     _serverResponded = true;
@@ -3311,17 +3325,25 @@ async function apiFetch(path, opts, _retryCount = 0) {
     if (_activeRequests === 0) _stopToast();
 
     if (e.message === 'timeout') {
-      // AUTO-RETRY on timeout: the server was likely in a cold-start
-      // sleep. Give it one automatic retry with a longer timeout before
-      // showing the error — this makes the first page load after a
-      // cold start self-healing instead of forcing a manual refresh.
+      // AUTO-RETRY on timeout. Message wording depends on whether the
+      // server has already proven itself awake THIS session
+      // (_serverResponded): if so, this is NOT a cold-start sleep —
+      // it's just a slow request (e.g. AI Insights scanning a large
+      // table) — and telling the user the server is "waking up" is
+      // simply false and confusing when they can see live data on
+      // screen already. Only call it a wake-up before the first
+      // successful response of the session.
       if (_retryCount === 0) {
-        showWakeToast(true, 'Server is waking up — retrying automatically…');
+        showWakeToast(true, _serverResponded
+          ? 'Still loading — retrying…'
+          : 'Server is waking up — retrying automatically…');
         await new Promise(r => setTimeout(r, 5000)); // give server 5s to wake
         _stopToast();
-        return apiFetch(path, opts, 1); // retry once with full 35s timeout
+        return apiFetch(path, opts, 1); // retry once with full 45s timeout
       }
-      showWakeToast(true, 'Server is taking too long — please refresh the page');
+      showWakeToast(true, _serverResponded
+        ? 'This is taking longer than usual — please try again'
+        : 'Server is taking too long — please refresh the page');
       setTimeout(() => showWakeToast(false), 8000);
       throw new Error('Server timeout. Please refresh the page.');
     }
@@ -6531,8 +6553,8 @@ async function exportFraudPatterns() {
       f.identities.join(' / '),
       (f.platform || '').charAt(0).toUpperCase() + (f.platform || '').slice(1),
       f.signal === 'phone' ? 'Same phone number' : 'Same name + pincode',
-      (f.sampleOrders || []).length > 0 ? (f.reason.match(/(\d+) of (\d+)/)?.[2] || '') : '',
-      (f.sampleOrders || []).filter(o => o.cancelled).length || '',
+      f.totalOrders,
+      f.cancelledOrders,
       f.cancelRate,
       f.totalRevenueAtRisk,
       f.reason,
@@ -7358,7 +7380,7 @@ async function savePlatformAssumption(platform) {
 const FRONTEND_BUILD = 'V38-onclick-quote-fix'; // bump alongside backend health version
 console.log('[Semya] Frontend build:', FRONTEND_BUILD);
 
-function boot(user) {
+async function boot(user) {
   state.token      = user && user.token ? user.token : getToken();
   state.clientSlug = (user && user.clientSlug) || (window.location.pathname.match(/\/clients\/([^/]+)/)||[])[1] || 'neat-everyday';
   initDates();
@@ -7376,8 +7398,12 @@ function boot(user) {
   ciState.dateFrom  = from; ciState.dateTo  = to;
   geoState.dateFrom = from; geoState.dateTo = to;
   dtState.date = today;
-  // Warm the server early (non-blocking background request)
-  warmServer();
+  // Wait for the server to actually be awake before firing the real
+  // data requests — see warmServer() comment for why this must be
+  // awaited rather than fire-and-forget.
+  showWakeToast(true, 'Connecting…');
+  await warmServer();
+  showWakeToast(false);
   loadClientSwitcher();
   loadTabPermissions();
   startAutoRefresh();
