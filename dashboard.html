@@ -2,6 +2,9 @@
 <!-- SEMYA FRONTEND BUILD: V38-onclick-quote-fix -->
 <html lang="en">
 <head>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Neat Everyday — SKU Performance | Semya Digital</title>
@@ -1221,6 +1224,10 @@
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
               Backfill Order IDs <span style="color:#94a3b8;">(one-time)</span>
             </button>
+            <button class="avatar-dropdown-item" style="padding-left:28px;font-size:11px;" data-role="admin" onclick="closeAvatarMenu(); exportFraudPatterns();">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export Cancellation Watch
+            </button>
           </div>
           <button class="avatar-dropdown-item danger" onclick="closeAvatarMenu(); window.semyaLogout();">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -1301,6 +1308,12 @@
               <div id="psProductOptionsList"></div>
             </div>
           </div>
+          <!-- Discount toggle — gross vs net revenue -->
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-text-secondary);white-space:nowrap;cursor:pointer;padding:0 4px;">
+            <input type="checkbox" id="psApplyDiscountsToggle" onchange="onPsDiscountToggle()" style="cursor:pointer;">
+            Apply discounts
+          </label>
+
           <span class="fetch-badge loading" id="psFetchBadge" style="margin-left:auto;">
             <span class="fetch-dot"></span><span id="psFetchText">Loading</span>
           </span>
@@ -1987,6 +2000,14 @@
             <div class="ai-tab-title">&#9888; Cancellation Pattern Watch</div>
             <div class="ai-tab-meta" id="fraudTabMeta">Loading…</div>
           </div>
+        </div>
+        <div style="margin:6px 0 10px;display:flex;justify-content:flex-end;">
+          <button id="fraudExportBtn" onclick="exportFraudPatterns()"
+            style="display:flex;align-items:center;gap:6px;padding:7px 14px;font-size:12px;font-weight:600;
+                   background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:8px;cursor:pointer;
+                   color:#1e293b;white-space:nowrap;transition:background 0.15s;">
+            &#8681;&nbsp;Export to Excel
+          </button>
         </div>
         <div style="font-size:11px;color:#94a3b8;padding:0 2px 10px;">
           Flags buyer contacts (matched by phone, or by name + pincode where phone isn't available) with repeated cancellations, or multiple different names ordering from the same contact. Only covers platforms whose files include buyer details — Amazon/Acutas reports never do.
@@ -3177,7 +3198,7 @@ function warmServer() {
 let _keepAliveInterval = null;
 let _autoRefreshInterval = null;
 const AUTO_REFRESH_MS = 5 * 60 * 1000;   // 5 minutes
-const KEEP_ALIVE_MS   = 8 * 60 * 1000;   // 8 minutes
+const KEEP_ALIVE_MS   = 4 * 60 * 1000;   // 4 minutes — keeps Render free-tier awake (sleeps at 15min)
 
 function startAutoRefresh() {
   if (_keepAliveInterval || _autoRefreshInterval) return; // already running
@@ -3264,7 +3285,7 @@ async function runOrderIdBackfill() {
   }
 }
 
-async function apiFetch(path, opts) {
+async function apiFetch(path, opts, _retryCount = 0) {
   const url     = API_BASE + path;
   const headers = { ...authHeaders(), ...(opts?.headers || {}) };
 
@@ -3298,8 +3319,18 @@ async function apiFetch(path, opts) {
     if (_activeRequests === 0) _stopToast();
 
     if (e.message === 'timeout') {
+      // AUTO-RETRY on timeout: the server was likely in a cold-start
+      // sleep. Give it one automatic retry with a longer timeout before
+      // showing the error — this makes the first page load after a
+      // cold start self-healing instead of forcing a manual refresh.
+      if (_retryCount === 0) {
+        showWakeToast(true, 'Server is waking up — retrying automatically…');
+        await new Promise(r => setTimeout(r, 5000)); // give server 5s to wake
+        _stopToast();
+        return apiFetch(path, opts, 1); // retry once with full 35s timeout
+      }
       showWakeToast(true, 'Server is taking too long — please refresh the page');
-      setTimeout(() => showWakeToast(false), 6000);
+      setTimeout(() => showWakeToast(false), 8000);
       throw new Error('Server timeout. Please refresh the page.');
     }
     // Don't show toast for non-timeout errors (404, 403, etc.)
@@ -4329,7 +4360,7 @@ function updateSidebarForTab(tabKey) {
 // ═══════════════════════════════════════════════════════════════════
 // PLATFORM SALES
 // ═══════════════════════════════════════════════════════════════════
-const psState = { platform: '', dateFrom: '', dateTo: '', trendPeriod: 'week', excludeStatuses: [], category: '', _lastData: null };
+const psState = { platform: '', dateFrom: '', dateTo: '', trendPeriod: 'week', excludeStatuses: [], category: '', applyDiscounts: false, _lastData: null };
 
 const MOCK_PS = {
   platforms: [
@@ -4386,6 +4417,12 @@ function onPsStatusChange() {
   fetchAndRenderPS();
 }
 
+function onPsDiscountToggle() {
+  psState.applyDiscounts = document.getElementById('psApplyDiscountsToggle')?.checked || false;
+  tabCache['platform_sales'] = null;
+  fetchAndRenderPS();
+}
+
 // ── Product/category filter ─────────────────────────────────────
 let _psAllCategories = []; // full list, populated from availableCategories on first live fetch
 
@@ -4432,6 +4469,7 @@ async function fetchAndRenderPS() {
   if (psState.dateFrom) qp.set('from', psState.dateFrom);
   if (psState.dateTo)   qp.set('to',   psState.dateTo);
   if (psState.excludeStatuses.length) qp.set('excludeStatuses', psState.excludeStatuses.join(','));
+  if (psState.applyDiscounts) qp.set('applyDiscounts', 'true');
   if (psState.category) qp.set('category', psState.category);
   const q = qp.toString() ? '?' + qp.toString() : '';
   let data = null; let isLive = false;
@@ -4933,14 +4971,33 @@ async function fetchAndRenderGEO() {
   try {
     const resp = await apiFetch('/clients/' + clientSlug + '/geographic' + q);
     if (Array.isArray(resp) && resp.length) {
-      // Aggregate raw rows by city
+      // Aggregate raw rows by city.
+      // BUG FIX: previously used first-row-wins for the state field —
+      // if Postgres returned rows for the same city in a slightly
+      // different order across requests (which can happen at pagination
+      // page boundaries even with .order('id') on a UUID primary key,
+      // since UUID ordering isn't strictly sequential), the displayed
+      // state for a city could flip between requests with zero data
+      // changes. Fixed by counting state occurrences per city and
+      // using the majority state — the one that appears on the most
+      // revenue rows — which is stable regardless of row order.
       const byCity = {};
       resp.forEach(r => {
         const k = r.standard_city || 'Unknown';
-        if (!byCity[k]) byCity[k] = { city: k, state: r.standard_state || '', revenue: 0, units: 0, orders: 0 };
+        if (!byCity[k]) byCity[k] = { city: k, _stateCounts: {}, revenue: 0, units: 0, orders: 0 };
+        const st = r.standard_state || '';
+        if (st) byCity[k]._stateCounts[st] = (byCity[k]._stateCounts[st] || 0) + 1;
         byCity[k].revenue += Number(r.standard_revenue) || 0;
         byCity[k].units   += Number(r.standard_units)   || 0;
         byCity[k].orders  += 1;
+      });
+      // Resolve majority state and clean up the counting object
+      Object.values(byCity).forEach(c => {
+        const counts = c._stateCounts;
+        c.state = Object.keys(counts).length
+          ? Object.keys(counts).reduce((a, b) => counts[a] >= counts[b] ? a : b)
+          : '';
+        delete c._stateCounts;
       });
       cities = Object.values(byCity).sort((a, b) => b.revenue - a.revenue);
       isLive = true;
@@ -5140,20 +5197,24 @@ async function fetchAndRenderDT() {
   let isLive   = false;
 
   try {
-    // Try to load saved targets
+    // /targets returns both the saved target amounts AND the actual revenue
+    // for the selected date, already with Cancelled/refunded orders excluded
+    // at the backend (see targetsRouter.js CANCELLED_STATUSES). Using this
+    // single endpoint is correct — the old code made a redundant second call
+    // to /platform-sales which overwrote the correctly-computed actuals with
+    // unfiltered revenue (including cancelled orders), inflating the figure.
     const resp = await apiFetch('/clients/' + clientSlug + '/targets?date=' + date);
-    if (resp && resp.targets) { targets = resp.targets; isLive = true; }
-  } catch(e) { console.warn('[DT] targets API miss:', e.message); }
-
-  try {
-    // Try to load today's actual revenue from sku-performance with today as date range
-    const resp = await apiFetch('/clients/' + clientSlug + '/platform-sales?from=' + date + '&to=' + date);
-    if (resp && resp.platforms && resp.platforms.length) {
+    if (resp && resp.targets) {
+      targets = resp.targets;
+      // Extract achieved from the targets response (each platform entry
+      // already has { target, achieved, units, spendTarget, spendActual })
       achieved = {};
-      resp.platforms.forEach(p => { achieved[p.platform] = { revenue: p.totalRevenue, units: p.totalUnits }; });
+      for (const [plat, vals] of Object.entries(resp.targets)) {
+        achieved[plat] = { revenue: vals.achieved || 0, units: vals.units || 0 };
+      }
       isLive = true;
     }
-  } catch(e) { console.warn('[DT] achieved API miss:', e.message); }
+  } catch(e) { console.warn('[DT] targets API miss:', e.message); }
 
   if (!targets) targets = {};
   if (!achieved) {
@@ -6323,14 +6384,29 @@ async function fetchAndRenderFraud() {
   const { clientSlug } = state; if (!clientSlug) return;
   const meta = document.getElementById('fraudTabMeta');
   const list = document.getElementById('fraudPatternList');
-  if (meta) meta.textContent = 'Loading…';
+  if (meta) meta.textContent = 'Scanning patterns…';
 
   try {
-    const resp = await apiFetch('/clients/' + clientSlug + '/fraud-patterns');
+    // Fraud detection scans thousands of rows — give it a dedicated
+    // 90s timeout instead of the default 35s. The DB query is now
+    // optimised to fetch only the fields it needs (not full raw_extras),
+    // so in practice this should complete in 5-10s.
+    const url = '/clients/' + clientSlug + '/fraud-patterns';
+    const token = localStorage.getItem('semya_token');
+    const headers = token ? { Authorization: 'Bearer ' + token } : {};
+    const res = await Promise.race([
+      fetch(url, { headers, credentials: 'include' }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 90000))
+    ]);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const resp = await res.json();
     renderFraudPatterns(resp);
   } catch (e) {
     console.warn('[fraud]', e.message);
-    if (meta) meta.textContent = 'Unable to load right now.';
+    if (meta) {
+      // Show retry link instead of dead end message
+      meta.innerHTML = 'Unable to load — <a href="#" style="color:#0284c7;" onclick="event.preventDefault();fetchAndRenderFraud();">retry</a>';
+    }
     if (list) list.innerHTML = '';
   }
 }
@@ -6339,6 +6415,10 @@ function renderFraudPatterns(resp) {
   const meta = document.getElementById('fraudTabMeta');
   const list = document.getElementById('fraudPatternList');
   if (!resp || !list) return;
+
+  // Store for export
+  _lastFraudData = resp;
+  const exportBtn = document.getElementById('fraudExportBtn');
 
   const flagged = resp.flagged || [];
   const multiName = flagged.filter(f => f.identities.length > 1);
@@ -6354,8 +6434,10 @@ function renderFraudPatterns(resp) {
 
   if (!flagged.length) {
     list.innerHTML = '<div style="text-align:center;padding:16px 0;color:#94a3b8;font-size:12px;">Nothing flagged right now.</div>';
+    if (exportBtn) exportBtn.style.display = 'none';
     return;
   }
+  if (exportBtn) exportBtn.style.display = 'flex';
 
   // Multi-name matches are the stronger signal — show those first,
   // then highest revenue-at-risk. Cap the list so it stays scannable.
@@ -6386,6 +6468,112 @@ function renderFraudPatterns(resp) {
 }
 
 
+
+// Store fraud data globally so export can access it
+let _lastFraudData = null;
+
+async function exportFraudPatterns() {
+  // If data isn't loaded yet, fetch it directly — user shouldn't need
+  // to navigate to AI Insights tab first just to export from Settings.
+  if (!_lastFraudData || !_lastFraudData.flagged) {
+    const { clientSlug } = state;
+    if (!clientSlug) { alert('No client selected.'); return; }
+    try {
+      showWakeToast(true, 'Loading cancellation data…');
+      const url = '/clients/' + clientSlug + '/fraud-patterns';
+      const token = localStorage.getItem('semya_token');
+      const headers = token ? { Authorization: 'Bearer ' + token } : {};
+      const res = await Promise.race([
+        fetch(url, { headers, credentials: 'include' }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 90000))
+      ]);
+      showWakeToast(false);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      _lastFraudData = await res.json();
+    } catch(e) {
+      showWakeToast(false);
+      alert('Could not load cancellation data: ' + e.message + '. Please try again.');
+      return;
+    }
+  }
+  if (!_lastFraudData?.flagged?.length) {
+    alert('No flagged contacts found to export.');
+    return;
+  }
+
+  // Header row — matches what's visible on the Cancellation Pattern Watch card
+  const rows = [[
+    'Contact / Names Linked',
+    'Platform',
+    'Signal Type',
+    'Total Orders',
+    'Cancelled Orders',
+    'Cancel Rate (%)',
+    'Revenue at Risk (₹)',
+    'Reason',
+    'Sample Order 1',
+    'Sample Order 2',
+    'Sample Order 3',
+    'Sample Order 4',
+    'Sample Order 5',
+  ]];
+
+  // Sort: multiple-name contacts first (highest risk), then by revenue at risk
+  const sorted = [..._lastFraudData.flagged].sort((a, b) => {
+    const aMulti = a.identities.length > 1 ? 1 : 0;
+    const bMulti = b.identities.length > 1 ? 1 : 0;
+    return bMulti - aMulti || b.totalRevenueAtRisk - a.totalRevenueAtRisk;
+  });
+
+  sorted.forEach(f => {
+    // Format sample orders: "NEAT-16307 | 2026-08-07 | ₹535 | Cancelled"
+    const sampleOrders = (f.sampleOrders || []).map(o =>
+      [o.orderId || o.order_id || '-',
+       o.date || o.order_date || '-',
+       '₹' + (o.revenue || 0),
+       o.cancelled ? 'Cancelled' : 'Active'
+      ].join(' | ')
+    );
+
+    rows.push([
+      f.identities.join(' / '),
+      (f.platform || '').charAt(0).toUpperCase() + (f.platform || '').slice(1),
+      f.signal === 'phone' ? 'Same phone number' : 'Same name + pincode',
+      (f.sampleOrders || []).length > 0 ? (f.reason.match(/(\d+) of (\d+)/)?.[2] || '') : '',
+      (f.sampleOrders || []).filter(o => o.cancelled).length || '',
+      f.cancelRate,
+      f.totalRevenueAtRisk,
+      f.reason,
+      sampleOrders[0] || '',
+      sampleOrders[1] || '',
+      sampleOrders[2] || '',
+      sampleOrders[3] || '',
+      sampleOrders[4] || '',
+    ]);
+  });
+
+  // Build CSV with proper quoting
+  const csv = rows.map(r =>
+    r.map(cell => {
+      const s = String(cell == null ? '' : cell);
+      return s.includes(',') || s.includes('"') || s.includes('
+')
+        ? '"' + s.replace(/"/g, '""') + '"'
+        : s;
+    }).join(',')
+  ).join('
+');
+
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'cancellation_pattern_watch_' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 async function regenerateInsights() {
   const { clientSlug } = state; if (!clientSlug) return;
