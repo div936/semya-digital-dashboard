@@ -2001,14 +2001,6 @@
             <div class="ai-tab-meta" id="fraudTabMeta">Loading…</div>
           </div>
         </div>
-        <div style="margin:6px 0 10px;display:flex;justify-content:flex-end;">
-          <button id="fraudExportBtn" onclick="exportFraudPatterns()"
-            style="display:flex;align-items:center;gap:6px;padding:7px 14px;font-size:12px;font-weight:600;
-                   background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:8px;cursor:pointer;
-                   color:#1e293b;white-space:nowrap;transition:background 0.15s;">
-            &#8681;&nbsp;Export to Excel
-          </button>
-        </div>
         <div style="font-size:11px;color:#94a3b8;padding:0 2px 10px;">
           Flags buyer contacts (matched by phone, or by name + pincode where phone isn't available) with repeated cancellations, or multiple different names ordering from the same contact. Only covers platforms whose files include buyer details — Amazon/Acutas reports never do.
         </div>
@@ -6391,7 +6383,7 @@ async function fetchAndRenderFraud() {
     // 90s timeout instead of the default 35s. The DB query is now
     // optimised to fetch only the fields it needs (not full raw_extras),
     // so in practice this should complete in 5-10s.
-    const url = '/clients/' + clientSlug + '/fraud-patterns';
+    const url = API_BASE + '/clients/' + clientSlug + '/fraud-patterns';
     const token = localStorage.getItem('semya_token');
     const headers = token ? { Authorization: 'Bearer ' + token } : {};
     const res = await Promise.race([
@@ -6480,7 +6472,7 @@ async function exportFraudPatterns() {
     if (!clientSlug) { alert('No client selected.'); return; }
     try {
       showWakeToast(true, 'Loading cancellation data…');
-      const url = '/clients/' + clientSlug + '/fraud-patterns';
+      const url = API_BASE + '/clients/' + clientSlug + '/fraud-patterns';
       const token = localStorage.getItem('semya_token');
       const headers = token ? { Authorization: 'Bearer ' + token } : {};
       const res = await Promise.race([
