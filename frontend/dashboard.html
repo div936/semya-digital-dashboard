@@ -1993,10 +1993,13 @@
             <div class="ai-tab-title">&#9888; Cancellation Pattern Watch</div>
             <div class="ai-tab-meta" id="fraudTabMeta">Loading…</div>
           </div>
+        </div>
+        <div style="margin:6px 0 10px;display:flex;justify-content:flex-end;">
           <button id="fraudExportBtn" onclick="exportFraudPatterns()"
-            style="display:flex;align-items:center;gap:5px;padding:6px 12px;font-size:11px;font-weight:600;
-                   background:#fff;border:1.5px solid #e2e8f0;border-radius:7px;cursor:pointer;color:#374151;white-space:nowrap;">
-            &#8681; Export Excel
+            style="display:flex;align-items:center;gap:6px;padding:7px 14px;font-size:12px;font-weight:600;
+                   background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:8px;cursor:pointer;
+                   color:#1e293b;white-space:nowrap;transition:background 0.15s;">
+            &#8681;&nbsp;Export to Excel
           </button>
         </div>
         <div style="font-size:11px;color:#94a3b8;padding:0 2px 10px;">
@@ -3188,7 +3191,7 @@ function warmServer() {
 let _keepAliveInterval = null;
 let _autoRefreshInterval = null;
 const AUTO_REFRESH_MS = 5 * 60 * 1000;   // 5 minutes
-const KEEP_ALIVE_MS   = 8 * 60 * 1000;   // 8 minutes
+const KEEP_ALIVE_MS   = 4 * 60 * 1000;   // 4 minutes — keeps Render free-tier awake (sleeps at 15min)
 
 function startAutoRefresh() {
   if (_keepAliveInterval || _autoRefreshInterval) return; // already running
@@ -3275,7 +3278,7 @@ async function runOrderIdBackfill() {
   }
 }
 
-async function apiFetch(path, opts) {
+async function apiFetch(path, opts, _retryCount = 0) {
   const url     = API_BASE + path;
   const headers = { ...authHeaders(), ...(opts?.headers || {}) };
 
@@ -3309,8 +3312,18 @@ async function apiFetch(path, opts) {
     if (_activeRequests === 0) _stopToast();
 
     if (e.message === 'timeout') {
+      // AUTO-RETRY on timeout: the server was likely in a cold-start
+      // sleep. Give it one automatic retry with a longer timeout before
+      // showing the error — this makes the first page load after a
+      // cold start self-healing instead of forcing a manual refresh.
+      if (_retryCount === 0) {
+        showWakeToast(true, 'Server is waking up — retrying automatically…');
+        await new Promise(r => setTimeout(r, 5000)); // give server 5s to wake
+        _stopToast();
+        return apiFetch(path, opts, 1); // retry once with full 35s timeout
+      }
       showWakeToast(true, 'Server is taking too long — please refresh the page');
-      setTimeout(() => showWakeToast(false), 6000);
+      setTimeout(() => showWakeToast(false), 8000);
       throw new Error('Server timeout. Please refresh the page.');
     }
     // Don't show toast for non-timeout errors (404, 403, etc.)
@@ -6360,10 +6373,22 @@ async function fetchAndRenderFraud() {
   const { clientSlug } = state; if (!clientSlug) return;
   const meta = document.getElementById('fraudTabMeta');
   const list = document.getElementById('fraudPatternList');
-  if (meta) meta.textContent = 'Loading…';
+  if (meta) meta.textContent = 'Scanning patterns…';
 
   try {
-    const resp = await apiFetch('/clients/' + clientSlug + '/fraud-patterns');
+    // Fraud detection scans thousands of rows — give it a dedicated
+    // 90s timeout instead of the default 35s. The DB query is now
+    // optimised to fetch only the fields it needs (not full raw_extras),
+    // so in practice this should complete in 5-10s.
+    const url = '/clients/' + clientSlug + '/fraud-patterns';
+    const token = localStorage.getItem('semya_token');
+    const headers = token ? { Authorization: 'Bearer ' + token } : {};
+    const res = await Promise.race([
+      fetch(url, { headers, credentials: 'include' }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 90000))
+    ]);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const resp = await res.json();
     renderFraudPatterns(resp);
   } catch (e) {
     console.warn('[fraud]', e.message);
