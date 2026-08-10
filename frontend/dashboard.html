@@ -4450,8 +4450,14 @@ function showTab(tabKey) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   const panel = document.getElementById('tab-' + tabKey);
   if (panel) panel.classList.add('active');
-  updateSidebarForTab(tabKey);
   activeTab = tabKey;
+
+  // Update sidebar label immediately but let each fetchAndRender
+  // call updateSidebarForTab() AFTER data is loaded — so the AI
+  // always has real data to analyse, not an empty psState._lastData
+  const sub = document.getElementById('aiSubtitle');
+  const SIDEBAR_LABELS = { platform_sales: 'Platform overview', sku_performance: 'SKU-level analysis', campaign_insights: 'Campaign analysis', geographic_analysis: 'Geographic analysis', ai_insights: 'AI insights', daily_targets: 'Daily targets', utm_analytics: 'Campaign attribution', projections_insights: 'Profit projections' };
+  if (sub) sub.textContent = 'Powered · ' + (SIDEBAR_LABELS[tabKey] || tabKey);
 
   // Restricted-access check — permissions[tabKey].enabled is always
   // true for admins (they can preview everything); for a client-role
@@ -4465,7 +4471,9 @@ function showTab(tabKey) {
   const cached = tabCache[tabKey];
   const fresh  = cached && (Date.now() - cached.timestamp < CACHE_TTL);
   if (tabKey === 'platform_sales'      && !fresh) fetchAndRenderPS();
+  else if (tabKey === 'platform_sales' && fresh)  updateSidebarForTab('platform_sales');
   if (tabKey === 'campaign_insights'   && !fresh) fetchAndRenderCI();
+  else if (tabKey === 'campaign_insights' && fresh) updateSidebarForTab('campaign_insights');
   if (tabKey === 'sku_performance'      && !fresh) fetchAndRender();
   if (tabKey === 'geographic_analysis'  && !fresh) fetchAndRenderGEO();
   if (tabKey === 'daily_targets'        && !fresh) fetchAndRenderDT();
@@ -4916,6 +4924,8 @@ async function fetchAndRenderPS() {
   } catch (e) {
     console.warn('[PS] failed to refresh Platform Health sidebar:', e.message);
   }
+  // Trigger sidebar AFTER data is loaded into psState._lastData
+  updateSidebarForTab('platform_sales');
 }
 
 // Picks the right time-bucket from the platform-sales response and
@@ -5035,8 +5045,7 @@ document.querySelectorAll('[data-ps-platform]').forEach(pill => {
   pill.addEventListener('click', () => {
     document.querySelectorAll('[data-ps-platform]').forEach(p => p.classList.remove('active'));
     pill.classList.add('active'); psState.platform = pill.dataset.psPlatform;
-    tabCache['platform_sales'] = null; fetchAndRenderPS();
-    updateSidebarForTab('platform_sales');
+    tabCache['platform_sales'] = null; fetchAndRenderPS(); // sidebar updated inside fetchAndRenderPS after data loads
   });
 });
 document.getElementById('psDateFrom').addEventListener('change', function() { psState.dateFrom = this.value; tabCache['platform_sales'] = null; _sidebarCache = {}; fetchAndRenderPS(); });
@@ -5287,14 +5296,15 @@ function renderCI(payload) {
       }).join('');
     }
   }
+  // Trigger sidebar AFTER campaign data is loaded into tabCache
+  updateSidebarForTab('campaign_insights');
 }
 
 document.querySelectorAll('[data-ci-platform]').forEach(pill => {
   pill.addEventListener('click', () => {
     document.querySelectorAll('[data-ci-platform]').forEach(p => p.classList.remove('active'));
     pill.classList.add('active'); ciState.platform = pill.dataset.ciPlatform;
-    tabCache['campaign_insights'] = null; fetchAndRenderCI();
-    updateSidebarForTab('campaign_insights');
+    tabCache['campaign_insights'] = null; fetchAndRenderCI(); // sidebar updated inside fetchAndRenderCI
   });
 });
 document.getElementById('ciDateFrom').addEventListener('change', function() { ciState.dateFrom = this.value; tabCache['campaign_insights'] = null; _sidebarCache = {}; fetchAndRenderCI(); });
