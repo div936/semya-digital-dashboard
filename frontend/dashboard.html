@@ -536,6 +536,7 @@
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
     thead tr { border-bottom: 1px solid var(--color-border); }
     th { padding: 8px 10px; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; white-space: nowrap; }
+    th[onclick]:hover { color: #7c3aed; background: rgba(124,58,237,0.04); border-radius: 4px; }
     td { padding: 10px 10px; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
     tbody tr:hover td { background: #f8fafd; }
     tbody tr:last-child td { border-bottom: none; }
@@ -1700,14 +1701,14 @@
           <table>
             <thead>
               <tr>
-                <th>Platform</th>
-                <th>Campaign</th>
-                <th>Spend</th>
-                <th>Revenue</th>
-                <th>RoAS</th>
-                <th>Clicks</th>
-                <th>Impressions</th>
-                <th>CTR</th>
+                <th onclick="sortCITable('platform')" style="cursor:pointer;user-select:none;" title="Sort by Platform"><span style="display:flex;align-items:center;gap:4px;">Platform <span id="ciSort_platform" style="font-size:9px;color:#94a3b8;"></span></span></th>
+                <th onclick="sortCITable('campaign_name')" style="cursor:pointer;user-select:none;" title="Sort by Campaign"><span style="display:flex;align-items:center;gap:4px;">Campaign <span id="ciSort_campaign_name" style="font-size:9px;color:#94a3b8;"></span></span></th>
+                <th onclick="sortCITable('standard_spend')" style="cursor:pointer;user-select:none;" title="Sort by Spend"><span style="display:flex;align-items:center;gap:4px;">Spend <span id="ciSort_standard_spend" style="font-size:9px;color:#94a3b8;"></span></span></th>
+                <th onclick="sortCITable('standard_revenue')" style="cursor:pointer;user-select:none;" title="Sort by Revenue"><span style="display:flex;align-items:center;gap:4px;">Revenue <span id="ciSort_standard_revenue" style="font-size:9px;color:#7c3aed;">▼</span></span></th>
+                <th onclick="sortCITable('roas')" style="cursor:pointer;user-select:none;" title="Sort by RoAS"><span style="display:flex;align-items:center;gap:4px;">RoAS <span id="ciSort_roas" style="font-size:9px;color:#94a3b8;"></span></span></th>
+                <th onclick="sortCITable('standard_clicks')" style="cursor:pointer;user-select:none;" title="Sort by Clicks"><span style="display:flex;align-items:center;gap:4px;">Clicks <span id="ciSort_standard_clicks" style="font-size:9px;color:#94a3b8;"></span></span></th>
+                <th onclick="sortCITable('standard_impressions')" style="cursor:pointer;user-select:none;" title="Sort by Impressions"><span style="display:flex;align-items:center;gap:4px;">Impressions <span id="ciSort_standard_impressions" style="font-size:9px;color:#94a3b8;"></span></span></th>
+                <th onclick="sortCITable('ctr')" style="cursor:pointer;user-select:none;" title="Sort by CTR"><span style="display:flex;align-items:center;gap:4px;">CTR <span id="ciSort_ctr" style="font-size:9px;color:#94a3b8;"></span></span></th>
               </tr>
             </thead>
             <tbody id="ciCampaignTbody">
@@ -3325,15 +3326,22 @@ async function apiFetch(path, opts, _retryCount = 0) {
     if (_activeRequests === 0) _stopToast();
 
     if (e.message === 'timeout') {
-      // AUTO-RETRY on timeout. Message wording depends on whether the
-      // server has already proven itself awake THIS session
-      // (_serverResponded): if so, this is NOT a cold-start sleep —
-      // it's just a slow request (e.g. AI Insights scanning a large
-      // table) — and telling the user the server is "waking up" is
-      // simply false and confusing when they can see live data on
-      // screen already. Only call it a wake-up before the first
-      // successful response of the session.
-      if (_retryCount === 0) {
+      // AUTO-RETRY on timeout — but ONLY for safe-to-repeat requests
+      // (GET, i.e. no method or 'GET'). This used to retry blindly
+      // for every request, including DELETE. That's dangerous: if a
+      // DELETE actually reached the server and succeeded, but the
+      // *response* just took a bit long to come back, the client
+      // would time out, retry the SAME delete, and the retry would
+      // hit "already deleted" (404) — which then threw as a hard
+      // failure. The confirm dialog's error handler saw that failure
+      // and never closed itself or refreshed the list, so the item
+      // looked like it was never deleted at all, even though the
+      // first attempt had already removed it. Writes (DELETE/POST/
+      // PUT/PATCH) now fail fast on timeout instead of silently
+      // double-submitting.
+      const method = (opts?.method || 'GET').toUpperCase();
+      const isSafeToRetry = method === 'GET';
+      if (isSafeToRetry && _retryCount === 0) {
         showWakeToast(true, _serverResponded
           ? 'Still loading — retrying…'
           : 'Server is waking up — retrying automatically…');
@@ -4813,6 +4821,59 @@ function filterCICampaignTable(term) {
   renderCICampaignRows(term);
 }
 
+// ── Campaign table column sorting ─────────────────────────────────────────
+let _ciSortCol = 'standard_revenue'; // default sort
+let _ciSortDir = 'desc';             // 'asc' | 'desc'
+
+function sortCITable(col) {
+  if (_ciSortCol === col) {
+    _ciSortDir = _ciSortDir === 'desc' ? 'asc' : 'desc';
+  } else {
+    _ciSortCol = col;
+    _ciSortDir = 'desc'; // default to highest-first when switching columns
+  }
+  _applyCISort();
+  _updateCISortIndicators();
+  const searchBox = document.getElementById('ciCampaignSearch');
+  renderCICampaignRows(searchBox ? searchBox.value : '');
+}
+
+function _applyCISort() {
+  _ciAllCampaignsSorted.sort((a, b) => {
+    let va, vb;
+    if (_ciSortCol === 'roas') {
+      va = a.standard_spend > 0 ? a.standard_revenue / a.standard_spend : 0;
+      vb = b.standard_spend > 0 ? b.standard_revenue / b.standard_spend : 0;
+    } else if (_ciSortCol === 'ctr') {
+      va = a.standard_impressions > 0 ? (a.standard_clicks / a.standard_impressions * 100) : 0;
+      vb = b.standard_impressions > 0 ? (b.standard_clicks / b.standard_impressions * 100) : 0;
+    } else if (_ciSortCol === 'platform' || _ciSortCol === 'campaign_name') {
+      va = (a[_ciSortCol] || '').toLowerCase();
+      vb = (b[_ciSortCol] || '').toLowerCase();
+      return _ciSortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+    } else {
+      va = a[_ciSortCol] || 0;
+      vb = b[_ciSortCol] || 0;
+    }
+    return _ciSortDir === 'asc' ? va - vb : vb - va;
+  });
+}
+
+function _updateCISortIndicators() {
+  const cols = ['platform','campaign_name','standard_spend','standard_revenue','roas','standard_clicks','standard_impressions','ctr'];
+  cols.forEach(col => {
+    const el = document.getElementById('ciSort_' + col);
+    if (!el) return;
+    if (col === _ciSortCol) {
+      el.textContent = _ciSortDir === 'desc' ? '▼' : '▲';
+      el.style.color = '#7c3aed';
+    } else {
+      el.textContent = '⇅';
+      el.style.color = '#cbd5e1';
+    }
+  });
+}
+
 function renderCI(payload) {
   const campaigns = payload.campaigns || [];
   const totalSpend  = payload.totalSpend  != null ? payload.totalSpend  : campaigns.reduce((s, c) => s + (c.standard_spend || 0), 0);
@@ -4879,7 +4940,9 @@ function renderCI(payload) {
   }).join('');
 
   const ciTbody = document.getElementById('ciCampaignTbody');
-  _ciAllCampaignsSorted = [...campaigns].sort((a,b) => (b.standard_revenue||0)-(a.standard_revenue||0));
+  _ciAllCampaignsSorted = [...campaigns];
+  _applyCISort();
+  _updateCISortIndicators();
   // Re-apply whatever search term is currently in the box (if the user
   // was mid-search when new data loaded, e.g. after a platform toggle)
   const existingSearch = document.getElementById('ciCampaignSearch');
@@ -5718,6 +5781,17 @@ async function loadDT7DayTrend(endDate, myToken) {
   const pcts   = dayTotals.map(d => d.pct ?? 0);
   const bg     = dayTotals.map(d => d.pct == null ? 'rgba(203,213,225,.6)' : d.pct >= 100 ? 'rgba(5,150,105,.8)' : d.pct >= 80 ? 'rgba(2,132,199,.75)' : 'rgba(217,119,6,.7)');
 
+  // Y-axis used to be a fixed 0–120% scale with hardcoded ticks — fine
+  // for a healthy account near/above target, but when real attainment
+  // sits in the low single digits (as here), every bar renders as a
+  // sliver against 100+ units of empty space above it. Scale the axis
+  // to the actual data instead: ~25% headroom above the tallest bar,
+  // with a small floor so one lone small value doesn't still zoom in
+  // to something silly, and "nice" round tick steps either way.
+  const maxPct   = Math.max(...pcts, 0);
+  const yMax     = Math.max(20, Math.ceil((maxPct * 1.25) / 5) * 5);
+  const tickStep = yMax / 4;
+
   renderOrUpdateChart('dtTrendChart', '_dtTrendChart', {
     type: 'bar',
     data: {
@@ -5748,8 +5822,8 @@ async function loadDT7DayTrend(endDate, myToken) {
         x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 } } },
         y: { grid: { color: 'rgba(220,229,239,.7)' },
           ticks: { color: '#94a3b8', font: { size: 10 }, callback: v => v + '%' },
-          min: 0, max: 120,
-          afterBuildTicks: axis => { axis.ticks = [0, 25, 50, 75, 100].map(v => ({ value: v })); } }
+          min: 0, max: yMax,
+          afterBuildTicks: axis => { axis.ticks = [0, tickStep, tickStep*2, tickStep*3, yMax].map(v => ({ value: v })); } }
       }
     }
   });
@@ -8508,15 +8582,24 @@ function confirmDeleteUpload(el) {
     '<strong>Rows that will be deleted:</strong> ' + rowCount.toLocaleString('en-IN'),
     async () => {
       const { clientSlug } = state;
-      await apiFetch('/clients/' + clientSlug + '/uploads/' + uploadId, { method: 'DELETE' });
-      closeDmConfirm();
-      loadUploadHistory();
-      tabCache['platform_sales']      = null;
-      tabCache['sku_performance']     = null;
-      tabCache['campaign_insights']   = null;
-      tabCache['geographic_analysis'] = null;
-      tabCache['ai_insights']         = null;
-      _sidebarCache = {};
+      try {
+        await apiFetch('/clients/' + clientSlug + '/uploads/' + uploadId, { method: 'DELETE' });
+      } finally {
+        // Refresh the list regardless of success or failure — a
+        // timeout here doesn't necessarily mean the delete didn't
+        // happen server-side (the request may have gone through and
+        // just taken a while to respond), so re-fetching the real
+        // current state is more trustworthy than assuming failure and
+        // leaving a stale list on screen.
+        closeDmConfirm();
+        loadUploadHistory();
+        tabCache['platform_sales']      = null;
+        tabCache['sku_performance']     = null;
+        tabCache['campaign_insights']   = null;
+        tabCache['geographic_analysis'] = null;
+        tabCache['ai_insights']         = null;
+        _sidebarCache = {};
+      }
     }
   );
 }
