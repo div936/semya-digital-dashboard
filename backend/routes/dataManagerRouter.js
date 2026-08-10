@@ -52,19 +52,54 @@ router.get('/:client_slug/uploads', rbacMiddleware, adminOnly, async (req, res) 
 });
 
 // ─── GET /clients/:client_slug/data/summary ──────────────────────
+// Row counts per platform, for the "Clear by Platform" admin panel.
+//
+// IMPORTANT: this used to be a single unpaginated .select('platform')
+// per table. Supabase/PostgREST caps any query at 1000 rows by
+// default — with revenue_data alone regularly holding 1000+ rows for
+// an active client, only whichever platforms happened to fall within
+// the first 1000 rows (in whatever order the DB returned them) ever
+// showed up here. Any platform whose rows all landed past that cutoff
+// silently vanished from the list entirely — not deleted, not
+// missing data, just invisible in this one screen. Paginating through
+// every row (same fix already applied to platform-sales/campaign-
+// insights/etc.) makes the count — and which platforms appear at
+// all — actually reflect everything in the database.
+async function countPlatforms(table, clientId) {
+  const counts = {};
+  const pageSize = 1000;
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabaseAdmin
+      .from(table)
+      .select('platform')
+      .eq('client_id', clientId)
+      .range(from, from + pageSize - 1);
+    if (error) throw new Error(error.message);
+    if (!data || data.length === 0) break;
+    for (const row of data) counts[row.platform] = (counts[row.platform] || 0) + 1;
+    if (data.length < pageSize) break; // last page
+    from += pageSize;
+  }
+  return counts;
+}
+
 router.get('/:client_slug/data/summary', rbacMiddleware, adminOnly, async (req, res) => {
   const { client } = req.semya;
 
-  const [{ data: rev, error: e1 }, { data: camp, error: e2 }] = await Promise.all([
-    supabaseAdmin.from('revenue_data').select('platform').eq('client_id', client.id),
-    supabaseAdmin.from('campaign_data').select('platform').eq('client_id', client.id),
-  ]);
-
-  if (e1 || e2) return res.status(500).json({ error: 'Failed to fetch data summary.' });
+  let revCounts, campCounts;
+  try {
+    [revCounts, campCounts] = await Promise.all([
+      countPlatforms('revenue_data',  client.id),
+      countPlatforms('campaign_data', client.id),
+    ]);
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to fetch data summary: ' + e.message });
+  }
 
   const summary = {};
-  (rev  || []).forEach(r => { if (!summary[r.platform]) summary[r.platform] = { revenue: 0, campaign: 0 }; summary[r.platform].revenue++; });
-  (camp || []).forEach(c => { if (!summary[c.platform]) summary[c.platform] = { revenue: 0, campaign: 0 }; summary[c.platform].campaign++; });
+  for (const [platform, count] of Object.entries(revCounts))  { (summary[platform] ||= { revenue: 0, campaign: 0 }).revenue  = count; }
+  for (const [platform, count] of Object.entries(campCounts)) { (summary[platform] ||= { revenue: 0, campaign: 0 }).campaign = count; }
 
   return res.json({ summary });
 });
