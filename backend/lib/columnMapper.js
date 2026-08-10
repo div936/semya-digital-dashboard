@@ -32,6 +32,7 @@ export const REVENUE_MAP = {
   'sku id':                     'standard_sku',
   'sku id':                     'standard_sku',
   'sku_id':                     'standard_sku',
+  'sku id':                     'standard_sku',   // matches after underscore→space normalisation too
   'seller sku':                 'standard_sku',
   'merchant sku':               'standard_sku',
   'product sku':                'standard_sku',
@@ -284,6 +285,17 @@ export const CAMPAIGN_MAP = {
   'start date':                 'campaign_date',
   'reporting starts':           'campaign_date',   // Meta ads export
   'day':                        'campaign_date',
+  // NOTE: Flipkart's "campaign_start_date" column is deliberately NOT
+  // mapped here. It's campaign metadata — when the campaign itself was
+  // first created — and stays IDENTICAL across every day's export of
+  // an ongoing campaign, unlike genuinely daily spend/revenue figures.
+  // Mapping it to campaign_date was tried and reverted: it stamped
+  // every day's real, distinct daily numbers with the same one launch
+  // date, making unrelated days collide as if they were duplicates.
+  // Flipkart's actual per-file reporting date lives in its preamble
+  // ("Start Time, 2026-07-18 00:00:00") and is picked up via
+  // extractDateFromPreamble()'s defaultDate fallback instead — the
+  // same mechanism used for Google Ads exports.
 
   // ── Ad spend ──────────────────────────────────────────────────
   'spend':                      'standard_spend',
@@ -349,7 +361,7 @@ export const CAMPAIGN_MAP = {
 // etc., without hardcoding every currency/unit suffix variant.
 // ═══════════════════════════════════════════════════════════════════
 export function normaliseHeaderKey(rawKey) {
-  return String(rawKey).toLowerCase().trim().replace(/\s+/g, ' ').replace(/-/g, ' ');
+  return String(rawKey).toLowerCase().trim().replace(/[\s_]+/g, ' ').replace(/-/g, ' ');
 }
 
 function resolveKey(map, rawKey) {

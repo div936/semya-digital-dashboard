@@ -4826,7 +4826,8 @@ function renderCI(payload) {
 
   document.getElementById('ciKpiSpend').innerHTML    = fmtRevenue(totalSpend);
   document.getElementById('ciKpiSpendDelta').innerHTML = '';
-  document.getElementById('ciKpiSpendSub').innerHTML  = 'Across ' + campaigns.length + ' campaigns';
+  document.getElementById('ciKpiSpendSub').innerHTML  = 'Across ' + campaigns.length + ' campaigns' +
+    (payload.undatedCampaignsExcluded ? ' <span style="color:#d97706;">(' + payload.undatedCampaignsExcluded.toLocaleString('en-IN') + ' more with no date, excluded from this range)</span>' : '');
   document.getElementById('ciKpiRev').innerHTML      = fmtRevenue(totalRev);
   document.getElementById('ciKpiRevDelta').innerHTML  = '';
   const fullPeriodRev = payload.totalFullPeriodRevenue;

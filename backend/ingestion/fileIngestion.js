@@ -232,11 +232,17 @@ function findHeaderLineIndex(lines, delimiter) {
 // header row (e.g. Google Ads: '"July 16, 2026 - July 16, 2026"').
 // Returns an ISO date string (the range start) or null.
 function extractDateFromPreamble(preambleLines) {
-  const dateRe = /([A-Za-z]{3,9}\s+\d{1,2},\s*\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/;
+  // ISO (YYYY-MM-DD) must be tried FIRST and as a whole token — the old
+  // regex only had "Month Day, Year" and "D/M/YY"-style alternatives,
+  // so a line like Flipkart's "Start Time, 2026-07-18 00:00:00" fell
+  // through to the short-date alternative and grabbed a garbage partial
+  // match ("26-07-18") instead of the real date, which then failed
+  // validation and silently produced no default date at all.
+  const dateRe = /(\d{4}-\d{2}-\d{2})|([A-Za-z]{3,9}\s+\d{1,2},\s*\d{4})|(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/;
   for (const line of preambleLines) {
     const match = line.match(dateRe);
     if (match) {
-      const isoDate = extractLiteralDate(match[1]);
+      const isoDate = extractLiteralDate(match[0]);
       if (isoDate) return isoDate;
     }
   }

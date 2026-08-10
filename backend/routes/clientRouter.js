@@ -473,12 +473,43 @@ router.get(
       .eq('client_id', client.id)
       .order('campaign_date', { ascending: false });
 
-    if (from)     query = query.or(`campaign_date.gte.${from},campaign_date.is.null`);
-    if (to)       query = query.or(`campaign_date.lte.${to},campaign_date.is.null`);
+    // Undated campaign rows (campaign_date IS NULL) used to be included
+    // via an "OR campaign_date IS NULL" fallback on BOTH the gte and lte
+    // filters — which, combined, is equivalent to
+    // "(date in range) OR (date is null)". That means any undated
+    // campaign silently matched every possible date range, so if a
+    // meaningful share of campaign_data rows have no campaign_date set,
+    // picking a narrow range (or even a single day) still pulls in the
+    // full all-time total for those rows — the date filter becomes a
+    // no-op for exactly the rows that most need it to work. Now: when a
+    // date filter is actually active, apply it strictly (undated rows
+    // are excluded, since we genuinely don't know if they belong in the
+    // selected window); only fall back to "everything" when no filter
+    // is applied at all.
+    if (from && to) query = query.gte('campaign_date', from).lte('campaign_date', to);
+    else if (from)  query = query.gte('campaign_date', from);
+    else if (to)    query = query.lte('campaign_date', to);
     if (platform) query = query.in('platform', expandPlatform(platform));
 
     const { data: campaigns, error } = await query;
     if (error) return res.status(500).json({ error: 'Failed to fetch campaigns.' });
+
+    // Surface how many campaigns were excluded for having no date at
+    // all, whenever a date filter is active — otherwise a narrow range
+    // and a wide range can return suspiciously similar totals (both
+    // scoped to the same small dated subset) with no visible
+    // explanation for why. One cheap count query, only when needed.
+    let undatedCampaignsExcluded = 0;
+    if (from || to) {
+      let undatedQ = supabaseAdmin
+        .from('campaign_data')
+        .select('id', { count: 'exact', head: true })
+        .eq('client_id', client.id)
+        .is('campaign_date', null);
+      if (platform) undatedQ = undatedQ.in('platform', expandPlatform(platform));
+      const { count } = await undatedQ;
+      undatedCampaignsExcluded = count || 0;
+    }
 
     // Pull matching revenue-side rows for the same window/platform so we
     // can compute fulfilment-channel split and product breakdown. This is
@@ -514,6 +545,7 @@ router.get(
 
     return res.json({
       campaigns,
+      undatedCampaignsExcluded,
       ...insights,
     });
   }
@@ -716,12 +748,20 @@ router.get(
         .eq('client_id', client.id)
         .eq(...(sku ? ['standard_sku', sku] : ['client_id', client.id]))
         .or(`and(order_date.gte.${from || '2000-01-01'},order_date.lte.${to || '2099-01-01'}),order_date.is.null`),
-      supabaseAdmin
-        .from('campaign_data')
-        .select('platform, standard_spend, standard_revenue, standard_clicks, standard_impressions, raw_extras, campaign_date')
-        .eq('client_id', client.id)
-        .or(`campaign_date.gte.${from || '2000-01-01'},campaign_date.is.null`)
-        .or(`campaign_date.lte.${to   || '2099-01-01'},campaign_date.is.null`),
+      (() => {
+        let cq = supabaseAdmin
+          .from('campaign_data')
+          .select('platform, standard_spend, standard_revenue, standard_clicks, standard_impressions, raw_extras, campaign_date')
+          .eq('client_id', client.id);
+        // Same fix as the campaign-insights route above: an "OR IS NULL"
+        // fallback on both gte and lte made undated rows match every
+        // date range, silently defeating the filter. Apply strictly when
+        // a filter is present.
+        if (from && to) cq = cq.gte('campaign_date', from).lte('campaign_date', to);
+        else if (from)  cq = cq.gte('campaign_date', from);
+        else if (to)    cq = cq.lte('campaign_date', to);
+        return cq;
+      })(),
     ]);
 
     if (rErr || cErr) {
