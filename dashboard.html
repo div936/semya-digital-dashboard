@@ -3325,15 +3325,22 @@ async function apiFetch(path, opts, _retryCount = 0) {
     if (_activeRequests === 0) _stopToast();
 
     if (e.message === 'timeout') {
-      // AUTO-RETRY on timeout. Message wording depends on whether the
-      // server has already proven itself awake THIS session
-      // (_serverResponded): if so, this is NOT a cold-start sleep —
-      // it's just a slow request (e.g. AI Insights scanning a large
-      // table) — and telling the user the server is "waking up" is
-      // simply false and confusing when they can see live data on
-      // screen already. Only call it a wake-up before the first
-      // successful response of the session.
-      if (_retryCount === 0) {
+      // AUTO-RETRY on timeout — but ONLY for safe-to-repeat requests
+      // (GET, i.e. no method or 'GET'). This used to retry blindly
+      // for every request, including DELETE. That's dangerous: if a
+      // DELETE actually reached the server and succeeded, but the
+      // *response* just took a bit long to come back, the client
+      // would time out, retry the SAME delete, and the retry would
+      // hit "already deleted" (404) — which then threw as a hard
+      // failure. The confirm dialog's error handler saw that failure
+      // and never closed itself or refreshed the list, so the item
+      // looked like it was never deleted at all, even though the
+      // first attempt had already removed it. Writes (DELETE/POST/
+      // PUT/PATCH) now fail fast on timeout instead of silently
+      // double-submitting.
+      const method = (opts?.method || 'GET').toUpperCase();
+      const isSafeToRetry = method === 'GET';
+      if (isSafeToRetry && _retryCount === 0) {
         showWakeToast(true, _serverResponded
           ? 'Still loading — retrying…'
           : 'Server is waking up — retrying automatically…');
@@ -5718,6 +5725,17 @@ async function loadDT7DayTrend(endDate, myToken) {
   const pcts   = dayTotals.map(d => d.pct ?? 0);
   const bg     = dayTotals.map(d => d.pct == null ? 'rgba(203,213,225,.6)' : d.pct >= 100 ? 'rgba(5,150,105,.8)' : d.pct >= 80 ? 'rgba(2,132,199,.75)' : 'rgba(217,119,6,.7)');
 
+  // Y-axis used to be a fixed 0–120% scale with hardcoded ticks — fine
+  // for a healthy account near/above target, but when real attainment
+  // sits in the low single digits (as here), every bar renders as a
+  // sliver against 100+ units of empty space above it. Scale the axis
+  // to the actual data instead: ~25% headroom above the tallest bar,
+  // with a small floor so one lone small value doesn't still zoom in
+  // to something silly, and "nice" round tick steps either way.
+  const maxPct   = Math.max(...pcts, 0);
+  const yMax     = Math.max(20, Math.ceil((maxPct * 1.25) / 5) * 5);
+  const tickStep = yMax / 4;
+
   renderOrUpdateChart('dtTrendChart', '_dtTrendChart', {
     type: 'bar',
     data: {
@@ -5748,8 +5766,8 @@ async function loadDT7DayTrend(endDate, myToken) {
         x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 } } },
         y: { grid: { color: 'rgba(220,229,239,.7)' },
           ticks: { color: '#94a3b8', font: { size: 10 }, callback: v => v + '%' },
-          min: 0, max: 120,
-          afterBuildTicks: axis => { axis.ticks = [0, 25, 50, 75, 100].map(v => ({ value: v })); } }
+          min: 0, max: yMax,
+          afterBuildTicks: axis => { axis.ticks = [0, tickStep, tickStep*2, tickStep*3, yMax].map(v => ({ value: v })); } }
       }
     }
   });
@@ -8508,15 +8526,24 @@ function confirmDeleteUpload(el) {
     '<strong>Rows that will be deleted:</strong> ' + rowCount.toLocaleString('en-IN'),
     async () => {
       const { clientSlug } = state;
-      await apiFetch('/clients/' + clientSlug + '/uploads/' + uploadId, { method: 'DELETE' });
-      closeDmConfirm();
-      loadUploadHistory();
-      tabCache['platform_sales']      = null;
-      tabCache['sku_performance']     = null;
-      tabCache['campaign_insights']   = null;
-      tabCache['geographic_analysis'] = null;
-      tabCache['ai_insights']         = null;
-      _sidebarCache = {};
+      try {
+        await apiFetch('/clients/' + clientSlug + '/uploads/' + uploadId, { method: 'DELETE' });
+      } finally {
+        // Refresh the list regardless of success or failure — a
+        // timeout here doesn't necessarily mean the delete didn't
+        // happen server-side (the request may have gone through and
+        // just taken a while to respond), so re-fetching the real
+        // current state is more trustworthy than assuming failure and
+        // leaving a stale list on screen.
+        closeDmConfirm();
+        loadUploadHistory();
+        tabCache['platform_sales']      = null;
+        tabCache['sku_performance']     = null;
+        tabCache['campaign_insights']   = null;
+        tabCache['geographic_analysis'] = null;
+        tabCache['ai_insights']         = null;
+        _sidebarCache = {};
+      }
     }
   );
 }
