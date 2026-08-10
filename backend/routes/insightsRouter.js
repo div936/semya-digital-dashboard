@@ -15,7 +15,6 @@ import { Router }          from 'express';
 import { rbacMiddleware, requireTab } from '../middleware/rbac.js';
 import { supabaseAdmin }   from '../lib/supabase.js';
 import { generateInsights, generateNarrativeSummaries } from '../lib/insightGenerator.js';
-import Anthropic           from '@anthropic-ai/sdk';
 
 const router = Router({ mergeParams: true });
 
@@ -146,58 +145,5 @@ router.post(
   }
 );
 
-
-// ─── POST /clients/:client_slug/claude-insight ───────────────────
-// Live AI sidebar — streams a Claude-generated analysis based on
-// the data payload sent from the dashboard. The API key never
-// touches the browser; it lives only in process.env.
-router.post(
-  '/:client_slug/claude-insight',
-  rbacMiddleware,
-  async (req, res) => {
-    const { prompt } = req.body || {};
-    if (!prompt) return res.status(400).json({ error: 'prompt is required' });
-
-    // Use ANTHROPIC_API_KEY (already set in Render env)
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      return res.status(503).json({ error: 'ANTHROPIC_API_KEY not configured on server.' });
-    }
-
-    // Set up SSE streaming headers
-    res.setHeader('Content-Type',  'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection',    'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no'); // disable Nginx buffering on Render
-
-    try {
-      const client = new Anthropic({ apiKey });
-
-      const stream = await client.messages.stream({
-        model:      'claude-haiku-4-5-20251001', // fast + cheap; swap to claude-sonnet-4-6 anytime
-        max_tokens: 1000,
-        messages:   [{ role: 'user', content: prompt }],
-      });
-
-      for await (const event of stream) {
-        if (event.type === 'content_block_delta' && event.delta?.text) {
-          res.write(`data: ${JSON.stringify(event)}\n\n`);
-        }
-      }
-
-      res.write('data: [DONE]\n\n');
-      res.end();
-
-    } catch (err) {
-      console.error('[claude-insight]', err.message);
-      // If headers already sent just end the stream; otherwise send JSON error
-      if (!res.headersSent) {
-        return res.status(500).json({ error: err.message });
-      }
-      res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
-      res.end();
-    }
-  }
-);
 
 export default router;

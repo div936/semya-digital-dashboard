@@ -226,11 +226,11 @@ router.get(
         const from = req.query.from;
         const to   = req.query.to;
         if (from && to) {
-          q = q.gte('order_date', from).lte('order_date', to);
+          q = q.or(`and(order_date.gte.${from},order_date.lte.${to}),order_date.is.null`);
         } else if (from) {
-          q = q.gte('order_date', from);
+          q = q.or(`order_date.gte.${from},order_date.is.null`);
         } else {
-          q = q.lte('order_date', to);
+          q = q.or(`order_date.lte.${to},order_date.is.null`);
         }
       }
       if (platform)            q = q.in('platform', expandPlatform(platform));
@@ -351,11 +351,11 @@ router.get(
         // FIX: combined into single .or() — see platform-sales fix above
         if (from || to) {
           if (from && to) {
-            q = q.gte('order_date', from).lte('order_date', to);
+            q = q.or(`and(order_date.gte.${from},order_date.lte.${to}),order_date.is.null`);
           } else if (from) {
-            q = q.gte('order_date', from);
+            q = q.or(`order_date.gte.${from},order_date.is.null`);
           } else {
-            q = q.lte('order_date', to);
+            q = q.or(`order_date.lte.${to},order_date.is.null`);
           }
         }
         return q;
@@ -526,11 +526,11 @@ router.get(
       // FIX: combined into single .or() — see platform-sales fix above
       if (from || to) {
         if (from && to) {
-          q = q.gte('order_date', from).lte('order_date', to);
+          q = q.or(`and(order_date.gte.${from},order_date.lte.${to}),order_date.is.null`);
         } else if (from) {
-          q = q.gte('order_date', from);
+          q = q.or(`order_date.gte.${from},order_date.is.null`);
         } else {
-          q = q.lte('order_date', to);
+          q = q.or(`order_date.lte.${to},order_date.is.null`);
         }
       }
       if (platform) q = q.in('platform', expandPlatform(platform));
@@ -687,11 +687,11 @@ router.get(
       // FIX: combined into single .or() — see platform-sales fix above
       if (from || to) {
         if (from && to) {
-          q = q.gte('order_date', from).lte('order_date', to);
+          q = q.or(`and(order_date.gte.${from},order_date.lte.${to}),order_date.is.null`);
         } else if (from) {
-          q = q.gte('order_date', from);
+          q = q.or(`order_date.gte.${from},order_date.is.null`);
         } else {
-          q = q.lte('order_date', to);
+          q = q.or(`order_date.lte.${to},order_date.is.null`);
         }
       }
       if (sku)      q = q.eq('standard_sku', sku);
@@ -747,7 +747,7 @@ router.get(
         .select('standard_sku, platform, standard_revenue, standard_units, standard_city, raw_extras, order_date')
         .eq('client_id', client.id)
         .eq(...(sku ? ['standard_sku', sku] : ['client_id', client.id]))
-        .gte('order_date', from || '2000-01-01').lte('order_date', to || '2099-12-31'),
+        .or(`and(order_date.gte.${from || '2000-01-01'},order_date.lte.${to || '2099-01-01'}),order_date.is.null`),
       (() => {
         let cq = supabaseAdmin
           .from('campaign_data')
@@ -808,11 +808,11 @@ router.get(
         .range(rangeFrom, rangeTo);
       if (from || to) {
         if (from && to) {
-          q = q.gte('order_date', from).lte('order_date', to);
+          q = q.or(`and(order_date.gte.${from},order_date.lte.${to}),order_date.is.null`);
         } else if (from) {
-          q = q.gte('order_date', from);
+          q = q.or(`order_date.gte.${from},order_date.is.null`);
         } else {
-          q = q.lte('order_date', to);
+          q = q.or(`order_date.lte.${to},order_date.is.null`);
         }
       }
       return q;
