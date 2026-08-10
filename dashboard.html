@@ -5660,9 +5660,26 @@ async function loadDT7DayTrend(endDate, myToken) {
     days.push(toISTDateString(d));
   }
 
-  const results = await Promise.all(
-    days.map(d => apiFetch('/clients/' + clientSlug + '/targets?date=' + d).catch(() => null))
-  );
+  // Fetch each day SEQUENTIALLY rather than as 7 parallel requests.
+  // This used to fire all 7 via Promise.all at once, right alongside
+  // the campaign-ranking and Platform Health fetches that also run
+  // immediately after the main targets call — a burst of ~9
+  // concurrent requests against the free-tier backend. Under load,
+  // some of those 7 day-requests could fail/timeout, and since each
+  // failure was silently swallowed to `null`, the whole trend would
+  // wrongly show "No attainment data" even when today's own data
+  // (fetched moments earlier, as a single non-concurrent request)
+  // was clearly non-zero. Sequential + logged failures fixes both
+  // the false-negative and the invisibility of the real cause.
+  const results = [];
+  for (const d of days) {
+    try {
+      results.push(await apiFetch('/clients/' + clientSlug + '/targets?date=' + d));
+    } catch (e) {
+      console.warn('[DT 7-day trend] failed for', d, ':', e.message);
+      results.push(null);
+    }
+  }
 
   if (myToken !== undefined && myToken !== _dtFetchToken) return; // stale — a newer call has started since
 
