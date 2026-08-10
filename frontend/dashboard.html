@@ -4374,16 +4374,14 @@ function showTab(tabKey) {
 
   const cached = tabCache[tabKey];
   const fresh  = cached && (Date.now() - cached.timestamp < CACHE_TTL);
-  if (tabKey === 'platform_sales'      && !fresh) fetchAndRenderPS();
-  else if (tabKey === 'platform_sales' && fresh)  updateSidebarForTab('platform_sales');
-  if (tabKey === 'campaign_insights'   && !fresh) fetchAndRenderCI();
-  else if (tabKey === 'campaign_insights' && fresh) updateSidebarForTab('campaign_insights');
-  if (tabKey === 'sku_performance'      && !fresh) fetchAndRender();
-  if (tabKey === 'geographic_analysis'  && !fresh) fetchAndRenderGEO();
-  if (tabKey === 'daily_targets'        && !fresh) fetchAndRenderDT();
-  if (tabKey === 'ai_insights'          && !fresh) { fetchAndRenderAI(); fetchAndRenderFraud(); }
-  if (tabKey === 'utm_analytics'        && !fresh) fetchAndRenderUTM();
-  if (tabKey === 'projections_insights' && !fresh) fetchAndRenderProjections();
+  if      (tabKey === 'platform_sales')       { if (!fresh) fetchAndRenderPS();          else updateSidebarForTab('platform_sales'); }
+  else if (tabKey === 'campaign_insights')    { if (!fresh) fetchAndRenderCI();          else updateSidebarForTab('campaign_insights'); }
+  else if (tabKey === 'sku_performance')      { if (!fresh) fetchAndRender(); }
+  else if (tabKey === 'geographic_analysis')  { if (!fresh) fetchAndRenderGEO(); }
+  else if (tabKey === 'daily_targets')        { if (!fresh) fetchAndRenderDT(); }
+  else if (tabKey === 'ai_insights')          { if (!fresh) { fetchAndRenderAI(); fetchAndRenderFraud(); } }
+  else if (tabKey === 'utm_analytics')        { if (!fresh) fetchAndRenderUTM(); }
+  else if (tabKey === 'projections_insights') { if (!fresh) fetchAndRenderProjections(); }
 }
 
 // ─── Tab permissions / access lock ─────────────────────────────
