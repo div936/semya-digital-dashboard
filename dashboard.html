@@ -3839,102 +3839,6 @@ function _fmt(n) { return n >= 100000 ? (n/100000).toFixed(2)+' Lakhs' : '₹'+M
 function _pct(a,b) { if (!b) return null; return (((a-b)/b)*100).toFixed(1)+'%'; }
 
 // ── Build the prompt from live data ──────────────────────────────────
-function _buildPrompt(data) {
-  const TAB_LABELS = {
-    platform_sales: 'Platform Sales Overview',
-    sku_performance: 'SKU Performance',
-    campaign_insights: 'Campaign Insights',
-    geographic_analysis: 'Geographic Analysis',
-    daily_targets: 'Daily Targets',
-    utm_analytics: 'UTM Analytics',
-    projections_insights: 'Projections Insights',
-  };
-  const dateRange = (data.dateFrom && data.dateTo)
-    ? data.dateFrom + ' to ' + data.dateTo
-    : 'the selected period';
-
-  let prompt = `You are an expert e-commerce analytics advisor for Neat Everyday, a D2C brand in India.
-Analyse the following dashboard data for the period ${dateRange} and give a concise, sharp, actionable insight.
-
-Tab being viewed: ${TAB_LABELS[data.tab] || data.tab}
-Date range: ${dateRange}
-`;
-
-  if (data.totalRevenue !== undefined) {
-    const revGrowth = _pct(data.totalRevenue, data.prevRevenue);
-    const unitGrowth = _pct(data.totalUnits, data.prevUnits);
-    const orderGrowth = _pct(data.totalOrders, data.prevOrders);
-    const aov = data.totalOrders > 0 ? Math.round(data.totalRevenue/data.totalOrders) : null;
-    prompt += `
-SALES PERFORMANCE:
-- Total Net Revenue: ${_fmt(data.totalRevenue)}${revGrowth ? ' ('+revGrowth+' vs previous period)' : ''}
-- Total Units Sold: ${(data.totalUnits||0).toLocaleString('en-IN')}${unitGrowth ? ' ('+unitGrowth+' vs previous period)' : ''}
-- Total Orders: ${(data.totalOrders||0).toLocaleString('en-IN')}${orderGrowth ? ' ('+orderGrowth+' vs previous period)' : ''}
-- Average Order Value: ${aov ? '₹'+aov.toLocaleString('en-IN') : 'N/A'}
-`;
-    if (data.platforms && data.platforms.length) {
-      prompt += '
-PLATFORM BREAKDOWN:
-';
-      data.platforms.forEach(p => {
-        const share = data.totalRevenue > 0 ? (p.revenue/data.totalRevenue*100).toFixed(1) : 0;
-        prompt += `- ${p.name}: ${_fmt(p.revenue)} (${share}% share), ${(p.units||0).toLocaleString('en-IN')} units, ${(p.orders||0).toLocaleString('en-IN')} orders
-`;
-      });
-    }
-    if (data.topProducts && data.topProducts.length) {
-      prompt += '
-TOP PRODUCTS BY REVENUE:
-';
-      data.topProducts.forEach((p,i) => {
-        prompt += `${i+1}. ${p.sku} on ${p.platform}: ${_fmt(p.revenue)}, ${(p.units||0).toLocaleString('en-IN')} units
-`;
-      });
-    }
-    if (data.revenueWeekly && data.revenueWeekly.length > 1) {
-      prompt += '
-REVENUE TREND (recent weeks):
-';
-      data.revenueWeekly.forEach(w => { prompt += `- ${w.label}: ${_fmt(w.revenue)}
-`; });
-    }
-  }
-
-  if (data.campaigns) {
-    const c = data.campaigns;
-    prompt += `
-CAMPAIGN PERFORMANCE:
-- Total Ad Spend: ${_fmt(c.totalSpend)}
-- Revenue from Ads: ${_fmt(c.totalRevenue)}
-- Blended ROAS: ${c.blendedRoas ? c.blendedRoas.toFixed(2)+'x' : 'N/A'}
-- Total Clicks: ${(c.totalClicks||0).toLocaleString('en-IN')}
-
-TOP 3 CAMPAIGNS (by revenue):
-${(c.top3||[]).map((cc,i)=>`${i+1}. ${cc.name} [${cc.platform}]: Spend ${_fmt(cc.spend)}, Revenue ${_fmt(cc.revenue)}, ROAS ${cc.roas||'N/A'}x`).join('
-')}
-
-LOWEST ROAS CAMPAIGNS (needs attention):
-${(c.worst3||[]).map((cc,i)=>`${i+1}. ${cc.name} [${cc.platform}]: Spend ${_fmt(cc.spend)}, Revenue ${_fmt(cc.revenue)}, ROAS ${cc.roas||'N/A'}x`).join('
-')}
-`;
-  }
-
-  prompt += `
-INSTRUCTIONS:
-Write a response in this exact JSON format (no markdown, no extra text):
-{
-  "summary": "2-3 sentence executive summary of what happened in this period — be specific about numbers, growth/decline, and which platform/product drove results",
-  "highlights": ["what went well — be specific with numbers", "second win if applicable"],
-  "watchouts": ["what needs attention or underperformed — be specific", "second concern if applicable"],
-  "runRate": "one sentence: at this pace, what is the projected monthly/quarterly run rate?",
-  "recommendation": "one sharp, specific action the team should take right now based on this data"
-}
-
-Be direct, use Indian number formatting (Lakhs), and reference actual numbers from the data. If data is thin, say so honestly.`;
-
-  return prompt;
-}
-
 // ── Stream Claude response and render it token by token ──────────────
 async function _streamClaudeInsight(prompt, list, confEl) {
   let fullText = '';
@@ -9040,4 +8944,102 @@ document.getElementById('dmConfirmOverlay').addEventListener('click', function(e
 </script>
 
 </body>
-</html>
+</html>// ── Build the prompt from live data ──────────────────────────────────────────
+function _buildPrompt(data) {
+  const TAB_LABELS = {
+    platform_sales: 'Platform Sales Overview',
+    sku_performance: 'SKU Performance',
+    campaign_insights: 'Campaign Insights',
+    geographic_analysis: 'Geographic Analysis',
+    daily_targets: 'Daily Targets',
+    utm_analytics: 'UTM Analytics',
+    projections_insights: 'Projections Insights',
+  };
+  const dateRange = (data.dateFrom && data.dateTo)
+    ? data.dateFrom + ' to ' + data.dateTo
+    : 'the selected period';
+
+  let prompt = 'You are an expert e-commerce analytics advisor for Neat Everyday, a D2C brand in India.\n';
+  prompt += 'Analyse the following dashboard data for the period ' + dateRange + ' and give a concise, sharp, actionable insight.\n\n';
+  prompt += 'Tab being viewed: ' + (TAB_LABELS[data.tab] || data.tab) + '\n';
+  prompt += 'Date range: ' + dateRange + '\n';
+
+  if (data.totalRevenue !== undefined) {
+    const revGrowth  = _pct(data.totalRevenue, data.prevRevenue);
+    const unitGrowth = _pct(data.totalUnits,   data.prevUnits);
+    const aov = data.totalOrders > 0 ? Math.round(data.totalRevenue / data.totalOrders) : null;
+
+    prompt += '\nSALES PERFORMANCE:\n';
+    prompt += '- Total Net Revenue: ' + _fmt(data.totalRevenue) + (revGrowth  ? ' (' + revGrowth  + ' vs previous period)' : '') + '\n';
+    prompt += '- Total Units Sold: '  + (data.totalUnits  || 0).toLocaleString('en-IN') + (unitGrowth ? ' (' + unitGrowth + ' vs previous period)' : '') + '\n';
+    prompt += '- Total Orders: '      + (data.totalOrders || 0).toLocaleString('en-IN') + '\n';
+    prompt += '- Average Order Value: ' + (aov ? '\u20b9' + aov.toLocaleString('en-IN') : 'N/A') + '\n';
+
+    if (data.platforms && data.platforms.length) {
+      prompt += '\nPLATFORM BREAKDOWN:\n';
+      data.platforms.forEach(function(p) {
+        var share = data.totalRevenue > 0 ? (p.revenue / data.totalRevenue * 100).toFixed(1) : 0;
+        prompt += '- ' + p.name + ': ' + _fmt(p.revenue) + ' (' + share + '% share), ' +
+                  (p.units  || 0).toLocaleString('en-IN') + ' units, ' +
+                  (p.orders || 0).toLocaleString('en-IN') + ' orders\n';
+      });
+    }
+
+    if (data.topProducts && data.topProducts.length) {
+      prompt += '\nTOP PRODUCTS BY REVENUE:\n';
+      data.topProducts.forEach(function(p, i) {
+        prompt += (i + 1) + '. ' + p.sku + ' on ' + p.platform + ': ' +
+                  _fmt(p.revenue) + ', ' + (p.units || 0).toLocaleString('en-IN') + ' units\n';
+      });
+    }
+
+    if (data.revenueWeekly && data.revenueWeekly.length > 1) {
+      prompt += '\nREVENUE TREND (recent weeks):\n';
+      data.revenueWeekly.forEach(function(w) {
+        prompt += '- ' + w.label + ': ' + _fmt(w.revenue) + '\n';
+      });
+    }
+  }
+
+  if (data.campaigns) {
+    var c = data.campaigns;
+    prompt += '\nCAMPAIGN PERFORMANCE:\n';
+    prompt += '- Total Ad Spend: '    + _fmt(c.totalSpend)   + '\n';
+    prompt += '- Revenue from Ads: '  + _fmt(c.totalRevenue) + '\n';
+    prompt += '- Blended ROAS: '      + (c.blendedRoas ? c.blendedRoas.toFixed(2) + 'x' : 'N/A') + '\n';
+    prompt += '- Total Clicks: '      + (c.totalClicks || 0).toLocaleString('en-IN') + '\n';
+
+    if (c.top3 && c.top3.length) {
+      prompt += '\nTOP 3 CAMPAIGNS (by revenue):\n';
+      c.top3.forEach(function(cc, i) {
+        prompt += (i + 1) + '. ' + cc.name + ' [' + cc.platform + ']: Spend ' +
+                  _fmt(cc.spend) + ', Revenue ' + _fmt(cc.revenue) +
+                  ', ROAS ' + (cc.roas || 'N/A') + 'x\n';
+      });
+    }
+
+    if (c.worst3 && c.worst3.length) {
+      prompt += '\nLOWEST ROAS CAMPAIGNS (needs attention):\n';
+      c.worst3.forEach(function(cc, i) {
+        prompt += (i + 1) + '. ' + cc.name + ' [' + cc.platform + ']: Spend ' +
+                  _fmt(cc.spend) + ', Revenue ' + _fmt(cc.revenue) +
+                  ', ROAS ' + (cc.roas || 'N/A') + 'x\n';
+      });
+    }
+  }
+
+  prompt += '\nINSTRUCTIONS:\n';
+  prompt += 'Write a response in this exact JSON format (no markdown, no extra text):\n';
+  prompt += '{\n';
+  prompt += '  "summary": "2-3 sentence executive summary with specific numbers",\n';
+  prompt += '  "highlights": ["what went well with numbers", "second win if applicable"],\n';
+  prompt += '  "watchouts": ["what underperformed with specifics", "second concern if applicable"],\n';
+  prompt += '  "runRate": "one sentence projected monthly/quarterly run rate at this pace",\n';
+  prompt += '  "recommendation": "one sharp specific action to take right now"\n';
+  prompt += '}\n\n';
+  prompt += 'Be direct, use Indian number formatting (Lakhs), reference actual numbers. If data is thin, say so honestly.';
+
+  return prompt;
+}
+
+
