@@ -6258,9 +6258,7 @@ async function loadCaEmployees(clientId) {
         '</div>' +
         '<div style="display:flex;gap:8px;align-items:center;">' +
           expiryLabel +
-          (isClientRole && e.access_expires_at && new Date(e.access_expires_at) < new Date()
-            ? '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;color:#d97706;" onclick="reinviteCaEmployee(' + jsAttr(e.email) + ')">Resend link</button>'
-            : '') +
+          '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;color:#d97706;" onclick="reinviteCaEmployee(' + jsAttr(e.email) + ')">Resend link</button>' +
           (isClientRole ? '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;" onclick="extendCaEmployeeAccess(' + jsAttr(e.email) + ')">Extend</button>' : '') +
           '<label style="font-size:10px;color:#94a3b8;display:flex;align-items:center;gap:4px;cursor:pointer;">' +
             '<input type="checkbox" ' + (e.is_lead ? 'checked' : '') + ' onchange="toggleCaEmployeeLead(' + jsAttr(e.id) + ',this.checked)" /> Lead' +

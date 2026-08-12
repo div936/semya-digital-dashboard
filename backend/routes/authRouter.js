@@ -349,6 +349,7 @@ router.post('/reinvite', asyncHandler(async (req, res) => {
   const cleanEmail = email.toLowerCase().trim();
 
   // Confirm this person is actually an approved user in our DB
+  // (admins are also valid targets — their invite link can expire too)
   const { data: userRow } = await supabaseAdmin.from('users').select('role, client_id, is_active').eq('email', cleanEmail).single();
   if (!userRow) return res.status(404).json({ error: 'No approved user found with that email. They must be approved first.' });
   if (!userRow.is_active) return res.status(400).json({ error: 'User account is inactive. Reactivate them first.' });
