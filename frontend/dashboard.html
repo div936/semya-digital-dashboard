@@ -7511,22 +7511,33 @@ async function loadUtmInventoryAlerts() {
       el.innerHTML = '<div style="padding:16px 0;text-align:center;color:#94a3b8;font-size:12px;">No low-stock alerts right now — everything is above its threshold, or no warehouses/stock have been set up yet in Inventory Settings.</div>';
       return;
     }
-    el.innerHTML = alerts.map(a => {
-      const urgent = a.daysRemainingEstimate != null && a.daysRemainingEstimate <= 7;
-      const dayLabel = a.daysRemainingEstimate != null
-        ? (a.daysRemainingEstimate <= 0 ? 'Out of stock at current pace' : '~' + a.daysRemainingEstimate + ' day' + (a.daysRemainingEstimate === 1 ? '' : 's') + ' remaining')
-        : 'Not enough recent sales to estimate';
-      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid #f1f5f9;">' +
-        '<div>' +
-          '<span style="font-size:12px;font-weight:600;color:#1e293b;">' + a.sku + '</span>' +
-          '<span style="font-size:11px;color:#94a3b8;margin-left:8px;">' + a.warehouseName + '</span>' +
-        '</div>' +
-        '<div style="text-align:right;">' +
-          '<span style="font-size:12px;font-weight:700;color:' + (urgent ? '#dc2626' : '#d97706') + ';">' + a.quantityOnHand + ' left</span>' +
-          '<span style="font-size:10.5px;color:' + (urgent ? '#dc2626' : '#94a3b8') + ';margin-left:8px;">' + dayLabel + '</span>' +
-        '</div>' +
-      '</div>';
-    }).join('');
+    // Render as a table matching the ALL STOCK section style —
+    // SKU, Warehouse, QTY ON HAND, ALERT BELOW, UPDATED columns.
+    el.innerHTML =
+      '<table style="width:100%;border-collapse:collapse;">' +
+        '<thead><tr>' +
+          '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">SKU</th>' +
+          '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">Warehouse</th>' +
+          '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">Qty on Hand</th>' +
+          '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">Alert Below</th>' +
+          '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">Days Est.</th>' +
+        '</tr></thead>' +
+        '<tbody>' +
+        alerts.map(a => {
+          const urgent = a.quantityOnHand <= 0;
+          const qtyColour = urgent ? 'color:#dc2626;font-weight:700;' : 'color:#d97706;font-weight:700;';
+          const dayLabel = a.daysRemainingEstimate != null
+            ? (a.daysRemainingEstimate <= 0 ? 'Out of stock' : '~' + a.daysRemainingEstimate + 'd')
+            : '—';
+          return '<tr>' +
+            '<td style="padding:8px 10px;font-size:12px;font-weight:600;color:#1e293b;">' + a.sku + '</td>' +
+            '<td style="padding:8px 10px;font-size:11px;color:#94a3b8;">' + a.warehouseName + '</td>' +
+            '<td style="padding:8px 10px;font-size:12px;' + qtyColour + '">' + a.quantityOnHand + '</td>' +
+            '<td style="padding:8px 10px;font-size:12px;color:#64748b;">' + a.lowStockThreshold + '</td>' +
+            '<td style="padding:8px 10px;font-size:11px;color:' + (a.daysRemainingEstimate != null && a.daysRemainingEstimate <= 0 ? '#dc2626' : '#94a3b8') + ';">' + dayLabel + '</td>' +
+          '</tr>';
+        }).join('') +
+        '</tbody></table>';
   } catch (e) {
     el.innerHTML = '<div style="padding:16px 0;text-align:center;color:#94a3b8;font-size:12px;">Failed to load inventory alerts: ' + e.message + '</div>';
   }
