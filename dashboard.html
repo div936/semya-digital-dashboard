@@ -1192,17 +1192,7 @@
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
               Client Administration
             </button>
-            <div id="viewAsClientRow" style="display:none;align-items:center;justify-content:space-between;padding:8px 12px 8px 28px;font-size:11px;color:#475569;gap:8px;">
-              <span id="viewAsClientLabel" style="display:flex;align-items:center;gap:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                View as Client
-              </span>
-              <button type="button" id="viewAsClientToggle" onclick="event.stopPropagation(); toggleViewAsClient();"
-                title="Preview the currently-selected client's own branding instead of Semya's"
-                style="flex-shrink:0;width:32px;height:18px;border-radius:9px;border:none;background:#cbd5e1;position:relative;cursor:pointer;transition:background .15s;padding:0;">
-                <span style="position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s;"></span>
-              </button>
-            </div>
+
             <button class="avatar-dropdown-item" style="padding-left:28px;font-size:11px;" onclick="closeAvatarMenu(); openDailyTargetsPanel();">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               Daily Targets
@@ -2304,6 +2294,21 @@
            admin-only), but the split still matters: editing "Admin Login
            Page" here changes what EVERYONE sees on the sign-in screen,
            not just the client currently selected in this modal. -->
+      <!-- "View as Client" toggle — only shown when a real client is selected,
+           because previewing means "see THIS client's branding on the header".
+           Hidden when __admin__ is selected since there's no client to preview. -->
+      <div id="viewAsClientRow" style="display:none;align-items:center;justify-content:space-between;padding:8px 14px;background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:var(--radius-sm);margin-bottom:14px;">
+        <span id="viewAsClientLabel" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#0369a1;font-weight:500;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          Preview this client's branding on the dashboard header
+        </span>
+        <button type="button" id="viewAsClientToggle" onclick="event.stopPropagation(); toggleViewAsClient();"
+          title="Preview this client's own branding on the live header instead of Semya's"
+          style="flex-shrink:0;width:36px;height:20px;border-radius:10px;border:none;background:#cbd5e1;position:relative;cursor:pointer;transition:background .15s;padding:0;">
+          <span style="position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s;"></span>
+        </button>
+      </div>
+
       <div style="display:flex;gap:0;background:#f1f5f9;border-radius:var(--radius-sm);padding:3px;margin-bottom:20px;width:fit-content;">
         <button type="button" class="ca-appearance-scope-btn active" id="caScopeBtn-client" onclick="setCaAppearanceScope('client')"
           style="padding:7px 16px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;background:#fff;color:#1e293b;box-shadow:0 1px 2px rgba(0,0,0,.06);">
@@ -4504,27 +4509,36 @@ function setHeaderBranding(name, tagline, logoUrl, theme) {
 async function toggleViewAsClient() {
   setViewAsClient(!getViewAsClient());
   updateViewAsToggleUI();
-  if (_lastDashboardConfig) {
-    applyBranding(_lastDashboardConfig);
-  } else {
-    try {
-      const cfg = await apiFetch('/clients/' + state.clientSlug + '/dashboard-config');
-      _lastDashboardConfig = cfg;
-      applyBranding(cfg);
-    } catch (e) { console.warn('[view-as-client] failed to reload config:', e.message); }
-  }
+  // Use caState.clientSlug (the CA-selected client) if available,
+  // fall back to the dashboard's current client. This matters when
+  // the admin has selected Daluci in CA but the dashboard header
+  // still shows Neat Everyday — we preview the CA client, not the
+  // data-view client.
+  const previewSlug = caState.clientSlug || state.clientSlug;
+  if (!previewSlug) return;
+  try {
+    const cfg = await apiFetch('/clients/' + previewSlug + '/dashboard-config');
+    _lastDashboardConfig = cfg;
+    applyBranding(cfg);
+  } catch (e) { console.warn('[view-as-client] failed to reload config:', e.message); }
 }
 
 function updateViewAsToggleUI() {
-  const row = document.getElementById('viewAsClientRow');
+  const row    = document.getElementById('viewAsClientRow');
   const toggle = document.getElementById('viewAsClientToggle');
-  const label = document.getElementById('viewAsClientLabel');
-  if (row) row.style.display = state.isAdmin ? 'flex' : 'none';
+  // Show the toggle only when:
+  //   1. The current user is an admin, AND
+  //   2. A real client (not __admin__) is selected in Client Administration
+  // Hidden when no client is selected, or when Semya Admins is selected —
+  // "preview as client" only makes sense for an actual client account.
+  const hasRealClient = state.isAdmin && caState.clientSlug && caState.clientId !== '__admin__';
+  if (row) row.style.display = hasRealClient ? 'flex' : 'none';
+
   const on = getViewAsClient();
   if (toggle) toggle.classList.toggle('on', on);
-  if (label) label.textContent = on
-    ? 'Viewing as: ' + (document.querySelector('#clientSwitcher option[value="' + state.clientSlug + '"]')?.textContent || 'client')
-    : 'View as Client';
+  // Update toggle knob position to match class (CSS handles colour via .on)
+  const knob = toggle?.querySelector('span');
+  if (knob) knob.style.transform = on ? 'translateX(16px)' : 'translateX(0)';
 
   applyAdminVisibility();
 }
@@ -6156,6 +6170,8 @@ function selectCaSemyaAdmins() {
   // validation) — doesn't apply to Semya's own internal team.
   const brandsSection = document.getElementById('caBrandsSection');
   if (brandsSection) brandsSection.style.display = 'none';
+  // Hide "View as Client" toggle — no client selected to preview
+  updateViewAsToggleUI();
   loadCaClients();
   loadCaEmployees('__admin__');
 }
@@ -6197,6 +6213,8 @@ async function createCaClient() {
 function selectCaClient(id, slug, name) {
   caState.clientId = id; caState.clientSlug = slug; caState.clientName = name;
   document.getElementById('caEmployeeSection').style.display = '';
+  // Show "View as Client" toggle now that a real client is selected
+  updateViewAsToggleUI();
   const brandsSection = document.getElementById('caBrandsSection');
   if (brandsSection) brandsSection.style.display = '';
   document.getElementById('caSelectedClientName').textContent = name;
@@ -7993,6 +8011,8 @@ function setCaAppearanceScope(scope) {
     if (fieldLabel) fieldLabel.textContent = 'Client Name';
     if (hint) hint.innerHTML = 'Editing branding for <strong>' + label + '\'s</strong> dashboard — visible only when viewing their data.';
   }
+  // Show/hide the View as Client toggle based on scope and CA selection
+  updateViewAsToggleUI();
   prefillAppearanceTab();
 }
 
@@ -8021,14 +8041,41 @@ async function prefillAppearanceTab() {
     return;
   }
 
-  // scope === 'client': pre-fill from the currently-displayed DOM, same
-  // as before — this reflects whichever client's dashboard is showing.
-  const nameEl = document.getElementById('brandNameInput');
-  const tagEl  = document.getElementById('brandTaglineInput');
-  if (nameEl) nameEl.value = document.querySelector('.logo-text')?.textContent || 'Neat Everyday';
-  if (tagEl)  tagEl.value  = document.querySelector('.logo-sub')?.textContent  || 'Semya Digital';
-  _caClientLogoDataUrl = null;
-  applyLogoPreview(document.getElementById('logoImg')?.src || null);
+  // scope === 'client': load from the server for the client selected in
+  // Client Administration (caState.clientSlug), NOT from the live DOM —
+  // the DOM always reflects whichever client's data is on-screen, which
+  // may be a different client entirely from the one being edited here.
+  const targetSlug = caState.clientSlug;
+  if (!targetSlug) {
+    // No client selected yet — clear the form
+    const nameEl = document.getElementById('brandNameInput');
+    const tagEl  = document.getElementById('brandTaglineInput');
+    if (nameEl) nameEl.value = '';
+    if (tagEl)  tagEl.value  = '';
+    _caClientLogoDataUrl = null;
+    applyLogoPreview(null);
+    return;
+  }
+  try {
+    const cfg = await apiFetch('/clients/' + targetSlug + '/dashboard-config');
+    const nameEl = document.getElementById('brandNameInput');
+    const tagEl  = document.getElementById('brandTaglineInput');
+    if (nameEl) nameEl.value = cfg?.client?.name || '';
+    if (tagEl)  tagEl.value  = 'Semya Digital';
+    _caClientLogoDataUrl = null;
+    applyLogoPreview(cfg?.client?.logoUrl || null);
+    if (cfg?.client?.theme) {
+      const themeIdx = THEME_PRESETS.findIndex(t => t.primary === cfg.client.theme.primary);
+      _activeThemeIdx = themeIdx >= 0 ? themeIdx : 0;
+      // Only update the swatch selection — don't touch the live header
+      // since the admin may be editing a different client than the one
+      // currently displayed on the dashboard.
+      applyThemeColourPreviewOnly(cfg.client.theme.primary, cfg.client.theme.deep, cfg.client.theme.accent);
+      renderThemeSwatches();
+    }
+  } catch (e) {
+    console.warn('[appearance] failed to load client branding for', targetSlug, e.message);
+  }
 }
 
 // Sets the small preview swatch in the modal without touching the live
@@ -8736,9 +8783,19 @@ async function saveAppearance() {
   if (btn) {
     if (clientSaveOk) {
       btn.textContent = '✓ Saved';
-      // If an admin is currently previewing THIS client via "View as
-      // Client", reflect the change on the live header immediately.
-      if (getViewAsClient() && targetSlug === state.clientSlug) applyBranding(_lastDashboardConfig);
+      // Only reflect the change on the live header if the admin is
+      // actively previewing THIS specific client via "View as Client".
+      // Never update the header when editing a different client's
+      // branding, or when View as Client is off (admin sees Semya
+      // branding, not this client's — a save should never change that).
+      if (getViewAsClient() && targetSlug === state.clientSlug) {
+        // Reload the config fresh so the new logo/theme is picked up
+        try {
+          const cfg = await apiFetch('/clients/' + targetSlug + '/dashboard-config');
+          _lastDashboardConfig = cfg;
+          applyBranding(cfg);
+        } catch(e) { console.warn('[appearance] live header refresh failed:', e.message); }
+      }
     } else {
       btn.textContent = '✗ Failed to save — see console';
       btn.style.color = '#dc2626';
