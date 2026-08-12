@@ -2373,7 +2373,7 @@
           <label style="font-size:11px;font-weight:600;color:#64748b;">Custom colour</label>
           <input type="color" id="customColourPicker" value="#0284c7"
             style="width:38px;height:32px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);cursor:pointer;padding:2px;"
-            oninput="applyThemeColour(this.value)" />
+            oninput="onCustomColourInput(this.value)" />
           <span id="customColourHex" style="font-size:11px;font-family:var(--font-mono);color:#64748b;">#0284c7</span>
         </div>
       </div>
@@ -4531,8 +4531,12 @@ function updateViewAsToggleUI() {
   //   2. A real client (not __admin__) is selected in Client Administration
   // Hidden when no client is selected, or when Semya Admins is selected —
   // "preview as client" only makes sense for an actual client account.
+  // Show only when: admin + real client selected + on Client Dashboard scope
+  // (not Admin Login Page scope — "preview" means previewing the client's
+  // dashboard branding, which only applies to Client Dashboard scope)
   const hasRealClient = state.isAdmin && caState.clientSlug && caState.clientId !== '__admin__';
-  if (row) row.style.display = hasRealClient ? 'flex' : 'none';
+  const onClientScope = (typeof caAppearanceScope === 'undefined' || caAppearanceScope !== 'admin');
+  if (row) row.style.display = (hasRealClient && onClientScope) ? 'flex' : 'none';
 
   const on = getViewAsClient();
   if (toggle) toggle.classList.toggle('on', on);
@@ -8099,10 +8103,23 @@ function applyLogoPreview(src) {
 // when previewing the admin login page's theme (which isn't visible
 // anywhere in this dashboard at all).
 function applyThemeColourPreviewOnly(primary, deep, accent) {
+  // Update the hex readout and colour picker swatch in the modal
   const hex = document.getElementById('customColourHex');
   const picker = document.getElementById('customColourPicker');
   if (hex) hex.textContent = primary;
   if (picker) picker.value = primary;
+  // Re-render swatches so the selected one gets its highlight border —
+  // without this, clicking a swatch in admin scope looked like it did
+  // nothing because the border never updated.
+  renderThemeSwatches();
+  // Track the pending admin theme so saveAppearance can read it back,
+  // including for custom colours (not just preset swatches).
+  if (caAppearanceScope === 'admin') {
+    if (!_caAdminThemeSnapshot) _caAdminThemeSnapshot = {};
+    _caAdminThemeSnapshot.primary = primary;
+    if (deep)   _caAdminThemeSnapshot.deep   = deep;
+    if (accent) _caAdminThemeSnapshot.accent = accent;
+  }
 }
 
 // ─── UTM Campaign Tools modal ───────────────────────────────────
@@ -8600,15 +8617,43 @@ function selectThemePreset(idx) {
   _activeThemeIdx = idx;
   const t = THEME_PRESETS[idx];
   if (caAppearanceScope === 'admin') {
+    // Admin login page — never touch the live dashboard CSS variables
     applyThemeColourPreviewOnly(t.primary, t.deep, t.accent);
   } else {
-    applyThemeColour(t.primary, t.deep, t.accent);
+    // Client scope: only update the live header when the admin is
+    // editing the SAME client currently shown on the dashboard, or
+    // when they're actively previewing this client via "View as Client".
+    // Editing a different client's branding should never change the
+    // header of whichever client's data is currently on screen.
+    const editingCurrentClient = caState.clientSlug && caState.clientSlug === state.clientSlug;
+    const previewingThisClient = getViewAsClient() && caState.clientSlug === state.clientSlug;
+    if (editingCurrentClient || previewingThisClient) {
+      applyThemeColour(t.primary, t.deep, t.accent);
+    } else {
+      applyThemeColourPreviewOnly(t.primary, t.deep, t.accent);
+    }
   }
   const picker = document.getElementById('customColourPicker');
   const hex    = document.getElementById('customColourHex');
   if (picker) picker.value = t.primary;
   if (hex)    hex.textContent = t.primary;
   renderThemeSwatches();
+}
+
+function onCustomColourInput(primary) {
+  // Custom colour picker — same scoping rules as selectThemePreset:
+  // admin scope → preview only; client scope → live only if same client
+  if (caAppearanceScope === 'admin') {
+    applyThemeColourPreviewOnly(primary);
+    return;
+  }
+  const editingCurrentClient = caState.clientSlug && caState.clientSlug === state.clientSlug;
+  const previewingThisClient = getViewAsClient() && caState.clientSlug === state.clientSlug;
+  if (editingCurrentClient || previewingThisClient) {
+    applyThemeColour(primary);
+  } else {
+    applyThemeColourPreviewOnly(primary);
+  }
 }
 
 function applyThemeColour(primary, deep, accent) {
@@ -8695,8 +8740,21 @@ async function saveAppearance() {
 
   const nameVal = document.getElementById('brandNameInput')?.value.trim();
   const tagVal  = document.getElementById('brandTaglineInput')?.value.trim();
-  const t = THEME_PRESETS[_activeThemeIdx];
-  const themePayload = { primary: t.primary, deep: t.deep, accent: t.accent };
+  // For admin scope: prefer the tracked _caAdminThemeSnapshot (updated
+  // by every swatch click AND custom colour input) so a custom colour
+  // is preserved correctly. Fall back to the preset if not set.
+  // For client scope: always read from the preset index.
+  let themePayload;
+  if (caAppearanceScope === 'admin' && _caAdminThemeSnapshot?.primary) {
+    themePayload = {
+      primary: _caAdminThemeSnapshot.primary,
+      deep:    _caAdminThemeSnapshot.deep   || adjustColour(_caAdminThemeSnapshot.primary, -30),
+      accent:  _caAdminThemeSnapshot.accent || adjustColour(_caAdminThemeSnapshot.primary, 15),
+    };
+  } else {
+    const t = THEME_PRESETS[_activeThemeIdx];
+    themePayload = { primary: t.primary, deep: t.deep, accent: t.accent };
+  }
 
   if (caAppearanceScope === 'admin') {
     let saveOk = false;
