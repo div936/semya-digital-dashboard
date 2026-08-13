@@ -860,14 +860,19 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
     // checked. Cancelled/Pending/Returned rows stay visible by default
     // so the team can see the full picture, not just fulfilled orders.
     if (row.standard_status && excludeStatuses.has(row.standard_status)) continue;
+    // Sub-rows (extra line items) have no standard_status — only the main
+    // order row gets one. Use this to identify and skip sub-rows for
+    // order counts and units. Cancelled = voided/refunded orders.
+    const isCancelled  = row.standard_status === 'Cancelled';
+    const isMainRow    = !!(row.standard_status); // null/undefined = sub-row
 
     const p   = row.platform;
     const rev = Number(row.standard_revenue ?? 0);
     const u   = Number(row.standard_units   ?? 0);
 
     if (!byPlatform[p]) byPlatform[p] = { platform: p, totalRevenue: 0, totalUnits: 0, orderCount: 0, _orderIds: new Set(), _rowsWithoutOrderId: 0 };
-    byPlatform[p].totalRevenue += rev;
-    byPlatform[p].totalUnits   += u;
+    byPlatform[p].totalRevenue += isCancelled ? 0 : rev;
+    byPlatform[p].totalUnits   += (!isMainRow || isCancelled) ? 0 : u;
     // Count DISTINCT orders, not rows. An order with 2 line items (2
     // products) is 1 order, not 2 — previously this incremented once
     // per row, which is why order counts sat suspiciously close to
@@ -875,10 +880,13 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
     // back to per-row counting only for rows with no order ID at all
     // (a platform whose export doesn't include one), rather than
     // silently dropping those rows from the count entirely.
-    if (row.standard_order_id) {
-      byPlatform[p]._orderIds.add(row.standard_order_id);
-    } else {
-      byPlatform[p]._rowsWithoutOrderId += 1;
+    // Only count orders on main rows (have a status) that are not cancelled
+    if (isMainRow && !isCancelled) {
+      if (row.standard_order_id) {
+        byPlatform[p]._orderIds.add(row.standard_order_id);
+      } else {
+        byPlatform[p]._rowsWithoutOrderId += 1;
+      }
     }
 
     // Time-bucketed aggregation — day, week, month, year all computed
@@ -918,8 +926,8 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
         : 'Unknown product';
     const prodKey = p + '|' + displaySku;
     if (!byProduct[prodKey]) byProduct[prodKey] = { sku: displaySku, platform: p, revenue: 0, units: 0 };
-    byProduct[prodKey].revenue += rev;
-    byProduct[prodKey].units   += u;
+    byProduct[prodKey].revenue += isCancelled ? 0 : rev;
+    byProduct[prodKey].units   += (!isMainRow || isCancelled) ? 0 : u;
 
     // Category — ported keyword inference from the old dashboard, run
     // against the product name (falls back to SKU internally if the
