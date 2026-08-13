@@ -777,6 +777,15 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
           status = 'Pending';
         }
         row.standard_status = status;
+
+        // Also store raw Shopify fields for AI Insights cards.
+        // financial_status: raw value ('voided','refunded','paid','pending')
+        // risk_level: from Shopify Risk Level column ('High','Low')
+        // tags: raw Tags string — used to detect High Risk, DUPLICATE_ORDER
+        row.financial_status  = fin || null;
+        row.risk_level        = String(row.raw_extras?.['Risk Level'] || '').trim() || null;
+        row.tags              = String(row.raw_extras?.['Tags']       || '').trim() || null;
+        row.is_duplicate_flag = (row.tags || '').includes('DUPLICATE_ORDER');
       }
     }
 

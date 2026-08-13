@@ -338,11 +338,17 @@ router.get(
     const { client } = req.semya;
     const { sku, platform, from, to } = req.query;
 
+    // includeAllStatuses=true: used by AI Insights Cancellation Tracker
+    // and High Risk cards — they need voided/refunded rows too.
+    // When false (default), all statuses are returned; caller filters
+    // via excludeStatuses as needed.
+    const includeAllStatuses = req.query.includeAllStatuses === 'true';
+
     const [revenueRows, campaignRows] = await Promise.all([
       fetchAllRows((rangeFrom, rangeTo) => {
         let q = supabaseAdmin
           .from('revenue_data')
-          .select('standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status, standard_product_name, standard_order_id, raw_extras')
+          .select('standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status, standard_product_name, standard_order_id, financial_status, risk_level, tags, raw_extras')
           .eq('client_id', client.id)
           .order('id')
           .range(rangeFrom, rangeTo);

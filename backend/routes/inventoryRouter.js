@@ -352,24 +352,17 @@ router.post(
       return res.status(400).json({ error: 'This file has no Warehouse column and no default warehouse is configured. Add a Warehouse column to your file with the warehouse name (e.g. the state/location name), then add that warehouse under UTM Analytics first.' });
     }
 
-    // ── Existing SKUs — two cases:
-    //
-    // 1. SKU is positive (or zero) and already tracked → leave it alone.
-    //    Re-uploading a stock file must never overwrite a quantity that's
-    //    been correctly maintained by automatic sale deductions.
-    //
-    // 2. SKU is NEGATIVE → it was auto-created by a sale deduction before
-    //    any stock was ever seeded. The negative value is how many units
-    //    were sold before we knew the starting count. When the admin now
-    //    uploads the real starting quantity, the correct final number is:
-    //      uploaded_qty + current_negative  (e.g. 100 + (-5) = 95)
-    //    We do this by recording a manual_adjustment movement for the
-    //    uploaded quantity — recordMovement adds it on top of whatever
-    //    is already there, so the negative is automatically resolved.
+    // ── Existing SKUs — fetched once, up front, so a re-upload never
+    // overwrites stock that's already being tracked and automatically
+    // adjusted by real sales. Confirmed directly with the business:
+    // this file only gets re-uploaded to add NEW SKUs to the catalog,
+    // not as a fresh full snapshot — so any SKU already present here
+    // must be left alone. Overwriting it would silently undo every
+    // automatic deduction that's happened since the last upload,
+    // resetting stock back to a stale number.
     const { data: existingStock } = await supabaseAdmin
-      .from('inventory_stock').select('warehouse_id, standard_sku, quantity_on_hand').eq('client_id', client.id);
-    // Map of "warehouseId||sku" → current quantity_on_hand
-    const existingMap = new Map((existingStock || []).map(r => [r.warehouse_id + '||' + r.standard_sku, r.quantity_on_hand]));
+      .from('inventory_stock').select('warehouse_id, standard_sku').eq('client_id', client.id);
+    const existingKeys = new Set((existingStock || []).map(r => r.warehouse_id + '||' + r.standard_sku));
 
     const skipped = [];
     let inserted = 0, skippedAsExisting = 0;
@@ -396,40 +389,12 @@ router.post(
         continue;
       }
 
-      const existingQty = existingMap.has(warehouseId + '||' + sku)
-        ? existingMap.get(warehouseId + '||' + sku)
-        : undefined;
-
-      if (existingQty !== undefined && existingQty >= 0) {
-        // Case 1: SKU already has a real (non-negative) stock count —
-        // leave it alone. Overwriting would undo all sale deductions
-        // that have happened since the last stock upload.
+      // Already tracked — leave it alone, don't reset it.
+      if (existingKeys.has(warehouseId + '||' + sku)) {
         skippedAsExisting++;
         continue;
       }
 
-      if (existingQty !== undefined && existingQty < 0) {
-        // Case 2: SKU went negative from sale deductions before stock
-        // was ever seeded. Apply the uploaded qty as a manual_adjustment
-        // movement on top of the negative — recordMovement adds the
-        // delta to whatever is already there, so the result is correct:
-        //   e.g. current = -5, uploaded = 100 → final = 95
-        if (thresholdRaw !== undefined && thresholdRaw !== '' && !isNaN(Number(thresholdRaw))) {
-          await supabaseAdmin.from('inventory_stock')
-            .update({ low_stock_threshold: Number(thresholdRaw), updated_at: new Date().toISOString() })
-            .eq('client_id', client.id).eq('warehouse_id', warehouseId).eq('standard_sku', sku);
-        }
-        await recordMovement({
-          clientId: client.id, warehouseId, sku,
-          qtyDelta: qty, reason: 'manual_adjustment',
-          sourceRowHash: crypto.randomUUID(),
-        }).catch(() => {});
-        existingMap.set(warehouseId + '||' + sku, existingQty + qty);
-        inserted++;
-        continue;
-      }
-
-      // Case 3: Brand-new SKU — insert it fresh.
       const insertRow = { client_id: client.id, warehouse_id: warehouseId, standard_sku: sku, quantity_on_hand: qty, updated_at: new Date().toISOString() };
       if (thresholdRaw !== undefined && thresholdRaw !== '' && !isNaN(Number(thresholdRaw))) {
         insertRow.low_stock_threshold = Number(thresholdRaw);
@@ -442,16 +407,18 @@ router.post(
         continue;
       }
 
-      // Log the starting quantity in the movement ledger too.
+      // Log the starting quantity for a brand-new SKU as a manual
+      // adjustment too, same as every other stock change — keeps the
+      // movement ledger complete.
       if (qty !== 0) {
         await recordMovement({
           clientId: client.id, warehouseId, sku,
           qtyDelta: qty, reason: 'manual_adjustment',
           sourceRowHash: crypto.randomUUID(),
-        }).catch(() => {});
+        }).catch(() => {}); // best-effort — the stock value itself is already saved above regardless
       }
 
-      existingMap.set(warehouseId + '||' + sku, qty); // guard against duplicates in the same file
+      existingKeys.add(warehouseId + '||' + sku); // so a duplicate row later in the SAME file doesn't double-insert
       inserted++;
     }
 
@@ -473,16 +440,11 @@ router.post(
 router.get('/:client_slug/inventory/alerts', rbacMiddleware, requireTab('utm_analytics'), async (req, res) => {
   const { client } = req.semya;
 
-  // Column-vs-column comparison (quantity_on_hand <= low_stock_threshold)
-  // cannot use Supabase's .filter() — the third arg is treated as a
-  // literal string, not a column name, causing a Postgres type cast
-  // error and a 500. Fetch all stock rows and filter in JS instead;
-  // the inventory_stock table per client is small (hundreds of rows).
-  const { data: allStock, error: stockErr } = await supabaseAdmin
+  const { data: stock, error: stockErr } = await supabaseAdmin
     .from('inventory_stock')
     .select('warehouse_id, standard_sku, quantity_on_hand, low_stock_threshold, warehouses(name)')
-    .eq('client_id', client.id);
-  const stock = (allStock || []).filter(s => s.quantity_on_hand <= s.low_stock_threshold);
+    .eq('client_id', client.id)
+    .filter('quantity_on_hand', 'lte', 'low_stock_threshold'); // Postgres column-vs-column compare via filter()
   if (stockErr) return res.status(500).json({ error: 'Failed to load stock alerts: ' + stockErr.message });
 
   if (!stock?.length) return res.json([]);

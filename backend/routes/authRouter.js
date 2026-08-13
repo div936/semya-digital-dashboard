@@ -103,18 +103,10 @@ async function createOrInviteUser({ email, role, clientId, isLead = false, expir
     authUserId = users.find(u => u.email === cleanEmail)?.id;
 
     try {
-      // Use type 'magiclink' — this generates a one-time sign-in link.
-      // It does NOT send an email automatically (that's only done by
-      // inviteUserByEmail), so the link is returned to the frontend
-      // to display to the admin, who can copy and share it directly.
-      // The frontend approveRequest() now surfaces this link with a
-      // copy button instead of silently discarding it.
-      const { data: linkData, error: linkErr } = await supabaseAuth.auth.admin.generateLink({
+      const { data: linkData } = await supabaseAuth.auth.admin.generateLink({
         type: 'magiclink', email: cleanEmail, options: { redirectTo },
       });
-      if (linkErr) throw linkErr;
       magicLink = linkData?.properties?.action_link || null;
-      console.log(`[createOrInviteUser] Generated magic link fallback for existing user ${cleanEmail} — admin must share manually`);
     } catch (e2) {
       console.warn('[createOrInviteUser] generateLink fallback also failed:', e2.message);
     }
@@ -335,53 +327,6 @@ router.post('/approve', asyncHandler(async (req, res) => {
     clientName: client?.name, clientSlug: client?.slug,
     magicLink: result.magicLink,
   });
-}));
-
-
-// ── POST /auth/reinvite — admin resends/regenerates sign-in link ──
-// For users already approved but whose invite link expired before use.
-// Body: { email }
-// Returns same shape as /approve: { ok, email, emailSent, magicLink }
-router.post('/reinvite', asyncHandler(async (req, res) => {
-  const admin = await requireAdmin(req, res); if (!admin) return;
-  const { email } = req.body || {};
-  if (!email) return res.status(400).json({ error: 'email is required.' });
-  const cleanEmail = email.toLowerCase().trim();
-
-  // Confirm this person is actually an approved user in our DB
-  // (admins are also valid targets — their invite link can expire too)
-  const { data: userRow } = await supabaseAdmin.from('users').select('role, client_id, is_active').eq('email', cleanEmail).single();
-  if (!userRow) return res.status(404).json({ error: 'No approved user found with that email. They must be approved first.' });
-  if (!userRow.is_active) return res.status(400).json({ error: 'User account is inactive. Reactivate them first.' });
-
-  const redirectTo = `${FRONTEND_URL}/set-password.html`;
-  let emailSent = false;
-  let magicLink = null;
-
-  // Try a fresh invite email first (works if they never confirmed their
-  // account — Supabase allows re-inviting unconfirmed users)
-  try {
-    const { data: invited, error: inviteErr } = await supabaseAuth.auth.admin.inviteUserByEmail(cleanEmail, { redirectTo });
-    if (inviteErr) throw inviteErr;
-    emailSent = true;
-    console.log(`[reinvite] Re-sent invite email to ${cleanEmail}`);
-  } catch (e) {
-    // Account already confirmed — fall back to a fresh magic link
-    console.warn('[reinvite] inviteUserByEmail failed, generating magic link:', e.message);
-    try {
-      const { data: linkData, error: linkErr } = await supabaseAuth.auth.admin.generateLink({
-        type: 'magiclink', email: cleanEmail, options: { redirectTo },
-      });
-      if (linkErr) throw linkErr;
-      magicLink = linkData?.properties?.action_link || null;
-      console.log(`[reinvite] Generated magic link for ${cleanEmail} — admin must share manually`);
-    } catch (e2) {
-      console.warn('[reinvite] generateLink also failed:', e2.message);
-      return res.status(500).json({ error: 'Could not generate a sign-in link: ' + e2.message });
-    }
-  }
-
-  return res.json({ ok: true, email: cleanEmail, emailSent, magicLink });
 }));
 
 
