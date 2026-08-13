@@ -864,7 +864,10 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
     // order row gets one. Use this to identify and skip sub-rows for
     // order counts and units. Cancelled = voided/refunded orders.
     const isCancelled  = row.standard_status === 'Cancelled';
-    const isMainRow    = !!(row.standard_status); // null/undefined = sub-row
+    // Main row = has revenue > 0. Sub-rows have been zeroed in the DB.
+    // This is more reliable than checking standard_status because
+    // fileIngestion forward-fills status to ALL rows of an order.
+    const isMainRow    = Number(row.standard_revenue ?? 0) > 0;
 
     const p   = row.platform;
     const rev = Number(row.standard_revenue ?? 0);
