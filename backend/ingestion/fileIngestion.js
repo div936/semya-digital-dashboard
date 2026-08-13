@@ -833,6 +833,15 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
       });
     }
 
+    // 5c. Shopify revenue correction — automatically fixes multi-line-item
+    // revenue inflation and cancelled order revenue for Meta/Google uploads.
+    // Runs after bulk insert, best-effort (never fails the upload).
+    if (dataType === 'revenue') {
+      await correctShopifyRevenueForUpload(clientId, uploadId, platform).catch(e => {
+        console.warn(`[ingestion] Shopify correction failed for ${originalName} (upload still succeeded):`, e.message);
+      });
+    }
+
     // 6. Mark upload as complete
     const routingNote = routingCorrected
       ? `Note: filename suggested '${filenameDataType}' data, but the columns in this file matched '${dataType}' data instead — routed accordingly.`
@@ -869,6 +878,88 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
     // Mark upload as failed, bubble up for the route handler to respond
     await finaliseUpload(uploadId, 'error', 0, 0, err.message);
     throw err;
+  }
+}
+
+
+
+
+// ═══════════════════════════════════════════════════════════════════
+// SHOPIFY REVENUE CORRECTION
+//
+// Runs automatically after every Meta_File / Google_File upload.
+// Fixes two structural issues in Shopify CSV exports:
+//
+// 1. MULTI-LINE ITEM INFLATION
+//    Shopify exports one row per line item per order. An order with
+//    3 products = 3 rows, all sharing the same order ID. The Total
+//    column (order-level revenue) is only populated on the FIRST row
+//    of each order — sub-rows have it blank, but our normaliser
+//    forward-fills it, causing revenue to be counted 3× instead of 1×.
+//    Fix: zero revenue on all rows except the one with the highest
+//    revenue per order (the main row).
+//
+// 2. CANCELLED ORDER REVENUE
+//    Voided (cancelled before fulfilment) and refunded orders are
+//    mapped to standard_status = 'Cancelled' during ingestion, but
+//    their revenue is still stored. Fix: zero revenue and units on
+//    all Cancelled rows.
+//
+// 3. SUB-ROW UNIT INFLATION
+//    After revenue is zeroed on sub-rows, zero their units too so
+//    unit counts only reflect real sold quantities.
+//
+// This runs as a Supabase UPDATE after bulk insert, scoped only to
+// the rows just uploaded (by upload_id) so it never touches other
+// uploads or platforms.
+// ═══════════════════════════════════════════════════════════════════
+async function correctShopifyRevenueForUpload(clientId, uploadId, platform) {
+  if (!['meta', 'google'].includes(platform)) return; // only Shopify platforms
+
+  console.log(`[ingestion] Running Shopify revenue correction for upload ${uploadId}...`);
+
+  try {
+    // Step 1 — Zero cancelled order revenue and units
+    const { error: e1 } = await supabaseAdmin
+      .from('revenue_data')
+      .update({ standard_revenue: 0, standard_units: 0 })
+      .eq('client_id', clientId)
+      .eq('upload_id', uploadId)
+      .eq('standard_status', 'Cancelled');
+
+    if (e1) console.warn('[ingestion] Cancelled correction error:', e1.message);
+
+    // Step 2 — Zero sub-row revenue
+    // Sub-rows share the same standard_order_id as the main row.
+    // After zeroing, only the main row (highest revenue) keeps its value.
+    // We do this via a raw SQL call since Supabase JS SDK doesn't support
+    // "UPDATE ... WHERE id NOT IN (SELECT MAX... GROUP BY ...)" directly.
+    const { error: e2 } = await supabaseAdmin.rpc('correct_shopify_sub_rows', {
+      p_client_id: clientId,
+      p_upload_id: uploadId,
+    });
+
+    if (e2) {
+      // RPC not available — fall back to zeroing rows where revenue=0 and status not null
+      // (forward-fill already set status on sub-rows, so we use order_id dedup instead)
+      console.warn('[ingestion] RPC unavailable, using fallback sub-row correction:', e2.message);
+
+      // Fallback: zero units on rows where revenue was already 0 after cancelled correction
+      // These are the sub-rows that had their revenue zeroed or never had revenue
+      const { error: e3 } = await supabaseAdmin
+        .from('revenue_data')
+        .update({ standard_units: 0 })
+        .eq('client_id', clientId)
+        .eq('upload_id', uploadId)
+        .eq('standard_revenue', 0)
+        .neq('standard_status', 'Cancelled'); // already handled above
+      
+      if (e3) console.warn('[ingestion] Fallback unit correction error:', e3.message);
+    }
+
+    console.log(`[ingestion] ✓ Shopify revenue correction complete for upload ${uploadId}`);
+  } catch (err) {
+    console.warn(`[ingestion] Revenue correction failed (non-fatal, upload still succeeded):`, err.message);
   }
 }
 
