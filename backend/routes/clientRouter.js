@@ -867,7 +867,7 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
 
     if (!byPlatform[p]) byPlatform[p] = { platform: p, totalRevenue: 0, totalUnits: 0, orderCount: 0, _orderIds: new Set(), _rowsWithoutOrderId: 0 };
     byPlatform[p].totalRevenue += rev;
-    byPlatform[p].totalUnits   += u;
+    byPlatform[p].totalUnits   += (rev > 0 ? u : 0);
     // Count DISTINCT orders, not rows. An order with 2 line items (2
     // products) is 1 order, not 2 — previously this incremented once
     // per row, which is why order counts sat suspiciously close to
@@ -919,7 +919,7 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
     const prodKey = p + '|' + displaySku;
     if (!byProduct[prodKey]) byProduct[prodKey] = { sku: displaySku, platform: p, revenue: 0, units: 0 };
     byProduct[prodKey].revenue += rev;
-    byProduct[prodKey].units   += u;
+    byProduct[prodKey].units   += (rev > 0 ? u : 0);
 
     // Category — ported keyword inference from the old dashboard, run
     // against the product name (falls back to SKU internally if the
