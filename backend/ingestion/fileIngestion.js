@@ -914,12 +914,32 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
 // uploads or platforms.
 // ═══════════════════════════════════════════════════════════════════
 async function correctShopifyRevenueForUpload(clientId, uploadId, platform) {
-  if (!['meta', 'google'].includes(platform)) return; // only Shopify platforms
+  // ── PLATFORM ROUTING ──────────────────────────────────────────────
+  //
+  // Shopify (meta, google):
+  //   Each order exports ONE ROW PER LINE ITEM, and the Total column
+  //   (full order value) is REPEATED on every row. So a 3-product order
+  //   has 3 rows each showing the same Total. We must keep revenue on
+  //   ONE row only (the highest-revenue row = main row) and zero the rest.
+  //
+  // Amazon (amazon, acutas):
+  //   Each order exports ONE ROW PER ITEM, and the item-price column
+  //   shows ONLY THAT ITEM'S price. A 3-product order has 3 rows each
+  //   with a different item-price. We must SUM all rows — do NOT zero
+  //   sub-rows. Only cancelled orders need zeroing.
+  //
+  // This distinction is critical — applying the Shopify fix to Amazon
+  // would zero legitimate item revenue and under-count sales.
 
-  console.log(`[ingestion] Running Shopify revenue correction for upload ${uploadId}...`);
+  if (!['meta', 'google', 'amazon', 'acutas'].includes(platform)) return;
+
+  const isShopify = ['meta', 'google'].includes(platform);
+  const isAmazon  = ['amazon', 'acutas'].includes(platform);
+
+  console.log(`[ingestion] Running revenue correction for ${platform} upload ${uploadId}...`);
 
   try {
-    // Step 1 — Zero cancelled order revenue and units
+    // Step 1 — Zero cancelled order revenue and units (ALL platforms)
     const { error: e1 } = await supabaseAdmin
       .from('revenue_data')
       .update({ standard_revenue: 0, standard_units: 0 })
@@ -929,37 +949,37 @@ async function correctShopifyRevenueForUpload(clientId, uploadId, platform) {
 
     if (e1) console.warn('[ingestion] Cancelled correction error:', e1.message);
 
-    // Step 2 — Zero sub-row revenue
-    // Sub-rows share the same standard_order_id as the main row.
-    // After zeroing, only the main row (highest revenue) keeps its value.
-    // We do this via a raw SQL call since Supabase JS SDK doesn't support
-    // "UPDATE ... WHERE id NOT IN (SELECT MAX... GROUP BY ...)" directly.
-    const { error: e2 } = await supabaseAdmin.rpc('correct_shopify_sub_rows', {
-      p_client_id: clientId,
-      p_upload_id: uploadId,
-    });
+    // Step 2 — Zero sub-row revenue (SHOPIFY ONLY)
+    // Amazon rows are NOT duplicated — each row is a real sale of one item.
+    // DO NOT run this on Amazon or we'll zero legitimate revenue.
+    if (isShopify) {
+      const { error: e2 } = await supabaseAdmin.rpc('correct_shopify_sub_rows', {
+        p_client_id: clientId,
+        p_upload_id: uploadId,
+      });
 
-    if (e2) {
-      // RPC not available — fall back to zeroing rows where revenue=0 and status not null
-      // (forward-fill already set status on sub-rows, so we use order_id dedup instead)
-      console.warn('[ingestion] RPC unavailable, using fallback sub-row correction:', e2.message);
-
-      // Fallback: zero units on rows where revenue was already 0 after cancelled correction
-      // These are the sub-rows that had their revenue zeroed or never had revenue
-      const { error: e3 } = await supabaseAdmin
-        .from('revenue_data')
-        .update({ standard_units: 0 })
-        .eq('client_id', clientId)
-        .eq('upload_id', uploadId)
-        .eq('standard_revenue', 0)
-        .neq('standard_status', 'Cancelled'); // already handled above
-      
-      if (e3) console.warn('[ingestion] Fallback unit correction error:', e3.message);
+      if (e2) {
+        console.warn('[ingestion] RPC unavailable, using fallback:', e2.message);
+        const { error: e3 } = await supabaseAdmin
+          .from('revenue_data')
+          .update({ standard_units: 0 })
+          .eq('client_id', clientId)
+          .eq('upload_id', uploadId)
+          .eq('standard_revenue', 0)
+          .neq('standard_status', 'Cancelled');
+        if (e3) console.warn('[ingestion] Fallback unit correction error:', e3.message);
+      }
     }
 
-    console.log(`[ingestion] ✓ Shopify revenue correction complete for upload ${uploadId}`);
+    // Step 3 — Amazon: zero units on cancelled rows (revenue already zeroed above)
+    // Revenue on active Amazon rows is correct as-is — each row = one item sold.
+    if (isAmazon) {
+      console.log(`[ingestion] Amazon: cancelled orders zeroed, active rows kept as-is`);
+    }
+
+    console.log(`[ingestion] ✓ Revenue correction complete for ${platform} upload ${uploadId}`);
   } catch (err) {
-    console.warn(`[ingestion] Revenue correction failed (non-fatal, upload still succeeded):`, err.message);
+    console.warn(`[ingestion] Revenue correction failed (non-fatal):`, err.message);
   }
 }
 

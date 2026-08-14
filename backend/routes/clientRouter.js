@@ -213,7 +213,7 @@ router.get(
         .from('revenue_data')
         // raw_extras included so discount (Lineitem discount from Shopify)
         // can be applied at query time when applyDiscounts=true.
-        .select('platform, order_date, standard_revenue, standard_units, standard_status, standard_sku, standard_product_name, standard_order_id, raw_extras')
+        .select('platform, order_date, standard_revenue, standard_units, standard_status, financial_status, standard_sku, standard_product_name, standard_order_id, raw_extras')
         .eq('client_id', client.id)
         .order('id')
         .range(from, to);
@@ -279,6 +279,51 @@ router.get(
     } else {
       summary.availableCategories = summary.categories.map(c => c.category);
     }
+
+    // ── REAL PREVIOUS PERIOD ──────────────────────────────────────────
+    // Calculate actual previous period instead of hardcoded * 0.82.
+    // Previous period = same duration, immediately before the selected range.
+    const fromDate = req.query.from ? new Date(req.query.from) : null;
+    const toDate   = req.query.to   ? new Date(req.query.to)   : null;
+
+    if (fromDate && toDate) {
+      const dayDiff  = Math.ceil((toDate - fromDate) / 86400000);
+      const prevTo   = new Date(fromDate); prevTo.setDate(prevTo.getDate() - 1);
+      const prevFrom = new Date(prevTo);   prevFrom.setDate(prevFrom.getDate() - dayDiff);
+      const prevFromStr = prevFrom.toISOString().slice(0, 10);
+      const prevToStr   = prevTo.toISOString().slice(0, 10);
+
+      const prevData = await fetchAllRows((rangeFrom, rangeTo) => {
+        let q = supabaseAdmin
+          .from('revenue_data')
+          .select('platform, standard_revenue, standard_units, standard_status, standard_order_id')
+          .eq('client_id', client.id)
+          .order('id')
+          .range(rangeFrom, rangeTo)
+          .or(`and(order_date.gte.${prevFromStr},order_date.lte.${prevToStr})`);
+        if (platform) q = q.in('platform', expandPlatform(platform));
+        return q;
+      }).catch(() => []);
+
+      const prevSummary    = aggregatePlatformSales(prevData, excludeStatuses);
+      summary.prevGrandTotal = prevSummary.grandTotal;
+      summary.prevUnits      = prevData.reduce((s, r) => s + (Number(r.standard_units) || 0), 0);
+      summary.prevOrders     = new Set(prevData.filter(r => r.standard_revenue > 0).map(r => r.standard_order_id).filter(Boolean)).size;
+    } else {
+      summary.prevGrandTotal = null;
+      summary.prevUnits      = null;
+      summary.prevOrders     = null;
+    }
+
+    // ── CANCELLED TOTALS ──────────────────────────────────────────────
+    // Count cancelled orders and their gross value for the note
+    // under the Total Orders card on Platform Sales.
+    const cancelledRows = data.filter(r => r.standard_status === 'Cancelled');
+    const cancelledOrderIds = new Set(cancelledRows.map(r => r.standard_order_id).filter(Boolean));
+    // Gross cancelled revenue — use raw_extras Total for Shopify, standard_revenue for others
+    // For now approximate from order count (will be exact once financial_status is in SELECT)
+    summary.cancelledOrders  = cancelledOrderIds.size || cancelledRows.filter(r => r.standard_revenue === 0 || r.standard_revenue === null).length;
+    summary.cancelledRevenue = cancelledRows.reduce((s, r) => s + (Number(r.raw_extras?.Total || r.raw_extras?.['item-price'] || 0)), 0);
 
     // Date-aligned ROAS — was previously computed on the frontend as
     // "this platform's ENTIRE selected-range revenue ÷ whatever
@@ -997,9 +1042,26 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
   const categories = Object.values(byCategory)
     .sort((a, b) => b.revenue - a.revenue);
 
+  // Also compute cancelled revenue and orders for display on Platform Sales
+  let cancelledRevenue = 0;
+  let cancelledOrders  = 0;
+  let grossRevenue     = 0;
+
+  for (const row of rows) {
+    const rev = Number(row.standard_revenue ?? 0);
+    if (row.standard_status === 'Cancelled') {
+      // Cancelled rows have revenue zeroed in DB but we need the gross
+      // We track this from raw data passed through — grab from raw_extras Total if available
+      cancelledOrders++;
+    }
+    grossRevenue += rev;
+  }
+
   return {
     grandTotal,
-    prevGrandTotal: grandTotal * 0.82,
+    prevGrandTotal: null,  // calculated by caller from real prev period data
+    cancelledRevenue,
+    cancelledOrders,
     weekly,
     daily,
     monthly,
