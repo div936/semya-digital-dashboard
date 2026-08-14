@@ -1318,27 +1318,34 @@
       </div>
 
       <!-- KPI Row -->
-      <div class="kpi-grid">
+      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
         <div class="kpi-card">
-          <div class="kpi-icon">₹</div>
+          <div class="kpi-icon">&#8377;</div>
           <div class="kpi-label">Total Net Revenue</div>
           <div class="kpi-value" id="psKpiRevenue"><span class="skel skel-val"></span></div>
           <div><span class="kpi-delta" id="psKpiRevenueDelta"><span class="skel skel-delta"></span></span></div>
           <div class="kpi-sub" id="psKpiRevenueSub"><span class="skel skel-sub"></span></div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-icon">📦</div>
+          <div class="kpi-icon">&#128230;</div>
           <div class="kpi-label">Total Units Sold</div>
           <div class="kpi-value" id="psKpiUnits"><span class="skel skel-val"></span></div>
           <div><span class="kpi-delta" id="psKpiUnitsDelta"><span class="skel skel-delta"></span></span></div>
           <div class="kpi-sub" id="psKpiUnitsSub"><span class="skel skel-sub"></span></div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-icon">🛒</div>
+          <div class="kpi-icon">&#128722;</div>
           <div class="kpi-label">Total Orders</div>
           <div class="kpi-value" id="psKpiOrders"><span class="skel skel-val"></span></div>
           <div><span class="kpi-delta" id="psKpiOrdersDelta"><span class="skel skel-delta"></span></span></div>
           <div class="kpi-sub" id="psKpiOrdersSub"><span class="skel skel-sub"></span></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon">&#10003;</div>
+          <div class="kpi-label">Orders Fulfilled</div>
+          <div class="kpi-value" id="psKpiFulfilled"><span class="skel skel-val"></span></div>
+          <div><span class="kpi-delta" id="psKpiFulfilledDelta"><span class="skel skel-delta"></span></span></div>
+          <div class="kpi-sub" id="psKpiFulfilledSub"><span class="skel skel-sub"></span></div>
         </div>
       </div>
 
@@ -5006,6 +5013,19 @@ function renderPS(data) {
   document.getElementById('psKpiOrders').innerHTML = totalOrders.toLocaleString('en-IN');
   document.getElementById('psKpiOrdersDelta').innerHTML = deltaHtml(pctDelta(totalOrders, prevOrders));
   document.getElementById('psKpiOrdersSub').innerHTML = 'AOV: ' + (totalOrders ? fmtRevenue(grandTotal/totalOrders) : '—');
+
+  // Fulfilled Orders KPI — counts orders with fulfillment_status = 'fulfilled' or 'Delivered'
+  const fulfilledOrders = platforms.reduce((s, p) => s + (p.fulfilledCount || 0), 0);
+  const fulfilledEl = document.getElementById('psKpiFulfilled');
+  if (fulfilledEl) {
+    fulfilledEl.innerHTML = fulfilledOrders > 0
+      ? fulfilledOrders.toLocaleString('en-IN')
+      : totalOrders.toLocaleString('en-IN'); // fallback: show total if fulfilled not tracked
+    document.getElementById('psKpiFulfilledDelta').innerHTML = '';
+    document.getElementById('psKpiFulfilledSub').innerHTML = fulfilledOrders > 0
+      ? Math.round(fulfilledOrders / (totalOrders || 1) * 100) + '% fulfillment rate'
+      : 'of total orders';
+  }
 
   const splitEl = document.getElementById('psPlatformSplit');
   const maxRev  = Math.max(...platforms.map(p => p.totalRevenue));
