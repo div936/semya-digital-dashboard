@@ -166,9 +166,14 @@ export const REVENUE_MAP = {
   // fileIngestion.js) can use it as its most-reliable tier, matching
   // the old dashboard's 3-tier dedup design.
   'order item id':              'standard_order_item_id',
-  'financial status':           'standard_status',   // Shopify order export — paid/pending/refunded/voided
+  // NOTE: 'financial status' and 'fulfillment status' are deliberately
+  // NOT mapped here for Shopify rows. The ingestion forward-fill in
+  // fileIngestion.js reads these from raw_extras to set standard_status
+  // correctly across all line-item rows of each order. Mapping them
+  // here would consume them into standard_status on the first row only,
+  // leaving raw_extras empty so the forward-fill finds nothing and
+  // defaults every row to 'Pending'.
   'item status':                'standard_status',
-  'fulfillment status':         'standard_status',
   'delivery status':            'standard_status',
   'shipment status':            'standard_status',
   'status':                     'standard_status',
