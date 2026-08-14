@@ -9377,14 +9377,23 @@ async function loadUploadHistory() {
         const type = u.data_type === 'revenue' ? '📊 Revenue' : '📣 Campaign';
         const rows = (u.row_count || 0).toLocaleString('en-IN');
         const file = (u.original_filename || '—').slice(0, 28);
+        // Upload status badge (ingestion success/failure)
         const statusBadge = u.status === 'error'
           ? '<span style="color:#dc2626;font-size:9px;font-weight:700;">FAILED</span>'
           : '<span style="color:#059669;font-size:9px;font-weight:700;">OK</span>';
+        // Validation badge (data quality check result)
+        const v = u.validation;
+        const validBadge = !v ? '<span style="color:#94a3b8;font-size:9px;">Validating…</span>'
+          : v.status === 'ok'      ? '<span title="' + (v.ai_summary||'') + '" style="cursor:help;color:#059669;font-size:10px;font-weight:700;">✅ Valid</span>'
+          : v.status === 'warning' ? '<span title="' + (v.ai_summary||'') + '" style="cursor:help;color:#d97706;font-size:10px;font-weight:700;">⚠️ Check</span>'
+          : v.status === 'error'   ? '<span title="' + (v.ai_summary||'') + '" style="cursor:help;color:#dc2626;font-size:10px;font-weight:700;">❌ Issues</span>'
+          : '<span style="color:#94a3b8;font-size:9px;">—</span>';
         return '<div class="dm-history-row">' +
           '<span style="font-size:11px;color:#374151;">' + date + '</span>' +
           '<span><span class="platform-pill ' + pm.pillClass + '" style="font-size:9px;padding:2px 7px;">' + pm.label + '</span></span>' +
           '<span style="color:#64748b;">' + type + '</span>' +
           '<span style="font-family:var(--font-mono);color:#0f172a;">' + rows + '</span>' +
+          '<span>' + validBadge + '</span>' +
           '<span style="color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (u.original_filename||'') + '">' + file + '</span>' +
           '<button class="dm-delete-btn"' +
             ' data-uid="' + u.id + '"' +
