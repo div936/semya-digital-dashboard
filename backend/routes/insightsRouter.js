@@ -12,6 +12,7 @@
 //   app.use('/clients', insightsRouter);
 // ─────────────────────────────────────────────────────────────────
 import { Router }          from 'express';
+import Anthropic            from '@anthropic-ai/sdk';
 import { rbacMiddleware, requireTab } from '../middleware/rbac.js';
 import { supabaseAdmin }   from '../lib/supabase.js';
 import { generateInsights, generateNarrativeSummaries } from '../lib/insightGenerator.js';
@@ -165,7 +166,7 @@ router.post(
     }
 
     try {
-      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      // Use the already-imported Anthropic SDK (static import at top of file)
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
       // Set headers for streaming

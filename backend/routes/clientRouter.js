@@ -308,7 +308,17 @@ router.get(
         .neq('standard_status', 'Cancelled');
       if (prevPlatformFilter) prevQ = prevQ.in('platform', prevPlatformFilter);
 
-      const { data: prevRows } = await prevQ.limit(5000).catch(() => ({ data: [] }));
+      // Fetch all prev period rows (no limit — same as main query)
+      let prevRows = [];
+      let prevFrom2 = 0;
+      const prevPageSize = 2000;
+      while (true) {
+        const { data: batch, error } = await prevQ.range(prevFrom2, prevFrom2 + prevPageSize - 1);
+        if (error || !batch || batch.length === 0) break;
+        prevRows = prevRows.concat(batch);
+        if (batch.length < prevPageSize) break;
+        prevFrom2 += prevPageSize;
+      }
       const prevActive = (prevRows || []).filter(r => Number(r.standard_revenue) > 0);
       summary.prevGrandTotal = prevActive.reduce((s, r) => s + Number(r.standard_revenue), 0);
       summary.prevUnits      = prevActive.reduce((s, r) => s + Number(r.standard_units  || 0), 0);
@@ -322,12 +332,11 @@ router.get(
     // ── CANCELLED TOTALS ──────────────────────────────────────────────
     // Count cancelled orders and their gross value for the note
     // under the Total Orders card on Platform Sales.
-    const cancelledRows = data.filter(r => r.standard_status === 'Cancelled');
+    // Cancelled orders — count unique order IDs with Cancelled status
+    const cancelledRows     = data.filter(r => r.standard_status === 'Cancelled');
     const cancelledOrderIds = new Set(cancelledRows.map(r => r.standard_order_id).filter(Boolean));
-    // Gross cancelled revenue — use raw_extras Total for Shopify, standard_revenue for others
-    // For now approximate from order count (will be exact once financial_status is in SELECT)
-    summary.cancelledOrders  = cancelledOrderIds.size || cancelledRows.filter(r => r.standard_revenue === 0 || r.standard_revenue === null).length;
-    summary.cancelledRevenue = 0; // gross cancelled revenue shown via financial_status filter in AI Insights
+    summary.cancelledOrders  = cancelledOrderIds.size;
+    summary.cancelledRevenue = 0; // shown in AI Insights Cancellation Tracker
 
     // Date-aligned ROAS — was previously computed on the frontend as
     // "this platform's ENTIRE selected-range revenue ÷ whatever
@@ -1020,9 +1029,10 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set(), excludeFulfil
   // Finalise distinct order counts (Set → number) and strip the
   // internal tracking fields — they're not part of the public shape.
   for (const p of Object.values(byPlatform)) {
-    p.orderCount    = p._orderIds.size + p._rowsWithoutOrderId;
-      p.fulfilledCount = p._fulfilledIds.size;
+    p.orderCount     = p._orderIds.size + p._rowsWithoutOrderId;
+    p.fulfilledCount = p._fulfilledIds.size;
     delete p._orderIds;
+    delete p._fulfilledIds;
     delete p._rowsWithoutOrderId;
   }
 
@@ -1043,7 +1053,7 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set(), excludeFulfil
   const daily   = bucketToArr(byDay,   'day').map(d => ({ ...d, week: d.day }));
   const weekly  = Object.entries(byWeek)
     .sort((a, b) => a[1].sort - b[1].sort)
-    .map(([week, v]) => ({ week, revenue: v.rev, prevRevenue: v.rev * 0.82 }));
+    .map(([week, v]) => ({ week, revenue: v.rev }));
   const monthly = bucketToArr(byMonth, 'month').map(d => ({ ...d, week: d.month }));
   const yearly  = bucketToArr(byYear,  'year').map(d => ({ ...d, week: d.year }));
 
@@ -1054,26 +1064,16 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set(), excludeFulfil
   const categories = Object.values(byCategory)
     .sort((a, b) => b.revenue - a.revenue);
 
-  // Also compute cancelled revenue and orders for display on Platform Sales
-  let cancelledRevenue = 0;
-  let cancelledOrders  = 0;
-  let grossRevenue     = 0;
-
-  for (const row of rows) {
-    const rev = Number(row.standard_revenue ?? 0);
-    if (row.standard_status === 'Cancelled') {
-      // Cancelled rows have revenue zeroed in DB but we need the gross
-      // We track this from raw data passed through — grab from raw_extras Total if available
-      cancelledOrders++;
-    }
-    grossRevenue += rev;
-  }
+  // Cancelled orders — count unique order IDs with Cancelled status
+  // (already tracked in the main loop above, no second pass needed)
+  const cancelledUniqueOrders = Object.values(byPlatform)
+    .reduce((s, p) => s, 0); // placeholder — route fills this after calling
 
   return {
     grandTotal,
-    prevGrandTotal: null,  // calculated by caller from real prev period data
-    cancelledRevenue,
-    cancelledOrders,
+    prevGrandTotal: null,  // overwritten by caller
+    cancelledRevenue: 0,   // overwritten by caller
+    cancelledOrders:  0,   // overwritten by caller
     weekly,
     daily,
     monthly,
