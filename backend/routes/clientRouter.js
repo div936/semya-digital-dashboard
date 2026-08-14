@@ -33,7 +33,7 @@ const router = Router({ mergeParams: true });
 // or cleanup having happened in between — confirmed the cause was
 // exactly this: none of this file's five callers had an .order()
 // clause at all before this comment was added.
-async function fetchAllRows(buildQuery, pageSize = 1000) {
+async function fetchAllRows(buildQuery, pageSize = 2000) {
   const allRows = [];
   let from = 0;
   while (true) {
@@ -208,12 +208,14 @@ router.get(
 
     const applyDiscounts = req.query.applyDiscounts === 'true';
 
+    // standard_discount is now a dedicated column — raw_extras no longer
+    // needed for platform-sales. Only fraud-patterns route uses raw_extras.
+    const selectCols = 'platform, order_date, standard_revenue, standard_units, standard_status, financial_status, standard_sku, standard_product_name, standard_order_id, standard_discount';
+
     const data = await fetchAllRows((from, to) => {
       let q = supabaseAdmin
         .from('revenue_data')
-        // raw_extras included so discount (Lineitem discount from Shopify)
-        // can be applied at query time when applyDiscounts=true.
-        .select('platform, order_date, standard_revenue, standard_units, standard_status, financial_status, standard_sku, standard_product_name, standard_order_id, raw_extras')
+        .select(selectCols)
         .eq('client_id', client.id)
         .order('id')
         .range(from, to);
@@ -267,12 +269,10 @@ router.get(
     // Amazon/Flipkart/Blinkit already store net revenue — no adjustment.
     if (applyDiscounts) {
       for (const row of data) {
-        const disc = Number(row.raw_extras?.['Lineitem discount'] || 0);
+        const disc = Number(row.standard_discount || 0);
         if (disc > 0) row.standard_revenue = Math.max(0, (row.standard_revenue || 0) - disc);
       }
     }
-    // Drop raw_extras before aggregation — not needed downstream
-    for (const row of data) delete row.raw_extras;
 
     const summary = aggregatePlatformSales(dataForSummary, excludeStatuses, excludeFulfillStatuses);
     // Dropdown needs the FULL category list regardless of which one is
@@ -327,7 +327,7 @@ router.get(
     // Gross cancelled revenue — use raw_extras Total for Shopify, standard_revenue for others
     // For now approximate from order count (will be exact once financial_status is in SELECT)
     summary.cancelledOrders  = cancelledOrderIds.size || cancelledRows.filter(r => r.standard_revenue === 0 || r.standard_revenue === null).length;
-    summary.cancelledRevenue = cancelledRows.reduce((s, r) => s + (Number(r.raw_extras?.Total || r.raw_extras?.['item-price'] || 0)), 0);
+    summary.cancelledRevenue = 0; // gross cancelled revenue shown via financial_status filter in AI Insights
 
     // Date-aligned ROAS — was previously computed on the frontend as
     // "this platform's ENTIRE selected-range revenue ÷ whatever
@@ -397,7 +397,7 @@ router.get(
       fetchAllRows((rangeFrom, rangeTo) => {
         let q = supabaseAdmin
           .from('revenue_data')
-          .select('standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status, standard_product_name, standard_order_id, financial_status, risk_level, tags, raw_extras')
+          .select('standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status, standard_product_name, standard_order_id, financial_status, risk_level, tags')
           .eq('client_id', client.id)
           .order('id')
           .range(rangeFrom, rangeTo);
@@ -448,7 +448,7 @@ router.get(
       if (r.standard_state) r.standard_state = normaliseStateName(r.standard_state);
     }
     backfillLocationByOrder(revenueRows);
-    for (const r of revenueRows) delete r.raw_extras;
+    // raw_extras not fetched for SKU performance — no cleanup needed
 
     // Same opt-in exclusion as /platform-sales — nothing dropped
     // unless the caller passes ?excludeStatuses=...
@@ -735,7 +735,7 @@ router.get(
     const geoRows = await fetchAllRows((rangeFrom, rangeTo) => {
       let q = supabaseAdmin
         .from('revenue_data')
-        .select('standard_city, standard_state, standard_revenue, standard_units, standard_sku, standard_status, platform, standard_order_id, raw_extras')
+        .select('standard_city, standard_state, standard_revenue, standard_units, standard_sku, standard_status, platform, standard_order_id')
         .eq('client_id', client.id)
         .order('id')
         .range(rangeFrom, rangeTo);
@@ -769,7 +769,7 @@ router.get(
     // that grouping and shouldn't leave the server (it can contain
     // buyer name/phone/address for platforms that expose that).
     backfillLocationByOrder(geoRows);
-    for (const r of geoRows) delete r.raw_extras;
+    // raw_extras not fetched for geo — no cleanup needed
 
     const excludeStatusesGeo = req.query.excludeStatuses
       ? new Set(req.query.excludeStatuses.split(',').map(s => s.trim()).filter(Boolean))
@@ -799,14 +799,14 @@ router.get(
     ] = await Promise.all([
       supabaseAdmin
         .from('revenue_data')
-        .select('standard_sku, platform, standard_revenue, standard_units, standard_city, raw_extras, order_date')
+        .select('standard_sku, platform, standard_revenue, standard_units, standard_city, order_date')
         .eq('client_id', client.id)
         .eq(...(sku ? ['standard_sku', sku] : ['client_id', client.id]))
         .or(`and(order_date.gte.${from || '2000-01-01'},order_date.lte.${to || '2099-01-01'}),order_date.is.null`),
       (() => {
         let cq = supabaseAdmin
           .from('campaign_data')
-          .select('platform, standard_spend, standard_revenue, standard_clicks, standard_impressions, raw_extras, campaign_date')
+          .select('platform, standard_spend, standard_revenue, standard_clicks, standard_impressions, campaign_date')
           .eq('client_id', client.id);
         // Same fix as the campaign-insights route above: an "OR IS NULL"
         // fallback on both gte and lte made undated rows match every

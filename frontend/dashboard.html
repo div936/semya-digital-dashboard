@@ -4767,29 +4767,13 @@ function updateSidebarForTab(tabKey) {
 // ═══════════════════════════════════════════════════════════════════
 // PLATFORM SALES
 // ═══════════════════════════════════════════════════════════════════
-const psState = { platform: '', dateFrom: '', dateTo: '', trendPeriod: 'week', excludeStatuses: [], excludeFulfillStatuses: [], category: '', applyDiscounts: false, _lastData: null };
-// Set default date range to last 30 days on first load
-(function initPsDefaultDates() {
-  const today    = new Date();
-  const d30      = new Date(); d30.setDate(d30.getDate() - 30);
-  const fmt      = d => d.toISOString().slice(0, 10);
-  const todayStr = fmt(today);
-  const d30Str   = fmt(d30);
-  psState.dateFrom = d30Str;
-  psState.dateTo   = todayStr;
-  // Set the date input values (they may not exist yet if DOM not ready)
-  const setDates = () => {
-    const fromEl = document.getElementById('psDateFrom');
-    const toEl   = document.getElementById('psDateTo');
-    if (fromEl && !fromEl.value) fromEl.value = d30Str;
-    if (toEl   && !toEl.value)   toEl.value   = todayStr;
-  };
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', setDates);
-  } else {
-    setDates();
-  }
-})();
+// Set default date range: last 30 days
+const _psToday = new Date();
+const _ps30    = new Date(); _ps30.setDate(_ps30.getDate() - 30);
+const _psFmt   = d => d.toISOString().slice(0, 10);
+const _psDfltFrom = _psFmt(_ps30);
+const _psDfltTo   = _psFmt(_psToday);
+const psState = { platform: '', dateFrom: _psDfltFrom, dateTo: _psDfltTo, trendPeriod: 'week', excludeStatuses: [], excludeFulfillStatuses: [], category: '', applyDiscounts: false, _lastData: null };
 
 const MOCK_PS = {
   platforms: [
@@ -5208,6 +5192,13 @@ document.querySelectorAll('[data-ps-platform]').forEach(pill => {
     tabCache['platform_sales'] = null; fetchAndRenderPS(); // sidebar updated inside fetchAndRenderPS after data loads
   });
 });
+// Set date input values from psState defaults on first load
+(function() {
+  const fromEl = document.getElementById('psDateFrom');
+  const toEl   = document.getElementById('psDateTo');
+  if (fromEl && !fromEl.value) fromEl.value = psState.dateFrom;
+  if (toEl   && !toEl.value)   toEl.value   = psState.dateTo;
+})();
 document.getElementById('psDateFrom').addEventListener('change', function() { psState.dateFrom = this.value; tabCache['platform_sales'] = null; _sidebarCache = {}; fetchAndRenderPS(); });
 document.getElementById('psDateTo').addEventListener('change', function()   { psState.dateTo   = this.value; tabCache['platform_sales'] = null; _sidebarCache = {}; fetchAndRenderPS(); });
 

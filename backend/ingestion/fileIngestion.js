@@ -787,6 +787,8 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
         row.risk_level        = String(row.raw_extras?.['Risk Level'] || '').trim() || null;
         row.tags              = String(row.raw_extras?.['Tags']       || '').trim() || null;
         row.is_duplicate_flag = (row.tags || '').includes('DUPLICATE_ORDER');
+        // Store discount in dedicated column so raw_extras is only needed for fraud detection
+        row.standard_discount = Number(row.raw_extras?.['Lineitem discount'] || 0) || 0;
       }
     }
 
