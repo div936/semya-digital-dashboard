@@ -4908,6 +4908,11 @@ function setBadgePS(mode) {
 
 async function fetchAndRenderPS() {
   const { clientSlug } = state; if (!clientSlug) return;
+  // Sync date inputs with psState on every call (handles first load)
+  const _fromEl = document.getElementById('psDateFrom');
+  const _toEl   = document.getElementById('psDateTo');
+  if (_fromEl && !_fromEl.value && psState.dateFrom) _fromEl.value = psState.dateFrom;
+  if (_toEl   && !_toEl.value   && psState.dateTo)   _toEl.value   = psState.dateTo;
   setBadgePS('loading');
   const qp = new URLSearchParams();
   if (psState.platform) qp.set('platform', psState.platform);
