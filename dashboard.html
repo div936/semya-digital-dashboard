@@ -4999,20 +4999,38 @@ function setPsTrendPeriod(period) {
 }
 
 function renderPS(data) {
-  const { platforms, grandTotal, prevGrandTotal, prevUnits, prevOrders, topProducts, categories } = data;
+  const { platforms, grandTotal, prevGrandTotal, prevUnits, prevOrders, topProducts, categories, cancelledOrders, cancelledRevenue } = data;
   const totalUnits  = platforms.reduce((s, p) => s + (p.totalUnits  || 0), 0);
   const totalOrders = platforms.reduce((s, p) => s + (p.orderCount  || 0), 0);
   psState._lastData = data; // so the period toggle can re-render without a re-fetch
 
   document.getElementById('psKpiRevenue').innerHTML = fmtRevenue(grandTotal);
-  document.getElementById('psKpiRevenueDelta').innerHTML = deltaHtml(pctDelta(grandTotal, prevGrandTotal));
-  document.getElementById('psKpiRevenueSub').innerHTML = 'Across ' + platforms.length + ' platform' + (platforms.length !== 1 ? 's' : '');
+  // Show real delta vs previous period (backend now calculates actual prev period)
+  const prevRev = data.prevGrandTotal;
+  document.getElementById('psKpiRevenueDelta').innerHTML = prevRev != null
+    ? deltaHtml(pctDelta(grandTotal, prevRev))
+    : '';
+  // Show gross revenue (before cancellations) as sub-text
+  const cancelledRev = data.cancelledRevenue || 0;
+  const grossRev = grandTotal + cancelledRev;
+  document.getElementById('psKpiRevenueSub').innerHTML = cancelledRev > 0
+    ? 'Gross: ' + fmtRevenue(grossRev) + ' &nbsp;·&nbsp; Cancelled: ' + fmtRevenue(cancelledRev)
+    : 'Across ' + platforms.length + ' platform' + (platforms.length !== 1 ? 's' : '');
   document.getElementById('psKpiUnits').innerHTML = fmtUnits(totalUnits);
-  document.getElementById('psKpiUnitsDelta').innerHTML = deltaHtml(pctDelta(totalUnits, prevUnits));
+  const prevUnt = data.prevUnits;
+  document.getElementById('psKpiUnitsDelta').innerHTML = prevUnt != null
+    ? deltaHtml(pctDelta(totalUnits, prevUnt))
+    : '';
   document.getElementById('psKpiUnitsSub').innerHTML = 'Avg order: ' + (totalOrders ? fmtUnits(Math.round(totalUnits/totalOrders)) : '—') + ' units';
   document.getElementById('psKpiOrders').innerHTML = totalOrders.toLocaleString('en-IN');
-  document.getElementById('psKpiOrdersDelta').innerHTML = deltaHtml(pctDelta(totalOrders, prevOrders));
-  document.getElementById('psKpiOrdersSub').innerHTML = 'AOV: ' + (totalOrders ? fmtRevenue(grandTotal/totalOrders) : '—');
+  const prevOrd = data.prevOrders;
+  document.getElementById('psKpiOrdersDelta').innerHTML = prevOrd != null
+    ? deltaHtml(pctDelta(totalOrders, prevOrd))
+    : '';
+  const cancelledOrd = data.cancelledOrders || 0;
+  document.getElementById('psKpiOrdersSub').innerHTML =
+    'AOV: ' + (totalOrders ? fmtRevenue(grandTotal/totalOrders) : '—') +
+    (cancelledOrd > 0 ? ' &nbsp;·&nbsp; <span style="color:#ef4444;">' + cancelledOrd.toLocaleString('en-IN') + ' cancelled — <a href="#" onclick="showTab('ai_insights');return false;" style="color:#ef4444;font-weight:600;">See AI Insights</a></span>' : '');
 
   // Fulfilled Orders KPI — counts orders with fulfillment_status = 'fulfilled' or 'Delivered'
   const fulfilledOrders = platforms.reduce((s, p) => s + (p.fulfilledCount || 0), 0);
