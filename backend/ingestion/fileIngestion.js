@@ -41,6 +41,7 @@ import { parse as parseCsv } from 'csv-parse/sync';
 import { supabaseAdmin }  from '../lib/supabase.js';
 import { REVENUE_MAP, CAMPAIGN_MAP, normaliseBatch, classifyDataType, scoreHeaderRow, detectFallbackMapping } from '../lib/columnMapper.js';
 import { generateInsights, generateNarrativeSummaries } from '../lib/insightGenerator.js';
+import { validateUpload } from '../lib/dataValidator.js';
 import { extractLiteralDate } from '../lib/dateUtils.js';
 import { recordMovement } from '../routes/inventoryRouter.js';
 
@@ -857,6 +858,13 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
       `platform=${platform} rows=${inserted} skipped=${skipped}` +
       (routingCorrected ? ` | routing corrected (${filenameDataType} → ${dataType})` : '') +
       (usedFallbackMapping ? ` | used fallback column detection` : '')
+    );
+
+    // 6b. Fire-and-forget data validation (non-blocking)
+    // Checks for inflation, cancelled revenue, unit anomalies
+    // Writes result to upload_validations table — shown as ✅/⚠️ badge
+    validateUpload({ clientId, uploadId, platform, rowCount: inserted }).catch(err =>
+      console.error('[ingestion] Validation failed (non-fatal):', err.message)
     );
 
     // 7. Fire-and-forget insight generation (non-blocking)
