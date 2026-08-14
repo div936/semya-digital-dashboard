@@ -246,6 +246,11 @@ router.get(
       ? new Set(req.query.excludeStatuses.split(',').map(s => s.trim()).filter(Boolean))
       : new Set();
 
+    // Fulfillment status filter — from the new Fulfillment dropdown
+    const excludeFulfillStatuses = req.query.excludeFulfillStatuses
+      ? new Set(req.query.excludeFulfillStatuses.split(',').map(s => s.trim()).filter(Boolean))
+      : new Set();
+
     // `category` is an optional filter that scopes the ENTIRE response
     // (KPIs, trend chart, platform split, top products) to a single
     // inferred product category — not just a display list. Uses the
@@ -269,12 +274,12 @@ router.get(
     // Drop raw_extras before aggregation — not needed downstream
     for (const row of data) delete row.raw_extras;
 
-    const summary = aggregatePlatformSales(dataForSummary, excludeStatuses);
+    const summary = aggregatePlatformSales(dataForSummary, excludeStatuses, excludeFulfillStatuses);
     // Dropdown needs the FULL category list regardless of which one is
     // currently selected — computed from unfiltered `data`, not
     // dataForSummary, so the options never shrink to just the active one.
     if (categoryFilter) {
-      const unfilteredSummary = aggregatePlatformSales(data, excludeStatuses);
+      const unfilteredSummary = aggregatePlatformSales(data, excludeStatuses, excludeFulfillStatuses);
       summary.availableCategories = unfilteredSummary.categories.map(c => c.category);
     } else {
       summary.availableCategories = summary.categories.map(c => c.category);
@@ -887,7 +892,7 @@ router.get(
 // matching the old dashboard's checkboxes-all-checked default.
 const SUGGESTED_EXCLUDABLE_STATUSES = ['Cancelled','Pending','Unshipped','Shipped - Returned to Seller','Shipped - Returning to Seller'];
 
-function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
+function aggregatePlatformSales(rows, excludeStatuses = new Set(), excludeFulfillStatuses = new Set()) {
   const byPlatform = {};
   const byDay      = {};
   const byWeek     = {};
@@ -905,6 +910,8 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
     // checked. Cancelled/Pending/Returned rows stay visible by default
     // so the team can see the full picture, not just fulfilled orders.
     if (row.standard_status && excludeStatuses.has(row.standard_status)) continue;
+    // Fulfillment status filter — exclude rows with specific fulfillment statuses
+    if (excludeFulfillStatuses.size > 0 && row.standard_status && excludeFulfillStatuses.has(row.standard_status)) continue;
     // Sub-rows (extra line items) have no standard_status — only the main
     // order row gets one. Use this to identify and skip sub-rows for
     // order counts and units. Cancelled = voided/refunded orders.
@@ -933,8 +940,14 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
       if (row.standard_order_id) {
         byPlatform[p]._orderIds.add(row.standard_order_id);
         // Track fulfilled orders separately
-        const fs = (row.fulfillment_status || row.standard_status || '').toLowerCase();
-        if (fs === 'fulfilled' || fs === 'delivered' || fs === 'shipped') {
+        // These are all statuses that mean the order was shipped/delivered
+        const fs = (row.standard_status || '').toLowerCase();
+        const FULFILLED_STATUSES = [
+          'shipped', 'delivered', 'approved', 'shipping',
+          'shipped - delivered to buyer', 'shipped - picked up',
+          'shipped - out for delivery',
+        ];
+        if (FULFILLED_STATUSES.some(s => fs === s)) {
           byPlatform[p]._fulfilledIds.add(row.standard_order_id);
         }
       } else {

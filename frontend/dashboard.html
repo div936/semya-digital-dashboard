@@ -1295,6 +1295,54 @@
               </label>
             </div>
           </div>
+          <!-- Fulfillment Status filter dropdown -->
+          <div class="status-filter-wrap" style="position:relative;">
+            <button type="button" class="sku-pill" id="psFulfillFilterBtn" onclick="togglePsFulfillMenu()" style="cursor:pointer;appearance:none;-webkit-appearance:none;outline:none;font-family:inherit;line-height:normal;">Fulfillment <span id="psFulfillFilterCount"></span> ▾</button>
+            <div id="psFulfillFilterMenu" style="display:none;position:absolute;top:110%;left:0;z-index:20;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:10px 12px;min-width:250px;">
+              <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">Filter by fulfillment status. All included by default.</div>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Shipped" checked onchange="onPsFulfillChange()"> Shipped
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Shipped - Delivered to Buyer" checked onchange="onPsFulfillChange()"> Delivered to Buyer
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Delivered" checked onchange="onPsFulfillChange()"> Delivered
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Shipped - Picked Up" checked onchange="onPsFulfillChange()"> Picked Up
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Shipped - Out for Delivery" checked onchange="onPsFulfillChange()"> Out for Delivery
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Pending" checked onchange="onPsFulfillChange()"> Pending
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Pending - Waiting for Pick Up" checked onchange="onPsFulfillChange()"> Waiting for Pick Up
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Approved" checked onchange="onPsFulfillChange()"> Approved
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Shipping" checked onchange="onPsFulfillChange()"> Shipping
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Shipped - Returned to Seller" checked onchange="onPsFulfillChange()"> Returned to Seller
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Shipped - Returning to Seller" checked onchange="onPsFulfillChange()"> Returning to Seller
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Return Requested" checked onchange="onPsFulfillChange()"> Return Requested
+              </label>
+              <div style="border-top:1px solid #f1f5f9;margin-top:8px;padding-top:8px;display:flex;gap:8px;">
+                <button onclick="psFulfillSelectAll()" style="font-size:11px;color:#0284c7;background:none;border:none;cursor:pointer;padding:0;">Select all</button>
+                <button onclick="psFulfillClearAll()" style="font-size:11px;color:#64748b;background:none;border:none;cursor:pointer;padding:0;">Clear all</button>
+              </div>
+            </div>
+          </div>
+
           <div class="status-filter-wrap" style="position:relative;">
             <button type="button" class="sku-pill" id="psProductFilterBtn" onclick="togglePsProductMenu()" style="cursor:pointer;appearance:none;-webkit-appearance:none;outline:none;font-family:inherit;line-height:normal;">
               <span id="psProductFilterLabel">Product: All</span> ▾
@@ -4719,7 +4767,7 @@ function updateSidebarForTab(tabKey) {
 // ═══════════════════════════════════════════════════════════════════
 // PLATFORM SALES
 // ═══════════════════════════════════════════════════════════════════
-const psState = { platform: '', dateFrom: '', dateTo: '', trendPeriod: 'week', excludeStatuses: [], category: '', applyDiscounts: false, _lastData: null };
+const psState = { platform: '', dateFrom: '', dateTo: '', trendPeriod: 'week', excludeStatuses: [], excludeFulfillStatuses: [], category: '', applyDiscounts: false, _lastData: null };
 
 const MOCK_PS = {
   platforms: [
@@ -4782,6 +4830,38 @@ function onPsDiscountToggle() {
   fetchAndRenderPS();
 }
 
+// ── Fulfillment Status filter ────────────────────────────────────
+function togglePsFulfillMenu() {
+  const m  = document.getElementById('psFulfillFilterMenu');
+  if (m) m.style.display = m.style.display === 'none' ? 'block' : 'none';
+  // Close other menus
+  const sm = document.getElementById('psStatusFilterMenu');
+  if (sm) sm.style.display = 'none';
+  const pm = document.getElementById('psProductFilterMenu');
+  if (pm) pm.style.display = 'none';
+}
+
+function onPsFulfillChange() {
+  const unchecked = Array.from(document.querySelectorAll('.ps-fulfill-cb'))
+    .filter(cb => !cb.checked)
+    .map(cb => cb.value);
+  psState.excludeFulfillStatuses = unchecked;
+  const countEl = document.getElementById('psFulfillFilterCount');
+  if (countEl) countEl.textContent = unchecked.length ? `(${unchecked.length} hidden)` : '';
+  tabCache['platform_sales'] = null;
+  fetchAndRenderPS();
+}
+
+function psFulfillSelectAll() {
+  document.querySelectorAll('.ps-fulfill-cb').forEach(cb => { cb.checked = true; });
+  onPsFulfillChange();
+}
+
+function psFulfillClearAll() {
+  document.querySelectorAll('.ps-fulfill-cb').forEach(cb => { cb.checked = false; });
+  onPsFulfillChange();
+}
+
 // ── Product/category filter ─────────────────────────────────────
 let _psAllCategories = []; // full list, populated from availableCategories on first live fetch
 
@@ -4828,6 +4908,7 @@ async function fetchAndRenderPS() {
   if (psState.dateFrom) qp.set('from', psState.dateFrom);
   if (psState.dateTo)   qp.set('to',   psState.dateTo);
   if (psState.excludeStatuses.length) qp.set('excludeStatuses', psState.excludeStatuses.join(','));
+  if (psState.excludeFulfillStatuses && psState.excludeFulfillStatuses.length) qp.set('excludeFulfillStatuses', psState.excludeFulfillStatuses.join(','));
   if (psState.applyDiscounts) qp.set('applyDiscounts', 'true');
   if (psState.category) qp.set('category', psState.category);
   const q = qp.toString() ? '?' + qp.toString() : '';
