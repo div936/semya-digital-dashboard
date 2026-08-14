@@ -173,6 +173,9 @@ export const REVENUE_MAP = {
   'shipment status':            'standard_status',
   'status':                     'standard_status',
 
+  // ── Per-line discount (Shopify Lineitem discount) ─────────────
+  'lineitem discount':          'standard_discount',   // Shopify order export — per-line discount amount
+
   // ── Fulfillment channel (Amazon: FBA vs Merchant-fulfilled) ────
   // NOTE: deliberately NOT mapped to standard_status or any platform
   // grouping field. It's a separate dimension — an order can be
@@ -824,6 +827,7 @@ function coerceValue(targetField, raw) {
   const numericFields = [
     'standard_revenue', 'standard_units', 'standard_spend',
     'standard_impressions', 'standard_clicks', 'standard_orders',
+    'standard_discount',
   ];
   const dateFields = ['order_date', 'campaign_date'];
 

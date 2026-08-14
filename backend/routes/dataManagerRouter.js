@@ -35,19 +35,6 @@ router.get('/:client_slug/uploads', rbacMiddleware, adminOnly, async (req, res) 
 
   if (error) return res.status(500).json({ error: 'Failed to fetch upload history.' });
 
-  // Fetch validation results for these uploads in one query
-  const uploadIds = (data || []).map(u => u.id);
-  let validationMap = {};
-  if (uploadIds.length) {
-    const { data: validations } = await supabaseAdmin
-      .from('upload_validations')
-      .select('upload_id, status, ai_summary, issues, order_count, revenue_total, cancelled_count')
-      .in('upload_id', uploadIds);
-    for (const v of (validations || [])) {
-      validationMap[v.upload_id] = v;
-    }
-  }
-
   // Map DB column names to the field names the frontend expects
   const uploads = (data || []).map(u => ({
     id: u.id,
@@ -59,7 +46,6 @@ router.get('/:client_slug/uploads', rbacMiddleware, adminOnly, async (req, res) 
     error_message: u.error_message,
     created_at: u.created_at,
     original_filename: u.original_name,
-    validation: validationMap[u.id] || null,  // ← validation result for badge
   }));
 
   return res.json({ uploads });

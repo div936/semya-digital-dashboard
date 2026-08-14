@@ -6,7 +6,6 @@
 import { syncShopifyOrders  } from './syncOrders.js';
 import { syncShopifyRefunds } from './syncRefunds.js';
 import { supabaseAdmin }      from '../lib/supabase.js';
-import { runHealthCheck }     from '../lib/dataHealthChecker.js';
 
 const CLIENT_ID = process.env.SHOPIFY_CLIENT_ID;
 
@@ -69,19 +68,5 @@ export function startScheduler() {
   setInterval(runOrderSync,  SIX_HOURS);
   setInterval(runRefundSync, SIX_HOURS + 60 * 1000); // offset by 1 min so they don't overlap
 
-  // Data health check every 6 hours (offset by 2 mins)
-  const clientId = process.env.SHOPIFY_CLIENT_ID;
-  if (clientId) {
-    setInterval(() => {
-      runHealthCheck(clientId).catch(e =>
-        console.error('[scheduler] Health check failed:', e.message)
-      );
-    }, SIX_HOURS + 2 * 60 * 1000);
-    // Run once 5 minutes after server start (give uploads time to settle)
-    setTimeout(() => runHealthCheck(clientId).catch(e =>
-      console.error('[scheduler] Initial health check failed:', e.message)
-    ), 5 * 60 * 1000);
-  }
-
-  console.log('[scheduler] Shopify sync + health checks registered — running every 6 hours');
+  console.log('[scheduler] Shopify sync registered — running every 6 hours');
 }

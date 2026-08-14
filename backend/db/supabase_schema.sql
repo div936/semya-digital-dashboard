@@ -98,7 +98,8 @@ CREATE TABLE IF NOT EXISTS revenue_data (
   standard_state    TEXT,
   standard_status   TEXT,
   standard_order_id TEXT,  -- order-level ID, for counting DISTINCT orders, not rows/line-items — an order with 2 products is 1 order, not 2
-  standard_order_item_id TEXT,  -- LINE-ITEM-level ID — deliberately separate from standard_order_id (see columnMapper.js).
+  standard_order_item_id TEXT,
+  standard_discount      NUMERIC DEFAULT 0,      -- per-line discount (Shopify Lineitem discount)  -- LINE-ITEM-level ID — deliberately separate from standard_order_id (see columnMapper.js).
                                  -- An order with 3 products has 1 order_id but 3 different order_item_ids; merging the two
                                  -- back into one field silently re-inflates the order count for any platform export that
                                  -- only supplies an Order Item ID column.
