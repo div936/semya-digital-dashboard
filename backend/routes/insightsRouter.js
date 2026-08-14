@@ -146,4 +146,54 @@ router.post(
 );
 
 
+
+
+// ─── POST /clients/:client_slug/claude-insight ───────────────────
+// Streaming endpoint for the AI sidebar insight generation.
+// Called by _streamClaudeInsight() in the frontend.
+router.post(
+  '/:client_slug/claude-insight',
+  rbacMiddleware,
+  async (req, res) => {
+    const { client } = req.semya;
+    const { prompt } = req.body || {};
+
+    if (!prompt) return res.status(400).json({ error: 'prompt is required' });
+
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return res.status(503).json({ error: 'AI service not configured' });
+    }
+
+    try {
+      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+      // Set headers for streaming
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Transfer-Encoding', 'chunked');
+      res.setHeader('X-Accel-Buffering', 'no');
+
+      const stream = anthropic.messages.stream({
+        model:      'claude-sonnet-4-6',
+        max_tokens: 800,
+        messages:   [{ role: 'user', content: prompt }],
+      });
+
+      for await (const event of stream) {
+        if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+          res.write(event.delta.text);
+        }
+      }
+      res.end();
+    } catch (err) {
+      console.error('[claude-insight]', err.message);
+      if (!res.headersSent) {
+        res.status(500).json({ error: err.message });
+      } else {
+        res.end();
+      }
+    }
+  }
+);
+
 export default router;

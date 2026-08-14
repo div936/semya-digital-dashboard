@@ -4768,6 +4768,28 @@ function updateSidebarForTab(tabKey) {
 // PLATFORM SALES
 // ═══════════════════════════════════════════════════════════════════
 const psState = { platform: '', dateFrom: '', dateTo: '', trendPeriod: 'week', excludeStatuses: [], excludeFulfillStatuses: [], category: '', applyDiscounts: false, _lastData: null };
+// Set default date range to last 30 days on first load
+(function initPsDefaultDates() {
+  const today    = new Date();
+  const d30      = new Date(); d30.setDate(d30.getDate() - 30);
+  const fmt      = d => d.toISOString().slice(0, 10);
+  const todayStr = fmt(today);
+  const d30Str   = fmt(d30);
+  psState.dateFrom = d30Str;
+  psState.dateTo   = todayStr;
+  // Set the date input values (they may not exist yet if DOM not ready)
+  const setDates = () => {
+    const fromEl = document.getElementById('psDateFrom');
+    const toEl   = document.getElementById('psDateTo');
+    if (fromEl && !fromEl.value) fromEl.value = d30Str;
+    if (toEl   && !toEl.value)   toEl.value   = todayStr;
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setDates);
+  } else {
+    setDates();
+  }
+})();
 
 const MOCK_PS = {
   platforms: [

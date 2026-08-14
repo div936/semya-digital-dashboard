@@ -286,34 +286,33 @@ router.get(
     }
 
     // ── REAL PREVIOUS PERIOD ──────────────────────────────────────────
-    // Calculate actual previous period instead of hardcoded * 0.82.
-    // Previous period = same duration, immediately before the selected range.
+    // Use a fast single-query aggregate instead of fetching all rows.
     const fromDate = req.query.from ? new Date(req.query.from) : null;
     const toDate   = req.query.to   ? new Date(req.query.to)   : null;
 
     if (fromDate && toDate) {
-      const dayDiff  = Math.ceil((toDate - fromDate) / 86400000);
-      const prevTo   = new Date(fromDate); prevTo.setDate(prevTo.getDate() - 1);
-      const prevFrom = new Date(prevTo);   prevFrom.setDate(prevFrom.getDate() - dayDiff);
+      const dayDiff    = Math.ceil((toDate - fromDate) / 86400000);
+      const prevTo     = new Date(fromDate); prevTo.setDate(prevTo.getDate() - 1);
+      const prevFrom   = new Date(prevTo);   prevFrom.setDate(prevFrom.getDate() - dayDiff);
       const prevFromStr = prevFrom.toISOString().slice(0, 10);
       const prevToStr   = prevTo.toISOString().slice(0, 10);
 
-      const prevData = await fetchAllRows((rangeFrom, rangeTo) => {
-        let q = supabaseAdmin
-          .from('revenue_data')
-          .select('platform, standard_revenue, standard_units, standard_status, standard_order_id')
-          .eq('client_id', client.id)
-          .order('id')
-          .range(rangeFrom, rangeTo)
-          .or(`and(order_date.gte.${prevFromStr},order_date.lte.${prevToStr})`);
-        if (platform) q = q.in('platform', expandPlatform(platform));
-        return q;
-      }).catch(() => []);
+      // Fast aggregate — only fetch what we need for prev period delta
+      const prevPlatformFilter = platform ? expandPlatform(platform) : null;
+      let prevQ = supabaseAdmin
+        .from('revenue_data')
+        .select('standard_revenue, standard_units, standard_order_id, standard_status')
+        .eq('client_id', client.id)
+        .gte('order_date', prevFromStr)
+        .lte('order_date', prevToStr)
+        .neq('standard_status', 'Cancelled');
+      if (prevPlatformFilter) prevQ = prevQ.in('platform', prevPlatformFilter);
 
-      const prevSummary    = aggregatePlatformSales(prevData, excludeStatuses);
-      summary.prevGrandTotal = prevSummary.grandTotal;
-      summary.prevUnits      = prevData.reduce((s, r) => s + (Number(r.standard_units) || 0), 0);
-      summary.prevOrders     = new Set(prevData.filter(r => r.standard_revenue > 0).map(r => r.standard_order_id).filter(Boolean)).size;
+      const { data: prevRows } = await prevQ.limit(5000).catch(() => ({ data: [] }));
+      const prevActive = (prevRows || []).filter(r => Number(r.standard_revenue) > 0);
+      summary.prevGrandTotal = prevActive.reduce((s, r) => s + Number(r.standard_revenue), 0);
+      summary.prevUnits      = prevActive.reduce((s, r) => s + Number(r.standard_units  || 0), 0);
+      summary.prevOrders     = new Set(prevActive.map(r => r.standard_order_id).filter(Boolean)).size;
     } else {
       summary.prevGrandTotal = null;
       summary.prevUnits      = null;
