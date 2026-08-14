@@ -873,7 +873,7 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
     const rev = Number(row.standard_revenue ?? 0);
     const u   = Number(row.standard_units   ?? 0);
 
-    if (!byPlatform[p]) byPlatform[p] = { platform: p, totalRevenue: 0, totalUnits: 0, orderCount: 0, _orderIds: new Set(), _rowsWithoutOrderId: 0 };
+    if (!byPlatform[p]) byPlatform[p] = { platform: p, totalRevenue: 0, totalUnits: 0, orderCount: 0, fulfilledCount: 0, _orderIds: new Set(), _fulfilledIds: new Set(), _rowsWithoutOrderId: 0 };
     byPlatform[p].totalRevenue += isCancelled ? 0 : rev;
     byPlatform[p].totalUnits   += (!isMainRow || isCancelled) ? 0 : u;
     // Count DISTINCT orders, not rows. An order with 2 line items (2
@@ -887,6 +887,11 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
     if (isMainRow && !isCancelled) {
       if (row.standard_order_id) {
         byPlatform[p]._orderIds.add(row.standard_order_id);
+        // Track fulfilled orders separately
+        const fs = (row.fulfillment_status || row.standard_status || '').toLowerCase();
+        if (fs === 'fulfilled' || fs === 'delivered' || fs === 'shipped') {
+          byPlatform[p]._fulfilledIds.add(row.standard_order_id);
+        }
       } else {
         byPlatform[p]._rowsWithoutOrderId += 1;
       }
@@ -958,7 +963,8 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set()) {
   // Finalise distinct order counts (Set → number) and strip the
   // internal tracking fields — they're not part of the public shape.
   for (const p of Object.values(byPlatform)) {
-    p.orderCount = p._orderIds.size + p._rowsWithoutOrderId;
+    p.orderCount    = p._orderIds.size + p._rowsWithoutOrderId;
+      p.fulfilledCount = p._fulfilledIds.size;
     delete p._orderIds;
     delete p._rowsWithoutOrderId;
   }
