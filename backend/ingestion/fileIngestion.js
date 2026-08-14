@@ -747,25 +747,41 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
     // by the status filter (same as the old dashboard behaviour) rather than
     // being silently counted as paid revenue.
     if (dataType === 'revenue') {
-      // Forward-fill Financial Status and Cancelled at within each order
-      const orderStatusMap = new Map();   // orderId → { finStatus, cancelledAt }
+      // Forward-fill Financial Status and Cancelled at within each order.
+      //
+      // PERFORMANCE NOTE: 'Financial Status' and 'Fulfillment Status' are
+      // mapped directly to standard_status by columnMapper (not stored in
+      // raw_extras) to keep raw_extras lean and dashboard loads fast.
+      // So we read Financial Status from standard_status (where columnMapper
+      // already placed it on the first row of each order) rather than
+      // raw_extras. Cancelled at is unmapped so it stays in raw_extras.
+      // Fulfillment Status is also mapped to standard_status on the first
+      // row — we capture it separately into _rawFulfillment before it gets
+      // overwritten by the canonical status logic below.
+      const orderStatusMap = new Map();   // orderId → { finStatus, cancelledAt, fulStatus }
       for (const row of normalisedRows) {
         const oid = row.standard_order_id;
         if (!oid) continue;
-        const fin = String(row.raw_extras?.['Financial Status'] || '').trim();
-        const ca  = String(row.raw_extras?.['Cancelled at']    || '').trim();
-        if (!orderStatusMap.has(oid)) orderStatusMap.set(oid, { finStatus: '', cancelledAt: '' });
+        // Financial Status lands in standard_status via columnMapper mapping
+        const fin = String(row.standard_status || '').trim();
+        // Fulfillment Status also lands in standard_status — but only on rows
+        // where the column has a value. Capture it before we overwrite it.
+        // Shopify fulfillment values: 'fulfilled', 'partial', null/blank
+        const ful = String(row.raw_extras?.['Lineitem fulfillment status'] || row.standard_status || '').trim().toLowerCase();
+        const ca  = String(row.raw_extras?.['Cancelled at'] || '').trim();
+        if (!orderStatusMap.has(oid)) orderStatusMap.set(oid, { finStatus: '', cancelledAt: '', fulStatus: '' });
         const entry = orderStatusMap.get(oid);
-        if (!entry.finStatus  && fin) entry.finStatus  = fin;
+        if (!entry.finStatus  && fin && !['fulfilled','partial','pending'].includes(fin.toLowerCase())) entry.finStatus  = fin;
         if (!entry.cancelledAt && ca && ca !== 'nan' && ca !== 'none') entry.cancelledAt = ca;
+        if (!entry.fulStatus  && ful === 'fulfilled') entry.fulStatus = 'fulfilled';
       }
       for (const row of normalisedRows) {
         if (row.platform !== 'meta' && row.platform !== 'google') continue;
         const oid = row.standard_order_id;
         if (!oid) continue;
-        const { finStatus, cancelledAt } = orderStatusMap.get(oid) || {};
+        const { finStatus, cancelledAt, fulStatus } = orderStatusMap.get(oid) || {};
         const fin = (finStatus || '').toLowerCase();
-        const ful = String(row.raw_extras?.['Fulfillment Status'] || '').toLowerCase();
+        const ful = fulStatus || '';
         let status;
         if (fin === 'voided' || fin === 'refunded' || cancelledAt) {
           status = 'Cancelled';
