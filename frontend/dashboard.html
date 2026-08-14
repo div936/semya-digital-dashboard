@@ -5028,9 +5028,10 @@ function renderPS(data) {
     ? deltaHtml(pctDelta(totalOrders, prevOrd))
     : '';
   const cancelledOrd = data.cancelledOrders || 0;
+  const cancelledLink = ` &nbsp;&middot;&nbsp; <span style="color:#ef4444;">${cancelledOrd.toLocaleString('en-IN')} cancelled &mdash; <a href="#" onclick="showTab('ai_insights');return false;" style="color:#ef4444;font-weight:600;">See AI Insights</a></span>`;
   document.getElementById('psKpiOrdersSub').innerHTML =
     'AOV: ' + (totalOrders ? fmtRevenue(grandTotal/totalOrders) : '—') +
-    (cancelledOrd > 0 ? ' &nbsp;·&nbsp; <span style="color:#ef4444;">' + cancelledOrd.toLocaleString('en-IN') + ' cancelled — <a href="#" onclick="showTab('ai_insights');return false;" style="color:#ef4444;font-weight:600;">See AI Insights</a></span>' : '');
+    (cancelledOrd > 0 ? cancelledLink : '');
 
   // Fulfilled Orders KPI — counts orders with fulfillment_status = 'fulfilled' or 'Delivered'
   const fulfilledOrders = platforms.reduce((s, p) => s + (p.fulfilledCount || 0), 0);
