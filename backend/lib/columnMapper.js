@@ -166,14 +166,9 @@ export const REVENUE_MAP = {
   // fileIngestion.js) can use it as its most-reliable tier, matching
   // the old dashboard's 3-tier dedup design.
   'order item id':              'standard_order_item_id',
-  // NOTE: 'financial status' and 'fulfillment status' are deliberately
-  // NOT mapped here for Shopify rows. The ingestion forward-fill in
-  // fileIngestion.js reads these from raw_extras to set standard_status
-  // correctly across all line-item rows of each order. Mapping them
-  // here would consume them into standard_status on the first row only,
-  // leaving raw_extras empty so the forward-fill finds nothing and
-  // defaults every row to 'Pending'.
+  'financial status':           'standard_status',   // Shopify order export — paid/pending/refunded/voided
   'item status':                'standard_status',
+  'fulfillment status':         'standard_status',
   'delivery status':            'standard_status',
   'shipment status':            'standard_status',
   'status':                     'standard_status',
@@ -372,12 +367,33 @@ export function normaliseHeaderKey(rawKey) {
   return String(rawKey).toLowerCase().trim().replace(/[\s_]+/g, ' ').replace(/-/g, ' ');
 }
 
+// Build a normalised-key lookup cache per map so we only pay the cost
+// of normalising every map key once, not on every resolveKey call.
+// This also fixes a long-standing bug: map keys with hyphens (e.g.
+// 'amazon-order-id', 'merchant-order-id') were never matched because
+// normaliseHeaderKey strips hyphens from the INPUT but the map keys
+// themselves were never normalised — so the lookup always missed.
+// With a normalised cache, 'amazon-order-id' in the map and
+// 'amazon-order-id' in the file header both normalise to
+// 'amazon order id' and match correctly.
+const _normalisedMapCache = new WeakMap();
+function getNormalisedMap(map) {
+  if (_normalisedMapCache.has(map)) return _normalisedMapCache.get(map);
+  const normalised = {};
+  for (const [k, v] of Object.entries(map)) {
+    normalised[normaliseHeaderKey(k)] = v;
+  }
+  _normalisedMapCache.set(map, normalised);
+  return normalised;
+}
+
 function resolveKey(map, rawKey) {
+  const normMap = getNormalisedMap(map);
   const normKey = normaliseHeaderKey(rawKey);
-  if (map[normKey]) return map[normKey];
+  if (normMap[normKey]) return normMap[normKey];
 
   const stripped = normKey.replace(/\s*\([^)]*\)\s*$/, '').trim();
-  if (stripped !== normKey && map[stripped]) return map[stripped];
+  if (stripped !== normKey && normMap[stripped]) return normMap[stripped];
 
   return null;
 }
