@@ -33,15 +33,37 @@ const router = Router({ mergeParams: true });
 // or cleanup having happened in between — confirmed the cause was
 // exactly this: none of this file's five callers had an .order()
 // clause at all before this comment was added.
-async function fetchAllRows(buildQuery, pageSize = 2000) {
+// pageSize MUST be <= Supabase Data API "Max rows" project setting
+// (Integrations → Data API → Max rows, currently set to 5000).
+// If pageSize > Max rows, Supabase silently caps each response at Max rows —
+// data.length < pageSize on the very first page — and the loop stops after
+// one page, silently returning only a fraction of the data with no error.
+// We use 1000 (the old default) as a safe floor. After changing Max rows
+// to 5000, this can be raised to 5000 for fewer round-trips.
+// pageSize MUST be <= Supabase Data API "Max rows" project setting
+// (Integrations → Data API → Max rows, currently set to 5000).
+// If pageSize > Max rows, Supabase silently caps each response at Max rows —
+// data.length < pageSize on the very first page — and the loop stops after
+// one page, silently returning only a fraction of the data with no error.
+// We use 1000 as a safe conservative default. After verifying Max rows >= 5000
+// in Supabase settings, this can be raised to 5000 for fewer round-trips.
+async function fetchAllRows(buildQuery, pageSize = 1000) {
   const allRows = [];
   let from = 0;
+  // effectivePageSize tracks the real cap Supabase is enforcing.
+  // On the first response we learn the actual ceiling (which may be lower
+  // than pageSize if the Supabase "Max rows" setting is below pageSize).
+  // Subsequent pages use that observed ceiling as the stopping threshold,
+  // so we never mistake a Supabase-capped first page for the final page.
+  let effectivePageSize = pageSize;
   while (true) {
     const { data, error } = await buildQuery(from, from + pageSize - 1);
     if (error) throw new Error(error.message);
     if (!data || data.length === 0) break;
     allRows.push(...data);
-    if (data.length < pageSize) break; // last page
+    // After first non-empty response, lock in the real page size ceiling.
+    if (allRows.length === data.length) effectivePageSize = data.length;
+    if (data.length < effectivePageSize) break; // genuine last page
     from += pageSize;
   }
   return allRows;
@@ -257,15 +279,11 @@ router.get(
     // (KPIs, trend chart, platform split, top products) to a single
     // inferred product category — not just a display list. Uses the
     // same inferCategory() as Revenue by Category, so the filter and
-    // the chart it's driven from always agree.
-    const categoryFilter = req.query.category || null;
-    const dataForSummary = categoryFilter
-      ? data.filter(row => inferCategory(row.standard_product_name, row.standard_sku) === categoryFilter)
-      : data;
-
     // Apply per-line discount (Lineitem discount from Shopify raw_extras)
-    // when the user has toggled "Apply discounts" on. Only affects
-    // Shopify-shaped rows (those with a Lineitem discount in raw_extras).
+    // when the user has toggled "Apply discounts" on. Must run BEFORE
+    // the categoryFilter slice below — previously the slice happened first,
+    // so dataForSummary captured pre-discount values and the toggle had no
+    // effect when a category filter was also active.
     // Amazon/Flipkart/Blinkit already store net revenue — no adjustment.
     if (applyDiscounts) {
       for (const row of data) {
@@ -273,6 +291,12 @@ router.get(
         if (disc > 0) row.standard_revenue = Math.max(0, (row.standard_revenue || 0) - disc);
       }
     }
+
+    // the chart it's driven from always agree.
+    const categoryFilter = req.query.category || null;
+    const dataForSummary = categoryFilter
+      ? data.filter(row => inferCategory(row.standard_product_name, row.standard_sku) === categoryFilter)
+      : data;
 
     const summary = aggregatePlatformSales(dataForSummary, excludeStatuses, excludeFulfillStatuses);
     // Dropdown needs the FULL category list regardless of which one is
@@ -305,7 +329,10 @@ router.get(
         .eq('client_id', client.id)
         .gte('order_date', prevFromStr)
         .lte('order_date', prevToStr)
-        .neq('standard_status', 'Cancelled');
+        .neq('standard_status', 'Cancelled')
+        .order('id'); // deterministic row order across paginated batches — without this
+                      // Postgres makes no order guarantee, so the same row can appear
+                      // on two pages or not at all, silently corrupting prevGrandTotal.
       if (prevPlatformFilter) prevQ = prevQ.in('platform', prevPlatformFilter);
 
       // Fetch all prev period rows (no limit — same as main query)
@@ -801,34 +828,45 @@ router.get(
     const { client } = req.semya;
     const { sku, from, to } = req.query;
 
-    // Pull both revenue and leftover raw_extras (unmapped columns)
-    const [
-      { data: revenueRows, error: rErr },
-      { data: campaignRows, error: cErr },
-    ] = await Promise.all([
-      supabaseAdmin
-        .from('revenue_data')
-        .select('standard_sku, platform, standard_revenue, standard_units, standard_city, order_date')
-        .eq('client_id', client.id)
-        .eq(...(sku ? ['standard_sku', sku] : ['client_id', client.id]))
-        .or(`and(order_date.gte.${from || '2000-01-01'},order_date.lte.${to || '2099-01-01'}),order_date.is.null`),
-      (() => {
-        let cq = supabaseAdmin
-          .from('campaign_data')
-          .select('platform, standard_spend, standard_revenue, standard_clicks, standard_impressions, campaign_date')
-          .eq('client_id', client.id);
-        // Same fix as the campaign-insights route above: an "OR IS NULL"
-        // fallback on both gte and lte made undated rows match every
-        // date range, silently defeating the filter. Apply strictly when
-        // a filter is present.
-        if (from && to) cq = cq.gte('campaign_date', from).lte('campaign_date', to);
-        else if (from)  cq = cq.gte('campaign_date', from);
-        else if (to)    cq = cq.lte('campaign_date', to);
-        return cq;
-      })(),
-    ]);
-
-    if (rErr || cErr) {
+    // Pull revenue via fetchAllRows — the old Promise.all used a direct
+    // supabaseAdmin call with no pagination, silently capping at 1000 rows.
+    // Clients with more data got truncated AI insights with no error shown.
+    let revenueRows, campaignRows;
+    try {
+      [revenueRows, campaignRows] = await Promise.all([
+        fetchAllRows((rangeFrom, rangeTo) => {
+          let q = supabaseAdmin
+            .from('revenue_data')
+            .select('standard_sku, platform, standard_revenue, standard_units, standard_city, order_date')
+            .eq('client_id', client.id)
+            .order('id')
+            .range(rangeFrom, rangeTo);
+          if (sku) q = q.eq('standard_sku', sku);
+          // Single .or() for date range — same pattern used by every other route.
+          if (from || to) {
+            if (from && to) {
+              q = q.or(`and(order_date.gte.${from},order_date.lte.${to}),order_date.is.null`);
+            } else if (from) {
+              q = q.or(`order_date.gte.${from},order_date.is.null`);
+            } else {
+              q = q.or(`order_date.lte.${to},order_date.is.null`);
+            }
+          }
+          return q;
+        }),
+        (() => {
+          let cq = supabaseAdmin
+            .from('campaign_data')
+            .select('platform, standard_spend, standard_revenue, standard_clicks, standard_impressions, campaign_date')
+            .eq('client_id', client.id);
+          // Apply date filter strictly — no "OR IS NULL" fallback (see campaign-insights fix).
+          if (from && to) cq = cq.gte('campaign_date', from).lte('campaign_date', to);
+          else if (from)  cq = cq.gte('campaign_date', from);
+          else if (to)    cq = cq.lte('campaign_date', to);
+          return cq.then(({ data, error }) => { if (error) throw new Error(error.message); return data || []; });
+        })(),
+      ]);
+    } catch (e) {
       return res.status(500).json({ error: 'Failed to fetch insight data.' });
     }
 
