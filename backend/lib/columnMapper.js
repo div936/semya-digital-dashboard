@@ -166,9 +166,9 @@ export const REVENUE_MAP = {
   // fileIngestion.js) can use it as its most-reliable tier, matching
   // the old dashboard's 3-tier dedup design.
   'order item id':              'standard_order_item_id',
-  'financial status':           'standard_status',   // Shopify order export — paid/pending/refunded/voided
+  'financial status':           'financial_status',   // Shopify order export — paid/pending/refunded/voided
   'item status':                'standard_status',
-  'fulfillment status':         'standard_status',
+  'fulfillment status':         'fulfillment_status',
   'delivery status':            'standard_status',
   'shipment status':            'standard_status',
   'status':                     'standard_status',
