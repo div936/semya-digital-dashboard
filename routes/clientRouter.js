@@ -210,7 +210,7 @@ router.get(
 
     // standard_discount is now a dedicated column — raw_extras no longer
     // needed for platform-sales. Only fraud-patterns route uses raw_extras.
-    const selectCols = 'platform, order_date, standard_revenue, standard_units, standard_status, financial_status, standard_sku, standard_product_name, standard_order_id, standard_discount';
+    const selectCols = 'platform, order_date, cancelled_date, standard_revenue, standard_units, standard_status, financial_status, standard_sku, standard_product_name, standard_order_id, standard_discount';
 
     const data = await fetchAllRows((from, to) => {
       let q = supabaseAdmin
@@ -304,11 +304,11 @@ router.get(
         .select('standard_revenue, standard_units, standard_order_id, standard_status')
         .eq('client_id', client.id)
         .gte('order_date', prevFromStr)
-        .lte('order_date', prevToStr)
-        .neq('standard_status', 'Cancelled');
+        .lte('order_date', prevToStr);
+      // Do NOT exclude Cancelled here — Total Orders counts all orders including
+      // voided/refunded to match Shopify. Revenue still excludes cancelled below.
       if (prevPlatformFilter) prevQ = prevQ.in('platform', prevPlatformFilter);
 
-      // Fetch all prev period rows (no limit — same as main query)
       let prevRows = [];
       let prevFrom2 = 0;
       const prevPageSize = 2000;
@@ -319,10 +319,12 @@ router.get(
         if (batch.length < prevPageSize) break;
         prevFrom2 += prevPageSize;
       }
-      const prevActive = (prevRows || []).filter(r => Number(r.standard_revenue) > 0);
-      summary.prevGrandTotal = prevActive.reduce((s, r) => s + Number(r.standard_revenue), 0);
-      summary.prevUnits      = prevActive.reduce((s, r) => s + Number(r.standard_units  || 0), 0);
-      summary.prevOrders     = new Set(prevActive.map(r => r.standard_order_id).filter(Boolean)).size;
+      // Revenue: exclude cancelled. Orders: count all (including cancelled).
+      const prevNonCancel = (prevRows || []).filter(r => r.standard_status !== 'Cancelled' && Number(r.standard_revenue) > 0);
+      const prevAllMain   = (prevRows || []).filter(r => Number(r.standard_revenue) > 0);
+      summary.prevGrandTotal = prevNonCancel.reduce((s, r) => s + Number(r.standard_revenue), 0);
+      summary.prevUnits      = prevNonCancel.reduce((s, r) => s + Number(r.standard_units  || 0), 0);
+      summary.prevOrders     = new Set(prevAllMain.map(r => r.standard_order_id).filter(Boolean)).size;
     } else {
       summary.prevGrandTotal = null;
       summary.prevUnits      = null;
@@ -912,50 +914,47 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set(), excludeFulfil
   const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
   for (const row of rows) {
-    // Only skip a status if the caller explicitly asked to exclude it
-    // (via ?excludeStatuses=...). Default is empty — every row counts,
-    // matching the old dashboard where all status checkboxes start
-    // checked. Cancelled/Pending/Returned rows stay visible by default
-    // so the team can see the full picture, not just fulfilled orders.
     if (row.standard_status && excludeStatuses.has(row.standard_status)) continue;
-    // Fulfillment status filter — exclude rows with specific fulfillment statuses
     if (excludeFulfillStatuses.size > 0 && row.standard_status && excludeFulfillStatuses.has(row.standard_status)) continue;
-    // Sub-rows (extra line items) have no standard_status — only the main
-    // order row gets one. Use this to identify and skip sub-rows for
-    // order counts and units. Cancelled = voided/refunded orders.
-    const isCancelled  = row.standard_status === 'Cancelled';
-    // Main row = has revenue > 0. Sub-rows have been zeroed in the DB.
-    // This is more reliable than checking standard_status because
-    // fileIngestion forward-fills status to ALL rows of an order.
-    const isMainRow    = Number(row.standard_revenue ?? 0) > 0;
+
+    // ── NET REVENUE: Shopify-matched formula ─────────────────────────
+    // Shopify Net Sales = Gross (by order date) - Discounts (by order date)
+    //                   - Sales Reversals (by CANCELLATION DATE)
+    //
+    // We replicate this by:
+    //   +rev  for every non-cancelled row placed in the query period
+    //   -rev  for every cancelled row whose cancelled_date falls in
+    //         the query period — even if the ORDER was placed before the
+    //         period started. This makes a July order voided in August
+    //         appear as negative revenue in August, exactly as Shopify does.
+    //
+    // The query already filters rows by order_date for the period.
+    // For the reversal side, we also include rows whose cancelled_date
+    // is in the period regardless of order_date — those are collected
+    // in the separate cancelledInPeriod set built in the second pass below.
+
+    const isCancelled = row.standard_status === 'Cancelled';
+    const isMainRow   = Number(row.standard_revenue ?? 0) > 0;
 
     const p   = row.platform;
     const rev = Number(row.standard_revenue ?? 0);
     const u   = Number(row.standard_units   ?? 0);
 
     if (!byPlatform[p]) byPlatform[p] = { platform: p, totalRevenue: 0, totalUnits: 0, orderCount: 0, fulfilledCount: 0, _orderIds: new Set(), _fulfilledIds: new Set(), _rowsWithoutOrderId: 0 };
+
+    // Revenue: add positive revenue for non-cancelled orders placed in period.
+    // Cancelled orders placed in period are NOT subtracted here — their
+    // reversal is counted by cancel date in the second pass below.
     byPlatform[p].totalRevenue += isCancelled ? 0 : rev;
     byPlatform[p].totalUnits   += (!isMainRow || isCancelled) ? 0 : u;
-    // Count DISTINCT orders, not rows. An order with 2 line items (2
-    // products) is 1 order, not 2 — previously this incremented once
-    // per row, which is why order counts sat suspiciously close to
-    // units-sold counts (both were really counting line-items). Falls
-    // back to per-row counting only for rows with no order ID at all
-    // (a platform whose export doesn't include one), rather than
-    // silently dropping those rows from the count entirely.
-    // Only count orders on main rows (have a status) that are not cancelled
-    if (isMainRow && !isCancelled) {
+
+    // Orders: count ALL distinct orders including cancelled (matches Shopify)
+    // Fulfilled: standard_status = 'Delivered' (ingestion sets this for any
+    //            order where fulfillment_status = fulfilled, any payment method)
+    if (isMainRow) {
       if (row.standard_order_id) {
         byPlatform[p]._orderIds.add(row.standard_order_id);
-        // Track fulfilled orders separately
-        // These are all statuses that mean the order was shipped/delivered
-        const fs = (row.standard_status || '').toLowerCase();
-        const FULFILLED_STATUSES = [
-          'shipped', 'delivered', 'approved', 'shipping',
-          'shipped - delivered to buyer', 'shipped - picked up',
-          'shipped - out for delivery',
-        ];
-        if (FULFILLED_STATUSES.some(s => fs === s)) {
+        if ((row.standard_status || '').toLowerCase() === 'delivered') {
           byPlatform[p]._fulfilledIds.add(row.standard_order_id);
         }
       } else {
@@ -1043,6 +1042,58 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set(), excludeFulfil
   // view at all (it could put a 2.6% platform above a 3.2% one purely
   // by insertion accident) — sorted explicitly here so every consumer
   // of this endpoint gets a consistent, sensible order for free.
+  // ── SECOND PASS: subtract reversals by cancel date ──────────────
+  // Orders cancelled IN the requested date period (by cancelled_date)
+  // are subtracted from revenue even if placed outside the period.
+  // This matches Shopify's "Sales Reversals" which uses refund date,
+  // not order date. We only do this when a date window is set.
+  if (req.query.from || req.query.to) {
+    const periodFrom = req.query.from ? new Date(req.query.from) : null;
+    const periodTo   = req.query.to   ? new Date(req.query.to)   : null;
+
+    // Fetch cancelled rows whose cancelled_date falls in the period
+    // but whose order_date is OUTSIDE the period (already included above)
+    let reversalQ = supabaseAdmin
+      .from('revenue_data')
+      .select('platform, standard_revenue, standard_order_id, cancelled_date, standard_status')
+      .eq('client_id', client.id)
+      .eq('standard_status', 'Cancelled')
+      .not('cancelled_date', 'is', null);
+
+    if (req.query.from) reversalQ = reversalQ.gte('cancelled_date', req.query.from);
+    if (req.query.to)   reversalQ = reversalQ.lte('cancelled_date', req.query.to);
+
+    // Exclude rows already in the main query (order placed IN period)
+    // Those cancelled orders are NOT double-counted — their revenue was
+    // already set to 0 in the first pass. We only want rows placed
+    // BEFORE the period (order_date < from) that were cancelled in it.
+    if (req.query.from) {
+      reversalQ = reversalQ.or(`order_date.lt.${req.query.from},order_date.is.null`);
+    }
+
+    if (req.query.to && !req.query.from) {
+      // No lower bound — skip the order_date exclusion
+    }
+
+    if (platform) reversalQ = reversalQ.in('platform', expandPlatform(platform));
+
+    const { data: reversalRows, error: revErr } = await reversalQ;
+    if (!revErr && reversalRows) {
+      // Track which order IDs we've already applied a reversal for to
+      // avoid subtracting the same order twice (multi-line-item orders
+      // appear once per line in revenue_data).
+      const appliedReversalIds = new Set();
+      for (const rrow of reversalRows) {
+        const rp  = rrow.platform;
+        const rev = Number(rrow.standard_revenue ?? 0);
+        if (!rev || !rp) continue;
+        if (!byPlatform[rp]) byPlatform[rp] = { platform: rp, totalRevenue: 0, totalUnits: 0, orderCount: 0, fulfilledCount: 0, _orderIds: new Set(), _fulfilledIds: new Set(), _rowsWithoutOrderId: 0 };
+        // Subtract this row's revenue share as a negative reversal
+        byPlatform[rp].totalRevenue -= rev;
+      }
+    }
+  }
+
   const platforms  = Object.values(byPlatform).sort((a, b) => b.totalRevenue - a.totalRevenue);
   const grandTotal = platforms.reduce((s, p) => s + p.totalRevenue, 0);
 

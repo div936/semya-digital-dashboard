@@ -365,24 +365,44 @@ function mergeDuplicateCampaignRows(rows) {
 // column at all — nothing here changes their behaviour.
 // ═══════════════════════════════════════════════════════════════════
 function allocateOrderLevelDiscount(rows) {
-  // ARCHITECTURE: standard_revenue stores GROSS line revenue for Shopify rows:
-  //   standard_revenue = Lineitem price × Lineitem quantity
-  // This matches Shopify's own "Gross Sales" figure and the old dashboard's
-  // formula exactly. The per-line discount (Lineitem discount) stays in
-  // raw_extras untouched and is subtracted at query time by clientRouter
-  // when the user has "Apply discounts" toggled on — giving them the choice
-  // between gross and net revenue without needing a separate DB column.
+  // ARCHITECTURE: standard_revenue stores NET line revenue for Shopify rows,
+  // derived from the order Subtotal (product revenue after discounts, before
+  // shipping and taxes). This matches Shopify's "Net Sales" definition.
   //
-  // For Shopify rows: standard_revenue is already set to Lineitem price
-  // (per-unit) by normaliseRow. Here we multiply by standard_units to get
-  // the total gross line revenue, making it consistent with Amazon/Flipkart
-  // which already store total line amounts in their revenue column.
+  // For multi-line orders we distribute the Subtotal proportionally by each
+  // line's gross share:  line_rev = subtotal × (line_gross / order_gross)
+  // For single-line orders Subtotal IS the line revenue directly.
+  // Falls back to gross when Subtotal is missing (Amazon/Flipkart/Blinkit).
+
+  // Step 1 — group rows by order to get Subtotal and gross totals
+  const byOrder = new Map();
   for (const row of rows) {
-    if (row.raw_extras?.Total === undefined) continue; // not a Shopify-shaped row
-    if (row.standard_revenue == null) continue;
+    if (row.raw_extras?.Subtotal === undefined) continue;
+    const oid = row.standard_order_id;
+    if (!oid) continue;
+    if (!byOrder.has(oid)) {
+      byOrder.set(oid, { subtotal: Number(row.raw_extras.Subtotal || 0), grossTotal: 0, lines: [] });
+    }
+    const entry = byOrder.get(oid);
     const units = Number(row.standard_units) || 1;
-    row.standard_revenue = Math.round(row.standard_revenue * units * 100) / 100;
+    const lineGross = (Number(row.standard_revenue) || 0) * units;
+    entry.grossTotal += lineGross;
+    entry.lines.push({ row, units, lineGross });
   }
+
+  // Step 2 — allocate Subtotal proportionally, store per-unit amount
+  for (const entry of byOrder.values()) {
+    const { subtotal, grossTotal, lines } = entry;
+    for (const { row, units, lineGross } of lines) {
+      if (grossTotal > 0 && subtotal > 0) {
+        const share = (lineGross / grossTotal) * subtotal;
+        row.standard_revenue = Math.round((share / Math.max(units, 1)) * 100) / 100;
+      } else {
+        row.standard_revenue = Math.round((Number(row.standard_revenue) || 0) * units * 100) / 100;
+      }
+    }
+  }
+
   return rows;
 }
 
@@ -785,6 +805,15 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
           status = 'Pending';
         }
         row.standard_status = status;
+        // Store the cancel/void date separately so clientRouter can count
+        // Sales Reversals by WHEN they happened (matching Shopify Analytics)
+        // rather than by order placed date.
+        if (entry.cancelledAt) {
+          const cancelDateStr = entry.cancelledAt.substring(0, 10); // 'YYYY-MM-DD'
+          row.cancelled_date = cancelDateStr || null;
+        } else {
+          row.cancelled_date = null;
+        }
 
         // Also store raw Shopify fields for AI Insights cards.
         // financial_status: raw value ('voided','refunded','paid','pending')
