@@ -498,27 +498,6 @@ async function deductInventoryForSale(clientId, rows) {
 }
 
 async function bulkInsert(table, rows) {
-  // Pre-deduplicate across ALL rows before chunking (not just within chunks).
-  // Amazon exports legitimately repeat the same order-item-id row in different
-  // monthly exports, and these exact duplicates can appear in the same upload
-  // batch — causing a Postgres "ON CONFLICT DO UPDATE command cannot affect row
-  // a second time" error that kills the entire chunk. Since duplicate rows carry
-  // identical data (same hash, same values), keeping the last occurrence is safe.
-  // We deduplicate on row_hash for revenue_data (the upsert conflict key) and
-  // on the campaign upsert key for campaign_data.
-  if (table === 'revenue_data') {
-    const seen = new Map();
-    for (const row of rows) seen.set(row.row_hash, row); // last wins
-    rows = [...seen.values()];
-  } else if (table === 'campaign_data') {
-    const seen = new Map();
-    for (const row of rows) {
-      const key = `${row.client_id}|${row.platform}|${row.campaign_date}|${row.campaign_name}`;
-      seen.set(key, row);
-    }
-    rows = [...seen.values()];
-  }
-
   const chunks = [];
   for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
     chunks.push(rows.slice(i, i + CHUNK_SIZE));
@@ -790,7 +769,15 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
         let status;
         if (fin === 'voided' || fin === 'refunded' || cancelledAt) {
           status = 'Cancelled';
-        } else if (fin === 'paid' && ful === 'fulfilled') {
+        } else if (ful === 'fulfilled') {
+          // fulfilled = delivered regardless of payment method.
+          // Previously this only matched paid+fulfilled, leaving COD orders
+          // (financial_status='pending', fulfillment_status='fulfilled') mapped
+          // to 'Pending'. COD orders ARE delivered when fulfillment_status is
+          // 'fulfilled' — they just haven't been collected yet or payment is
+          // confirmed on delivery. Counting them as Pending understated the
+          // fulfilled count significantly (599 of 973 Jul-Aug17 fulfilled orders
+          // were COD and were invisible to the fulfilled counter).
           status = 'Delivered';
         } else if (fin === 'paid') {
           status = 'Paid';
