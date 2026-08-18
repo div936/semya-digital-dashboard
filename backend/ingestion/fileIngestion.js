@@ -365,24 +365,64 @@ function mergeDuplicateCampaignRows(rows) {
 // column at all — nothing here changes their behaviour.
 // ═══════════════════════════════════════════════════════════════════
 function allocateOrderLevelDiscount(rows) {
-  // ARCHITECTURE: standard_revenue stores GROSS line revenue for Shopify rows:
-  //   standard_revenue = Lineitem price × Lineitem quantity
-  // This matches Shopify's own "Gross Sales" figure and the old dashboard's
-  // formula exactly. The per-line discount (Lineitem discount) stays in
-  // raw_extras untouched and is subtracted at query time by clientRouter
-  // when the user has "Apply discounts" toggled on — giving them the choice
-  // between gross and net revenue without needing a separate DB column.
+  // ARCHITECTURE: standard_revenue stores NET line revenue (total, not per-unit)
+  // for Shopify rows, derived from the order Subtotal (product revenue after
+  // discounts, before shipping and taxes).
   //
-  // For Shopify rows: standard_revenue is already set to Lineitem price
-  // (per-unit) by normaliseRow. Here we multiply by standard_units to get
-  // the total gross line revenue, making it consistent with Amazon/Flipkart
-  // which already store total line amounts in their revenue column.
+  // columnMapper sets standard_revenue = Lineitem price (per-unit).
+  // This function converts it to: total net line revenue = subtotal * (line_gross / order_gross)
+  //
+  // For single-line orders: standard_revenue = Subtotal directly.
+  // For multi-line orders:  standard_revenue = Subtotal * (line_gross / order_gross)
+  // Falls back to gross line total (price * qty) for non-Shopify rows.
+
+  // Step 1 — group rows by order to get Subtotal and gross totals
+  const byOrder = new Map();
   for (const row of rows) {
-    if (row.raw_extras?.Total === undefined) continue; // not a Shopify-shaped row
-    if (row.standard_revenue == null) continue;
-    const units = Number(row.standard_units) || 1;
-    row.standard_revenue = Math.round(row.standard_revenue * units * 100) / 100;
+    if (row.raw_extras?.Subtotal === undefined) continue;
+    const oid = row.standard_order_id;
+    if (!oid) continue;
+    if (!byOrder.has(oid)) {
+      const sub = Number(row.raw_extras.Subtotal);
+      byOrder.set(oid, {
+        subtotal:   isNaN(sub) ? 0 : sub,
+        grossTotal: 0,
+        lines:      [],
+      });
+    }
+    const entry    = byOrder.get(oid);
+    const units    = Math.max(Number(row.standard_units) || 1, 1);
+    const price    = Number(row.standard_revenue) || 0;   // per-unit price from columnMapper
+    const lineGross = price * units;
+    entry.grossTotal += lineGross;
+    entry.lines.push({ row, units, price, lineGross });
   }
+
+  // Step 2 — set standard_revenue to total net line amount (not per-unit)
+  for (const entry of byOrder.values()) {
+    const { subtotal, grossTotal, lines } = entry;
+    for (const { row, units, price, lineGross } of lines) {
+      if (grossTotal > 0 && subtotal > 0) {
+        // Proportional share of Subtotal for this line — store as TOTAL (not per-unit)
+        // so clientRouter can sum standard_revenue directly without multiplying by units.
+        row.standard_revenue = Math.round((lineGross / grossTotal) * subtotal * 100) / 100;
+      } else {
+        // Fallback: gross line total (price × qty) — no Subtotal available
+        row.standard_revenue = Math.round(price * units * 100) / 100;
+      }
+    }
+  }
+
+  // Step 3 — for non-Shopify rows (no Subtotal in raw_extras), convert
+  // per-unit price to total line amount the same way for consistency.
+  for (const row of rows) {
+    if (row.raw_extras?.Subtotal !== undefined) continue;  // already handled above
+    if (row.standard_order_id) continue;  // skip if we can match by order (shouldn't reach here)
+    const units = Math.max(Number(row.standard_units) || 1, 1);
+    const price = Number(row.standard_revenue) || 0;
+    row.standard_revenue = Math.round(price * units * 100) / 100;
+  }
+
   return rows;
 }
 
@@ -752,8 +792,11 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
       for (const row of normalisedRows) {
         const oid = row.standard_order_id;
         if (!oid) continue;
-        const fin = String(row.raw_extras?.['Financial Status'] || '').trim();
-        const ca  = String(row.raw_extras?.['Cancelled at']    || '').trim();
+        // financial_status and fulfillment_status are now their own mapped
+        // columns (not in raw_extras) — read from the column directly.
+        // Fall back to raw_extras for older rows ingested before this fix.
+        const fin = String(row.financial_status || row.raw_extras?.['Financial Status'] || '').trim();
+        const ca  = String(row.raw_extras?.['Cancelled at'] || '').trim();
         if (!orderStatusMap.has(oid)) orderStatusMap.set(oid, { finStatus: '', cancelledAt: '' });
         const entry = orderStatusMap.get(oid);
         if (!entry.finStatus  && fin) entry.finStatus  = fin;
@@ -785,6 +828,15 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
           status = 'Pending';
         }
         row.standard_status = status;
+        // Store the cancel/void date separately so clientRouter can count
+        // Sales Reversals by WHEN they happened (matching Shopify Analytics)
+        // rather than by order placed date.
+        if (entry.cancelledAt) {
+          const cancelDateStr = entry.cancelledAt.substring(0, 10); // 'YYYY-MM-DD'
+          row.cancelled_date = cancelDateStr || null;
+        } else {
+          row.cancelled_date = null;
+        }
 
         // Also store raw Shopify fields for AI Insights cards.
         // financial_status: raw value ('voided','refunded','paid','pending')
