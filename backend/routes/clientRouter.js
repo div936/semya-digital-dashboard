@@ -274,12 +274,12 @@ router.get(
       }
     }
 
-    const summary = aggregatePlatformSales(dataForSummary, excludeStatuses, excludeFulfillStatuses);
+    const summary = await aggregatePlatformSales(dataForSummary, excludeStatuses, excludeFulfillStatuses, req, client, platform);
     // Dropdown needs the FULL category list regardless of which one is
     // currently selected — computed from unfiltered `data`, not
     // dataForSummary, so the options never shrink to just the active one.
     if (categoryFilter) {
-      const unfilteredSummary = aggregatePlatformSales(data, excludeStatuses, excludeFulfillStatuses);
+      const unfilteredSummary = await aggregatePlatformSales(data, excludeStatuses, excludeFulfillStatuses, req, client, platform);
       summary.availableCategories = unfilteredSummary.categories.map(c => c.category);
     } else {
       summary.availableCategories = summary.categories.map(c => c.category);
@@ -902,7 +902,7 @@ router.get(
 // matching the old dashboard's checkboxes-all-checked default.
 const SUGGESTED_EXCLUDABLE_STATUSES = ['Cancelled','Pending','Unshipped','Shipped - Returned to Seller','Shipped - Returning to Seller'];
 
-function aggregatePlatformSales(rows, excludeStatuses = new Set(), excludeFulfillStatuses = new Set()) {
+async function aggregatePlatformSales(rows, excludeStatuses = new Set(), excludeFulfillStatuses = new Set(), req = null, client = null, platform = null) {
   const byPlatform = {};
   const byDay      = {};
   const byWeek     = {};
