@@ -813,14 +813,6 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
         if (fin === 'voided' || fin === 'refunded' || cancelledAt) {
           status = 'Cancelled';
         } else if (ful === 'fulfilled') {
-          // fulfilled = delivered regardless of payment method.
-          // Previously this only matched paid+fulfilled, leaving COD orders
-          // (financial_status='pending', fulfillment_status='fulfilled') mapped
-          // to 'Pending'. COD orders ARE delivered when fulfillment_status is
-          // 'fulfilled' — they just haven't been collected yet or payment is
-          // confirmed on delivery. Counting them as Pending understated the
-          // fulfilled count significantly (599 of 973 Jul-Aug17 fulfilled orders
-          // were COD and were invisible to the fulfilled counter).
           status = 'Delivered';
         } else if (fin === 'paid') {
           status = 'Paid';
@@ -828,12 +820,9 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
           status = 'Pending';
         }
         row.standard_status = status;
-        // Store the cancel/void date separately so clientRouter can count
-        // Sales Reversals by WHEN they happened (matching Shopify Analytics)
-        // rather than by order placed date.
-        if (entry.cancelledAt) {
-          const cancelDateStr = entry.cancelledAt.substring(0, 10); // 'YYYY-MM-DD'
-          row.cancelled_date = cancelDateStr || null;
+        // Store the cancel/void date using cancelledAt from the destructured entry
+        if (cancelledAt) {
+          row.cancelled_date = cancelledAt.substring(0, 10) || null;
         } else {
           row.cancelled_date = null;
         }
