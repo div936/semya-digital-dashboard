@@ -765,7 +765,7 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
         if (!oid) continue;
         const { finStatus, cancelledAt } = orderStatusMap.get(oid) || {};
         const fin = (finStatus || '').toLowerCase();
-        const ful = String(row.raw_extras?.['Fulfillment Status'] || '').toLowerCase();
+        const ful = String(row.fulfillment_status || row.raw_extras?.['Fulfillment Status'] || '').toLowerCase();
         let status;
         if (fin === 'voided' || fin === 'refunded' || cancelledAt) {
           status = 'Cancelled';
