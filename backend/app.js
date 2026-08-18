@@ -20,6 +20,7 @@ import utmRouter         from './routes/utmRouter.js';
 import projectionsRouter from './routes/projectionsRouter.js';
 import platformSettingsRouter from './routes/platformSettingsRouter.js';
 import shopifySyncRouter      from './routes/shopifySyncRouter.js';
+import shopifyAuthRouter      from './routes/shopifyAuthRouter.js';
 import { startScheduler }     from './services/syncScheduler.js';
 
 const app  = express();
@@ -95,6 +96,7 @@ app.use('/clients', insightsRouter);
 app.use('/clients', projectionsRouter);
 
 app.use('/shopify', shopifySyncRouter);
+app.use('/shopify', shopifyAuthRouter);
 
 // ─── Start Shopify auto-sync (runs every 6 hours, also on boot) ───
 startScheduler();
