@@ -1016,7 +1016,6 @@
     /* ─── 4-COL KPI GRID ───────────────────────────────────────────── */
     .kpi-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
     .kpi-grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
-    @media (max-width: 1200px) { .kpi-grid-4 { grid-template-columns: repeat(2, 1fr); } }
     @media (max-width: 1200px) { .kpi-grid-5 { grid-template-columns: repeat(3, 1fr); } }
 
     /* ─── UNIFIED SIDEBAR SLOT ─────────────────────────────────────── */
@@ -1193,17 +1192,7 @@
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
               Client Administration
             </button>
-            <div id="viewAsClientRow" style="display:none;align-items:center;justify-content:space-between;padding:8px 12px 8px 28px;font-size:11px;color:#475569;gap:8px;">
-              <span id="viewAsClientLabel" style="display:flex;align-items:center;gap:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                View as Client
-              </span>
-              <button type="button" id="viewAsClientToggle" onclick="event.stopPropagation(); toggleViewAsClient();"
-                title="Preview the currently-selected client's own branding instead of Semya's"
-                style="flex-shrink:0;width:32px;height:18px;border-radius:9px;border:none;background:#cbd5e1;position:relative;cursor:pointer;transition:background .15s;padding:0;">
-                <span style="position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s;"></span>
-              </button>
-            </div>
+
             <button class="avatar-dropdown-item" style="padding-left:28px;font-size:11px;" onclick="closeAvatarMenu(); openDailyTargetsPanel();">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               Daily Targets
@@ -1290,7 +1279,7 @@
             <div id="psStatusFilterMenu" style="display:none;position:absolute;top:110%;left:0;z-index:20;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:10px 12px;min-width:230px;">
               <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">Uncheck a status to exclude it from every number below. Everything is included by default.</div>
               <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
-                <input type="checkbox" class="ps-status-cb" value="Cancelled" checked onchange="onPsStatusChange()"> Cancelled
+                <input type="checkbox" class="ps-status-cb" value="Cancelled" onchange="onPsStatusChange()"> Cancelled
               </label>
               <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
                 <input type="checkbox" class="ps-status-cb" value="Pending" checked onchange="onPsStatusChange()"> Pending
@@ -1306,6 +1295,54 @@
               </label>
             </div>
           </div>
+          <!-- Fulfillment Status filter dropdown -->
+          <div class="status-filter-wrap" style="position:relative;">
+            <button type="button" class="sku-pill" id="psFulfillFilterBtn" onclick="togglePsFulfillMenu()" style="cursor:pointer;appearance:none;-webkit-appearance:none;outline:none;font-family:inherit;line-height:normal;">Fulfillment <span id="psFulfillFilterCount"></span> ▾</button>
+            <div id="psFulfillFilterMenu" style="display:none;position:absolute;top:110%;left:0;z-index:20;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:10px 12px;min-width:250px;">
+              <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">Filter by fulfillment status. All included by default.</div>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Shipped" checked onchange="onPsFulfillChange()"> Shipped
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Shipped - Delivered to Buyer" checked onchange="onPsFulfillChange()"> Delivered to Buyer
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Delivered" checked onchange="onPsFulfillChange()"> Delivered
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Shipped - Picked Up" checked onchange="onPsFulfillChange()"> Picked Up
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Shipped - Out for Delivery" checked onchange="onPsFulfillChange()"> Out for Delivery
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Pending" checked onchange="onPsFulfillChange()"> Pending
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Pending - Waiting for Pick Up" checked onchange="onPsFulfillChange()"> Waiting for Pick Up
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Approved" checked onchange="onPsFulfillChange()"> Approved
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Shipping" checked onchange="onPsFulfillChange()"> Shipping
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Shipped - Returned to Seller" checked onchange="onPsFulfillChange()"> Returned to Seller
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Shipped - Returning to Seller" checked onchange="onPsFulfillChange()"> Returning to Seller
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Return Requested" checked onchange="onPsFulfillChange()"> Return Requested
+              </label>
+              <div style="border-top:1px solid #f1f5f9;margin-top:8px;padding-top:8px;display:flex;gap:8px;">
+                <button onclick="psFulfillSelectAll()" style="font-size:11px;color:#0284c7;background:none;border:none;cursor:pointer;padding:0;">Select all</button>
+                <button onclick="psFulfillClearAll()" style="font-size:11px;color:#64748b;background:none;border:none;cursor:pointer;padding:0;">Clear all</button>
+              </div>
+            </div>
+          </div>
+
           <div class="status-filter-wrap" style="position:relative;">
             <button type="button" class="sku-pill" id="psProductFilterBtn" onclick="togglePsProductMenu()" style="cursor:pointer;appearance:none;-webkit-appearance:none;outline:none;font-family:inherit;line-height:normal;">
               <span id="psProductFilterLabel">Product: All</span> ▾
@@ -1329,30 +1366,30 @@
       </div>
 
       <!-- KPI Row -->
-      <div class="kpi-grid-4">
+      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
         <div class="kpi-card">
-          <div class="kpi-icon">₹</div>
+          <div class="kpi-icon">&#8377;</div>
           <div class="kpi-label">Total Net Revenue</div>
           <div class="kpi-value" id="psKpiRevenue"><span class="skel skel-val"></span></div>
           <div><span class="kpi-delta" id="psKpiRevenueDelta"><span class="skel skel-delta"></span></span></div>
           <div class="kpi-sub" id="psKpiRevenueSub"><span class="skel skel-sub"></span></div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-icon">📦</div>
+          <div class="kpi-icon">&#128230;</div>
           <div class="kpi-label">Total Units Sold</div>
           <div class="kpi-value" id="psKpiUnits"><span class="skel skel-val"></span></div>
           <div><span class="kpi-delta" id="psKpiUnitsDelta"><span class="skel skel-delta"></span></span></div>
           <div class="kpi-sub" id="psKpiUnitsSub"><span class="skel skel-sub"></span></div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-icon">🛒</div>
+          <div class="kpi-icon">&#128722;</div>
           <div class="kpi-label">Total Orders</div>
           <div class="kpi-value" id="psKpiOrders"><span class="skel skel-val"></span></div>
           <div><span class="kpi-delta" id="psKpiOrdersDelta"><span class="skel skel-delta"></span></span></div>
           <div class="kpi-sub" id="psKpiOrdersSub"><span class="skel skel-sub"></span></div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-icon">✓</div>
+          <div class="kpi-icon">&#10003;</div>
           <div class="kpi-label">Orders Fulfilled</div>
           <div class="kpi-value" id="psKpiFulfilled"><span class="skel skel-val"></span></div>
           <div><span class="kpi-delta" id="psKpiFulfilledDelta"><span class="skel skel-delta"></span></span></div>
@@ -2009,6 +2046,105 @@
         <div class="insight-card positive"><div class="insight-card-header"><span class="skel skel-delta"></span></div><div class="skel skel-insight" style="height:60px;width:100%;display:block;"></div></div>
       </div>
 
+      <!-- ══ CANCELLATION SUMMARY CARD ══════════════════════════════ -->
+      <div class="card card-sm" style="margin-top:16px;">
+        <div class="ai-tab-header">
+          <div>
+            <div class="ai-tab-title" style="display:flex;align-items:center;gap:8px;">
+              <span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:#fef2f2;border:1px solid #fecaca;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+              </span>
+              Cancellation Tracker
+            </div>
+            <div class="ai-tab-meta" id="cancelTrackerMeta">Loading…</div>
+          </div>
+          <button onclick="exportCancellationTracker()" id="cancelExportBtn" style="display:none;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:5px 12px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-surface-2);color:#64748b;cursor:pointer;">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export CSV
+          </button>
+        </div>
+        <div style="font-size:11px;color:#94a3b8;padding:4px 2px 14px;">
+          All voided and refunded orders from your uploaded Shopify file. Revenue shown is the amount lost. When a High Risk order is later cancelled and re-uploaded, it moves here automatically.
+        </div>
+
+        <!-- KPI strip -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;" id="cancelKpiStrip">
+          <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:var(--radius-md);padding:12px 14px;">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ef4444;margin-bottom:4px;">Cancelled Orders</div>
+            <div style="font-size:22px;font-weight:800;color:#dc2626;letter-spacing:-0.02em;" id="cancelKpiCount"><span class="skel skel-val" style="width:50px;height:22px;display:inline-block;"></span></div>
+          </div>
+          <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:var(--radius-md);padding:12px 14px;">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ef4444;margin-bottom:4px;">Revenue Lost</div>
+            <div style="font-size:22px;font-weight:800;color:#dc2626;letter-spacing:-0.02em;" id="cancelKpiRevenue"><span class="skel skel-val" style="width:80px;height:22px;display:inline-block;"></span></div>
+          </div>
+          <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:var(--radius-md);padding:12px 14px;">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#d97706;margin-bottom:4px;">Cancel Rate</div>
+            <div style="font-size:22px;font-weight:800;color:#d97706;letter-spacing:-0.02em;" id="cancelKpiRate"><span class="skel skel-val" style="width:50px;height:22px;display:inline-block;"></span></div>
+          </div>
+        </div>
+
+        <!-- Breakdown by financial status -->
+        <div id="cancelBreakdownBar" style="margin-bottom:14px;"></div>
+
+        <!-- Order list -->
+        <div id="cancelTrackerList">
+          <div class="skel skel-insight" style="height:40px;"></div>
+          <div class="skel skel-insight" style="height:40px;"></div>
+          <div class="skel skel-insight" style="height:40px;"></div>
+        </div>
+        <div id="cancelTrackerShowMore" style="display:none;text-align:center;padding-top:10px;">
+          <button onclick="cancelTrackerShowAll()" style="font-size:11px;font-weight:600;color:var(--theme-primary);background:none;border:none;cursor:pointer;text-decoration:underline;">Show all cancelled orders</button>
+        </div>
+      </div>
+
+      <!-- ══ HIGH RISK ORDERS CARD ════════════════════════════════════ -->
+      <div class="card card-sm" style="margin-top:16px;">
+        <div class="ai-tab-header">
+          <div>
+            <div class="ai-tab-title" style="display:flex;align-items:center;gap:8px;">
+              <span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:#fff7ed;border:1px solid #fed7aa;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </span>
+              High Risk Orders
+            </div>
+            <div class="ai-tab-meta" id="highRiskTabMeta">Loading…</div>
+          </div>
+          <button onclick="exportHighRiskOrders()" id="highRiskExportBtn" style="display:none;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:5px 12px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-surface-2);color:#64748b;cursor:pointer;">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export CSV
+          </button>
+        </div>
+        <div style="font-size:11px;color:#94a3b8;padding:4px 2px 14px;">
+          Orders flagged as High Risk by Shopify's fraud detection (GoKwik / risk scoring). These are included in your revenue totals as normal active orders. When any of these are cancelled in a future upload, they automatically move to the Cancellation Tracker above.
+        </div>
+
+        <!-- KPI strip -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">
+          <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:var(--radius-md);padding:12px 14px;">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#d97706;margin-bottom:4px;">High Risk Orders</div>
+            <div style="font-size:22px;font-weight:800;color:#d97706;letter-spacing:-0.02em;" id="hrKpiCount"><span class="skel skel-val" style="width:50px;height:22px;display:inline-block;"></span></div>
+          </div>
+          <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:var(--radius-md);padding:12px 14px;">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#d97706;margin-bottom:4px;">Revenue at Risk</div>
+            <div style="font-size:22px;font-weight:800;color:#d97706;letter-spacing:-0.02em;" id="hrKpiRevenue"><span class="skel skel-val" style="width:80px;height:22px;display:inline-block;"></span></div>
+          </div>
+          <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:var(--radius-md);padding:12px 14px;">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#d97706;margin-bottom:4px;">% of All Orders</div>
+            <div style="font-size:22px;font-weight:800;color:#d97706;letter-spacing:-0.02em;" id="hrKpiShare"><span class="skel skel-val" style="width:50px;height:22px;display:inline-block;"></span></div>
+          </div>
+        </div>
+
+        <div id="highRiskList">
+          <div class="skel skel-insight" style="height:40px;"></div>
+          <div class="skel skel-insight" style="height:40px;"></div>
+          <div class="skel skel-insight" style="height:40px;"></div>
+        </div>
+        <div id="highRiskShowMore" style="display:none;text-align:center;padding-top:10px;">
+          <button onclick="highRiskShowAll()" style="font-size:11px;font-weight:600;color:var(--theme-primary);background:none;border:none;cursor:pointer;text-decoration:underline;">Show all high risk orders</button>
+        </div>
+      </div>
+
+      <!-- ══ CANCELLATION PATTERN WATCH (existing) ══════════════════ -->
       <div class="card card-sm" style="margin-top:16px;">
         <div class="ai-tab-header">
           <div>
@@ -2312,6 +2448,21 @@
            admin-only), but the split still matters: editing "Admin Login
            Page" here changes what EVERYONE sees on the sign-in screen,
            not just the client currently selected in this modal. -->
+      <!-- "View as Client" toggle — only shown when a real client is selected,
+           because previewing means "see THIS client's branding on the header".
+           Hidden when __admin__ is selected since there's no client to preview. -->
+      <div id="viewAsClientRow" style="display:none;align-items:center;justify-content:space-between;padding:8px 14px;background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:var(--radius-sm);margin-bottom:14px;">
+        <span id="viewAsClientLabel" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#0369a1;font-weight:500;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          Preview this client's branding on the dashboard header
+        </span>
+        <button type="button" id="viewAsClientToggle" onclick="event.stopPropagation(); toggleViewAsClient();"
+          title="Preview this client's own branding on the live header instead of Semya's"
+          style="flex-shrink:0;width:36px;height:20px;border-radius:10px;border:none;background:#cbd5e1;position:relative;cursor:pointer;transition:background .15s;padding:0;">
+          <span style="position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s;"></span>
+        </button>
+      </div>
+
       <div style="display:flex;gap:0;background:#f1f5f9;border-radius:var(--radius-sm);padding:3px;margin-bottom:20px;width:fit-content;">
         <button type="button" class="ca-appearance-scope-btn active" id="caScopeBtn-client" onclick="setCaAppearanceScope('client')"
           style="padding:7px 16px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;background:#fff;color:#1e293b;box-shadow:0 1px 2px rgba(0,0,0,.06);">
@@ -2376,7 +2527,7 @@
           <label style="font-size:11px;font-weight:600;color:#64748b;">Custom colour</label>
           <input type="color" id="customColourPicker" value="#0284c7"
             style="width:38px;height:32px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);cursor:pointer;padding:2px;"
-            oninput="applyThemeColour(this.value)" />
+            oninput="onCustomColourInput(this.value)" />
           <span id="customColourHex" style="font-size:11px;font-family:var(--font-mono);color:#64748b;">#0284c7</span>
         </div>
       </div>
@@ -4386,7 +4537,7 @@ function showTab(tabKey) {
   else if (tabKey === 'sku_performance')      { if (!fresh) fetchAndRender(); }
   else if (tabKey === 'geographic_analysis')  { if (!fresh) fetchAndRenderGEO(); }
   else if (tabKey === 'daily_targets')        { if (!fresh) fetchAndRenderDT(); }
-  else if (tabKey === 'ai_insights')          { if (!fresh) { fetchAndRenderAI(); fetchAndRenderFraud(); } }
+  else if (tabKey === 'ai_insights')          { if (!fresh) { fetchAndRenderAI(); fetchAndRenderFraud(); fetchAndRenderOrderRisk(); } }
   else if (tabKey === 'utm_analytics')        { if (!fresh) fetchAndRenderUTM(); }
   else if (tabKey === 'projections_insights') { if (!fresh) fetchAndRenderProjections(); }
 }
@@ -4512,27 +4663,40 @@ function setHeaderBranding(name, tagline, logoUrl, theme) {
 async function toggleViewAsClient() {
   setViewAsClient(!getViewAsClient());
   updateViewAsToggleUI();
-  if (_lastDashboardConfig) {
-    applyBranding(_lastDashboardConfig);
-  } else {
-    try {
-      const cfg = await apiFetch('/clients/' + state.clientSlug + '/dashboard-config');
-      _lastDashboardConfig = cfg;
-      applyBranding(cfg);
-    } catch (e) { console.warn('[view-as-client] failed to reload config:', e.message); }
-  }
+  // Use caState.clientSlug (the CA-selected client) if available,
+  // fall back to the dashboard's current client. This matters when
+  // the admin has selected Daluci in CA but the dashboard header
+  // still shows Neat Everyday — we preview the CA client, not the
+  // data-view client.
+  const previewSlug = caState.clientSlug || state.clientSlug;
+  if (!previewSlug) return;
+  try {
+    const cfg = await apiFetch('/clients/' + previewSlug + '/dashboard-config');
+    _lastDashboardConfig = cfg;
+    applyBranding(cfg);
+  } catch (e) { console.warn('[view-as-client] failed to reload config:', e.message); }
 }
 
 function updateViewAsToggleUI() {
-  const row = document.getElementById('viewAsClientRow');
+  const row    = document.getElementById('viewAsClientRow');
   const toggle = document.getElementById('viewAsClientToggle');
-  const label = document.getElementById('viewAsClientLabel');
-  if (row) row.style.display = state.isAdmin ? 'flex' : 'none';
+  // Show the toggle only when:
+  //   1. The current user is an admin, AND
+  //   2. A real client (not __admin__) is selected in Client Administration
+  // Hidden when no client is selected, or when Semya Admins is selected —
+  // "preview as client" only makes sense for an actual client account.
+  // Show only when: admin + real client selected + on Client Dashboard scope
+  // (not Admin Login Page scope — "preview" means previewing the client's
+  // dashboard branding, which only applies to Client Dashboard scope)
+  const hasRealClient = state.isAdmin && caState.clientSlug && caState.clientId !== '__admin__';
+  const onClientScope = (typeof caAppearanceScope === 'undefined' || caAppearanceScope !== 'admin');
+  if (row) row.style.display = (hasRealClient && onClientScope) ? 'flex' : 'none';
+
   const on = getViewAsClient();
   if (toggle) toggle.classList.toggle('on', on);
-  if (label) label.textContent = on
-    ? 'Viewing as: ' + (document.querySelector('#clientSwitcher option[value="' + state.clientSlug + '"]')?.textContent || 'client')
-    : 'View as Client';
+  // Update toggle knob position to match class (CSS handles colour via .on)
+  const knob = toggle?.querySelector('span');
+  if (knob) knob.style.transform = on ? 'translateX(16px)' : 'translateX(0)';
 
   applyAdminVisibility();
 }
@@ -4603,7 +4767,13 @@ function updateSidebarForTab(tabKey) {
 // ═══════════════════════════════════════════════════════════════════
 // PLATFORM SALES
 // ═══════════════════════════════════════════════════════════════════
-const psState = { platform: '', dateFrom: '', dateTo: '', trendPeriod: 'week', excludeStatuses: [], category: '', applyDiscounts: false, _lastData: null };
+// Set default date range: last 30 days
+const _psToday = new Date();
+const _ps30    = new Date(); _ps30.setDate(_ps30.getDate() - 30);
+const _psFmt   = d => d.toISOString().slice(0, 10);
+const _psDfltFrom = _psFmt(_ps30);
+const _psDfltTo   = _psFmt(_psToday);
+const psState = { platform: '', dateFrom: _psDfltFrom, dateTo: _psDfltTo, trendPeriod: 'week', excludeStatuses: [], excludeFulfillStatuses: [], category: '', applyDiscounts: false, _lastData: null };
 
 const MOCK_PS = {
   platforms: [
@@ -4666,6 +4836,38 @@ function onPsDiscountToggle() {
   fetchAndRenderPS();
 }
 
+// ── Fulfillment Status filter ────────────────────────────────────
+function togglePsFulfillMenu() {
+  const m  = document.getElementById('psFulfillFilterMenu');
+  if (m) m.style.display = m.style.display === 'none' ? 'block' : 'none';
+  // Close other menus
+  const sm = document.getElementById('psStatusFilterMenu');
+  if (sm) sm.style.display = 'none';
+  const pm = document.getElementById('psProductFilterMenu');
+  if (pm) pm.style.display = 'none';
+}
+
+function onPsFulfillChange() {
+  const unchecked = Array.from(document.querySelectorAll('.ps-fulfill-cb'))
+    .filter(cb => !cb.checked)
+    .map(cb => cb.value);
+  psState.excludeFulfillStatuses = unchecked;
+  const countEl = document.getElementById('psFulfillFilterCount');
+  if (countEl) countEl.textContent = unchecked.length ? `(${unchecked.length} hidden)` : '';
+  tabCache['platform_sales'] = null;
+  fetchAndRenderPS();
+}
+
+function psFulfillSelectAll() {
+  document.querySelectorAll('.ps-fulfill-cb').forEach(cb => { cb.checked = true; });
+  onPsFulfillChange();
+}
+
+function psFulfillClearAll() {
+  document.querySelectorAll('.ps-fulfill-cb').forEach(cb => { cb.checked = false; });
+  onPsFulfillChange();
+}
+
 // ── Product/category filter ─────────────────────────────────────
 let _psAllCategories = []; // full list, populated from availableCategories on first live fetch
 
@@ -4706,12 +4908,18 @@ function setBadgePS(mode) {
 
 async function fetchAndRenderPS() {
   const { clientSlug } = state; if (!clientSlug) return;
+  // Sync date inputs with psState on every call (handles first load)
+  const _fromEl = document.getElementById('psDateFrom');
+  const _toEl   = document.getElementById('psDateTo');
+  if (_fromEl && !_fromEl.value && psState.dateFrom) _fromEl.value = psState.dateFrom;
+  if (_toEl   && !_toEl.value   && psState.dateTo)   _toEl.value   = psState.dateTo;
   setBadgePS('loading');
   const qp = new URLSearchParams();
   if (psState.platform) qp.set('platform', psState.platform);
   if (psState.dateFrom) qp.set('from', psState.dateFrom);
   if (psState.dateTo)   qp.set('to',   psState.dateTo);
   if (psState.excludeStatuses.length) qp.set('excludeStatuses', psState.excludeStatuses.join(','));
+  if (psState.excludeFulfillStatuses && psState.excludeFulfillStatuses.length) qp.set('excludeFulfillStatuses', psState.excludeFulfillStatuses.join(','));
   if (psState.applyDiscounts) qp.set('applyDiscounts', 'true');
   if (psState.category) qp.set('category', psState.category);
   const q = qp.toString() ? '?' + qp.toString() : '';
@@ -4883,38 +5091,57 @@ function setPsTrendPeriod(period) {
 }
 
 function renderPS(data) {
-  const { platforms, grandTotal, prevGrandTotal, prevUnits, prevOrders, topProducts, categories } = data;
-  const totalUnits      = platforms.reduce((s, p) => s + (p.totalUnits    || 0), 0);
-  const totalOrders     = platforms.reduce((s, p) => s + (p.orderCount    || 0), 0);
-  // totalFulfilledOrders comes from the backend's aggregatePlatformSales() which
-  // now correctly counts COD-delivered orders (pending+fulfilled) as Delivered.
-  const totalFulfilled  = data.totalFulfilledOrders != null
-    ? data.totalFulfilledOrders
-    : platforms.reduce((s, p) => s + (p.fulfilledCount || 0), 0);
+  const { platforms, grandTotal, prevGrandTotal, prevUnits, prevOrders, topProducts, categories, cancelledOrders, cancelledRevenue } = data;
+  const totalUnits  = platforms.reduce((s, p) => s + (p.totalUnits  || 0), 0);
+  const totalOrders = platforms.reduce((s, p) => s + (p.orderCount  || 0), 0);
   psState._lastData = data; // so the period toggle can re-render without a re-fetch
 
   document.getElementById('psKpiRevenue').innerHTML = fmtRevenue(grandTotal);
-  document.getElementById('psKpiRevenueDelta').innerHTML = deltaHtml(pctDelta(grandTotal, prevGrandTotal));
-  document.getElementById('psKpiRevenueSub').innerHTML = 'Across ' + platforms.length + ' platform' + (platforms.length !== 1 ? 's' : '');
+  // Show real delta vs previous period (backend now calculates actual prev period)
+  const prevRev = data.prevGrandTotal;
+  document.getElementById('psKpiRevenueDelta').innerHTML = prevRev != null
+    ? deltaHtml(pctDelta(grandTotal, prevRev))
+    : '';
+  // Show gross revenue (before cancellations) as sub-text
+  const cancelledRev = data.cancelledRevenue || 0;
+  const grossRev = grandTotal + cancelledRev;
+  document.getElementById('psKpiRevenueSub').innerHTML = cancelledRev > 0
+    ? 'Gross: ' + fmtRevenue(grossRev) + ' &nbsp;·&nbsp; Cancelled: ' + fmtRevenue(cancelledRev)
+    : 'Across ' + platforms.length + ' platform' + (platforms.length !== 1 ? 's' : '');
   document.getElementById('psKpiUnits').innerHTML = fmtUnits(totalUnits);
-  document.getElementById('psKpiUnitsDelta').innerHTML = deltaHtml(pctDelta(totalUnits, prevUnits));
+  const prevUnt = data.prevUnits;
+  document.getElementById('psKpiUnitsDelta').innerHTML = prevUnt != null
+    ? deltaHtml(pctDelta(totalUnits, prevUnt))
+    : '';
   document.getElementById('psKpiUnitsSub').innerHTML = 'Avg order: ' + (totalOrders ? fmtUnits(Math.round(totalUnits/totalOrders)) : '—') + ' units';
   document.getElementById('psKpiOrders').innerHTML = totalOrders.toLocaleString('en-IN');
-  document.getElementById('psKpiOrdersDelta').innerHTML = deltaHtml(pctDelta(totalOrders, prevOrders));
-  // Show cancelled count in the sub-text so it's clear these were excluded
-  const cancelledNote = data.cancelledOrders > 0
-    ? ' &nbsp;·&nbsp; <span style="color:#e53e3e;font-size:10px;">▼ ' + data.cancelledOrders + ' cancelled</span>'
+  const prevOrd = data.prevOrders;
+  document.getElementById('psKpiOrdersDelta').innerHTML = prevOrd != null
+    ? deltaHtml(pctDelta(totalOrders, prevOrd))
     : '';
-  document.getElementById('psKpiOrdersSub').innerHTML = 'AOV: ' + (totalOrders ? fmtRevenue(grandTotal/totalOrders) : '—') + cancelledNote;
-  // Orders Fulfilled card
-  const fulfilledEl    = document.getElementById('psKpiFulfilled');
-  const fulfilledSubEl = document.getElementById('psKpiFulfilledSub');
-  const fulfilledDltEl = document.getElementById('psKpiFulfilledDelta');
-  if (fulfilledEl) fulfilledEl.innerHTML = totalFulfilled.toLocaleString('en-IN');
-  if (fulfilledDltEl) fulfilledDltEl.innerHTML = '';
-  if (fulfilledSubEl) fulfilledSubEl.innerHTML = totalOrders > 0
-    ? Math.round(totalFulfilled / totalOrders * 100) + '% of total orders'
-    : 'of total orders';
+  const cancelledOrd = data.cancelledOrders || 0;
+  const cancelledLink = ` &nbsp;&middot;&nbsp; <span style="color:#ef4444;">${cancelledOrd.toLocaleString('en-IN')} cancelled &mdash; <a href="#" onclick="showTab('ai_insights');return false;" style="color:#ef4444;font-weight:600;">See AI Insights</a></span>`;
+  document.getElementById('psKpiOrdersSub').innerHTML =
+    'AOV: ' + (totalOrders ? fmtRevenue(grandTotal/totalOrders) : '—') +
+    (cancelledOrd > 0 ? cancelledLink : '');
+
+  // Fulfilled + Pending Orders KPI — single card showing both
+  const fulfilledOrders = platforms.reduce((s, p) => s + (p.fulfilledCount || p.fulfilled || 0), 0);
+  const pendingOrders   = platforms.reduce((s, p) => s + (p.pendingCount  || p.pending  || 0), 0);
+  const fulfilledEl = document.getElementById('psKpiFulfilled');
+  if (fulfilledEl) {
+    fulfilledEl.innerHTML = fulfilledOrders > 0
+      ? fulfilledOrders.toLocaleString('en-IN')
+      : totalOrders.toLocaleString('en-IN');
+    document.getElementById('psKpiFulfilledDelta').innerHTML = '';
+    const fulfilledPct = Math.round(fulfilledOrders / (totalOrders || 1) * 100);
+    const pendingPct   = Math.round(pendingOrders   / (totalOrders || 1) * 100);
+    document.getElementById('psKpiFulfilledSub').innerHTML =
+      fulfilledPct + '% fulfillment rate' +
+      (pendingOrders > 0
+        ? '<br><span style="color:#f59e0b;font-size:11px;">⏳ ' + pendingOrders.toLocaleString('en-IN') + ' pending · ' + pendingPct + '% of total</span>'
+        : '');
+  }
 
   const splitEl = document.getElementById('psPlatformSplit');
   const maxRev  = Math.max(...platforms.map(p => p.totalRevenue));
@@ -4975,6 +5202,13 @@ document.querySelectorAll('[data-ps-platform]').forEach(pill => {
     tabCache['platform_sales'] = null; fetchAndRenderPS(); // sidebar updated inside fetchAndRenderPS after data loads
   });
 });
+// Set date input values from psState defaults on first load
+(function() {
+  const fromEl = document.getElementById('psDateFrom');
+  const toEl   = document.getElementById('psDateTo');
+  if (fromEl && !fromEl.value) fromEl.value = psState.dateFrom;
+  if (toEl   && !toEl.value)   toEl.value   = psState.dateTo;
+})();
 document.getElementById('psDateFrom').addEventListener('change', function() { psState.dateFrom = this.value; tabCache['platform_sales'] = null; _sidebarCache = {}; fetchAndRenderPS(); });
 document.getElementById('psDateTo').addEventListener('change', function()   { psState.dateTo   = this.value; tabCache['platform_sales'] = null; _sidebarCache = {}; fetchAndRenderPS(); });
 
@@ -5139,7 +5373,18 @@ function renderCI(payload) {
   document.getElementById('ciKpiRevSub').innerHTML    = (totalRev > 0 && totalSpend > 0 ? '+' + ((totalRev - totalSpend)/totalSpend*100).toFixed(0) + '%' : '—') + ' return on spend' + coverageNote;
   document.getElementById('ciKpiRoas').innerHTML     = blendedRoas > 0 ? fmtRoas(blendedRoas) : '—';
   document.getElementById('ciKpiRoasDelta').innerHTML = '';
-  document.getElementById('ciKpiRoasSub').innerHTML   = 'Target: 4.0x · ' + (blendedRoas >= 4 ? 'Above' : 'Below') + ' target';
+  // Show the actual campaign date range the ROAS is based on — so the
+  // viewer knows it's not the full selected period, just the days where
+  // spend files were uploaded.
+  const campaignDates = campaigns.map(c => c.campaign_date).filter(Boolean).sort();
+  const roasDateNote = campaignDates.length >= 2
+    ? ' · ' + new Date(campaignDates[0]).toLocaleDateString('en-IN', { day:'numeric', month:'short' })
+      + ' – ' + new Date(campaignDates[campaignDates.length - 1]).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })
+    : campaignDates.length === 1
+    ? ' · ' + new Date(campaignDates[0]).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })
+    : '';
+  document.getElementById('ciKpiRoasSub').innerHTML   = 'Target: 4.0x · ' + (blendedRoas >= 4 ? 'Above' : 'Below') + ' target'
+    + (roasDateNote ? '<br><span style="font-size:10px;color:#94a3b8;font-weight:400;">Based on campaign data' + roasDateNote + '</span>' : '');
   document.getElementById('ciKpiClicks').innerHTML      = totalClicks.toLocaleString('en-IN');
   document.getElementById('ciKpiClicksDelta').innerHTML = '';
   document.getElementById('ciKpiClicksSub').innerHTML   = 'Avg CTR: ' + avgCTR.toFixed(2) + '% · ' + fmtUnits(totalImpr) + ' impressions';
@@ -6182,6 +6427,8 @@ function selectCaSemyaAdmins() {
   // validation) — doesn't apply to Semya's own internal team.
   const brandsSection = document.getElementById('caBrandsSection');
   if (brandsSection) brandsSection.style.display = 'none';
+  // Hide "View as Client" toggle — no client selected to preview
+  updateViewAsToggleUI();
   loadCaClients();
   loadCaEmployees('__admin__');
 }
@@ -6223,6 +6470,8 @@ async function createCaClient() {
 function selectCaClient(id, slug, name) {
   caState.clientId = id; caState.clientSlug = slug; caState.clientName = name;
   document.getElementById('caEmployeeSection').style.display = '';
+  // Show "View as Client" toggle now that a real client is selected
+  updateViewAsToggleUI();
   const brandsSection = document.getElementById('caBrandsSection');
   if (brandsSection) brandsSection.style.display = '';
   document.getElementById('caSelectedClientName').textContent = name;
@@ -6284,6 +6533,7 @@ async function loadCaEmployees(clientId) {
         '</div>' +
         '<div style="display:flex;gap:8px;align-items:center;">' +
           expiryLabel +
+          '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;color:#d97706;" onclick="reinviteCaEmployee(' + jsAttr(e.email) + ')">Resend link</button>' +
           (isClientRole ? '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;" onclick="extendCaEmployeeAccess(' + jsAttr(e.email) + ')">Extend</button>' : '') +
           '<label style="font-size:10px;color:#94a3b8;display:flex;align-items:center;gap:4px;cursor:pointer;">' +
             '<input type="checkbox" ' + (e.is_lead ? 'checked' : '') + ' onchange="toggleCaEmployeeLead(' + jsAttr(e.id) + ',this.checked)" /> Lead' +
@@ -6358,6 +6608,37 @@ async function extendCaEmployeeAccess(email) {
     loadCaEmployees(caState.clientId);
   } catch (e) {
     alert('Failed to update access: ' + e.message);
+  }
+}
+
+
+async function reinviteCaEmployee(email) {
+  // Re-generates a sign-in link for an approved user whose original
+  // invite link expired before they could use it. Tries to send a
+  // fresh email first; falls back to a copyable magic link if their
+  // account is already confirmed in Supabase.
+  if (!confirm('Resend a sign-in link to ' + email + '?')) return;
+  try {
+    const result = await apiFetch('/auth/reinvite', {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    if (result.magicLink) {
+      // Existing confirmed account — show copyable link
+      const copy = confirm(
+        'This user already has an account so no email was sent automatically.\n\n' +
+        'Click OK to copy their sign-in link to your clipboard, then share it with them directly.'
+      );
+      if (copy) {
+        await navigator.clipboard.writeText(result.magicLink);
+        alert('Sign-in link copied! Share it with ' + email + ' via WhatsApp, Slack, or email.');
+      }
+    } else {
+      alert('Sign-in email sent to ' + email + '!');
+    }
+  } catch (e) {
+    alert('Failed to resend invite: ' + e.message);
   }
 }
 
@@ -6499,7 +6780,23 @@ async function approveRequest(email, reqId) {
 
     // Remove from list
     const row = document.getElementById('req-' + reqId);
-    if (row) row.innerHTML = '<div style="font-size:12px;color:#059669;padding:10px 0;">&#10003; Approved as ' + (isAdmin ? 'Semya Admin' : 'client user') + ' — sign-in link sent to ' + email + '</div>';
+    if (data.magicLink) {
+      // Fallback path: user already had a Supabase Auth account so
+      // inviteUserByEmail() refused to re-send an invite email.
+      // generateLink() returns a URL but does NOT email it — show it
+      // here so the admin can copy and send it directly.
+      const safeLink = data.magicLink.replace(/'/g, "\'");
+      row.innerHTML =
+        '<div style="font-size:12px;color:#d97706;padding:10px 0;line-height:1.6;">' +
+          '&#9888; Approved — but <strong>' + email + '</strong> already has an account so no email was sent automatically.<br>' +
+          'Copy this sign-in link and share it with them directly (WhatsApp, Slack, email, etc.):<br>' +
+          '<textarea readonly onclick="this.select()" style="width:100%;margin-top:6px;padding:6px 8px;font-size:10px;border:1px solid #d97706;border-radius:4px;background:#fffbeb;color:#92400e;resize:none;height:54px;">' + data.magicLink + '</textarea>' +
+          '<button onclick="navigator.clipboard.writeText(\'' + safeLink + '\').then(()=>{this.textContent=\'Copied!\';setTimeout(()=>{this.textContent=\'Copy link\'},2000)})" ' +
+          'style="margin-top:4px;padding:4px 10px;font-size:11px;background:#d97706;color:#fff;border:none;border-radius:4px;cursor:pointer;">Copy link</button>' +
+        '</div>';
+    } else {
+      row.innerHTML = '<div style="font-size:12px;color:#059669;padding:10px 0;">&#10003; Approved as ' + (isAdmin ? 'Semya Admin' : 'client user') + ' — sign-in link sent to ' + email + '</div>';
+    }
 
     // Update badge
     const badge = document.getElementById('pendingCount');
@@ -6724,6 +7021,299 @@ document.querySelectorAll('[data-ai-filter]').forEach(pill => {
     renderAICards(filtered);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// CANCELLATION TRACKER + HIGH RISK ORDERS
+// ═══════════════════════════════════════════════════════════════════
+
+let _cancelData    = null;   // full list of cancelled orders
+let _highRiskData  = null;   // full list of high-risk orders
+let _cancelShowAll = false;
+let _hrShowAll     = false;
+const CANCEL_PAGE  = 10;     // rows shown before "show all"
+const HR_PAGE      = 10;
+
+// Called on AI Insights tab open — fires alongside fetchAndRenderFraud
+async function fetchAndRenderOrderRisk() {
+  const { clientSlug } = state;
+  if (!clientSlug) return;
+
+  // Use psState dates when set (user visited Platform Sales first).
+  // Fall back to last 90 days when AI Insights is opened cold —
+  // psState.dateFrom is empty until the Platform Sales tab loads.
+  const d90 = new Date(); d90.setDate(d90.getDate() - 90);
+  const fromVal = psState.dateFrom || toISTDateString(d90);
+  const toVal   = psState.dateTo   || todayIST();
+
+  // Hit the same revenue endpoint but request ALL statuses
+  // so voided + refunded orders come through for the Cancellation Tracker.
+  try {
+    const q = new URLSearchParams();
+    q.set('from', fromVal);
+    q.set('to',   toVal);
+    q.set('includeAllStatuses', 'true');   // backend must honour this flag
+    const resp = await apiFetch('/clients/' + clientSlug + '/sku-performance?' + q.toString());
+    const rows = resp?.revenue || [];
+
+    // ── Separate cancelled vs high-risk active ─────────────────────
+    const cancelled = rows.filter(r => {
+      const fs = (r.financial_status || '').toLowerCase();
+      return fs === 'voided' || fs === 'refunded';
+    });
+    const highRisk = rows.filter(r => {
+      const fs  = (r.financial_status || '').toLowerCase();
+      const rl  = (r.risk_level || '').toLowerCase();
+      return rl === 'high' && fs !== 'voided' && fs !== 'refunded';
+    });
+
+    _cancelData   = cancelled;
+    _highRiskData = highRisk;
+
+    renderCancellationTracker(cancelled, rows.length);
+    renderHighRiskOrders(highRisk, rows.length);
+  } catch(e) {
+    console.warn('[order-risk]', e.message);
+    _setRiskError();
+  }
+}
+
+function _setRiskError() {
+  const ids = ['cancelTrackerMeta','highRiskTabMeta'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = 'Unable to load — <a href="#" style="color:#0284c7;" onclick="event.preventDefault();fetchAndRenderOrderRisk();">retry</a>';
+  });
+  ['cancelTrackerList','highRiskList'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '<div style="text-align:center;padding:16px 0;color:#94a3b8;font-size:12px;">Could not load data.</div>';
+  });
+}
+
+// ─── CANCELLATION TRACKER ─────────────────────────────────────────
+function renderCancellationTracker(cancelled, totalOrders) {
+  const meta      = document.getElementById('cancelTrackerMeta');
+  const list      = document.getElementById('cancelTrackerList');
+  const showMore  = document.getElementById('cancelTrackerShowMore');
+  const exportBtn = document.getElementById('cancelExportBtn');
+
+  const totalCancelledRev = cancelled.reduce((s, r) => s + (Number(r.standard_revenue) || 0), 0);
+  const voidedCount       = cancelled.filter(r => (r.financial_status||'').toLowerCase() === 'voided').length;
+  const refundedCount     = cancelled.filter(r => (r.financial_status||'').toLowerCase() === 'refunded').length;
+  const cancelRate        = totalOrders > 0 ? ((cancelled.length / totalOrders) * 100).toFixed(1) : '0.0';
+
+  // KPI strip
+  const kpiCount   = document.getElementById('cancelKpiCount');
+  const kpiRevenue = document.getElementById('cancelKpiRevenue');
+  const kpiRate    = document.getElementById('cancelKpiRate');
+  if (kpiCount)   kpiCount.textContent   = cancelled.length.toLocaleString('en-IN');
+  if (kpiRevenue) kpiRevenue.textContent = fmtRevenue(totalCancelledRev);
+  if (kpiRate)    kpiRate.textContent    = cancelRate + '%';
+
+  // Breakdown bar
+  const bar = document.getElementById('cancelBreakdownBar');
+  if (bar && cancelled.length) {
+    bar.innerHTML =
+      '<div style="display:flex;gap:12px;font-size:11px;color:#64748b;margin-bottom:8px;">' +
+        '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc2626;margin-right:4px;"></span>Voided / Cancelled: <strong>' + voidedCount + '</strong></span>' +
+        '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f97316;margin-right:4px;"></span>Refunded: <strong>' + refundedCount + '</strong></span>' +
+      '</div>' +
+      '<div style="height:6px;background:#fecaca;border-radius:99px;overflow:hidden;">' +
+        '<div style="height:100%;width:' + (voidedCount / Math.max(cancelled.length,1) * 100).toFixed(1) + '%;background:#dc2626;border-radius:99px;transition:width .5s;"></div>' +
+      '</div>';
+  }
+
+  if (meta) meta.textContent = cancelled.length
+    ? cancelled.length + ' cancelled order' + (cancelled.length !== 1 ? 's' : '') +
+      ' · ₹' + (totalCancelledRev/100000).toFixed(2) + 'L lost · ' + cancelRate + '% cancel rate'
+    : 'No cancelled or refunded orders in this date range';
+
+  if (!cancelled.length) {
+    if (list) list.innerHTML = '<div style="text-align:center;padding:24px 0;color:#94a3b8;font-size:12px;">🎉 No cancellations found in the selected period.</div>';
+    if (exportBtn) exportBtn.style.display = 'none';
+    if (showMore)  showMore.style.display  = 'none';
+    return;
+  }
+
+  if (exportBtn) exportBtn.style.display = 'flex';
+
+  // Sort by revenue desc, then render
+  const sorted = [...cancelled].sort((a, b) => (Number(b.standard_revenue)||0) - (Number(a.standard_revenue)||0));
+  _renderCancelRows(sorted, false);
+}
+
+function _renderCancelRows(sorted, showAll) {
+  const list     = document.getElementById('cancelTrackerList');
+  const showMore = document.getElementById('cancelTrackerShowMore');
+  if (!list) return;
+
+  const rows = showAll ? sorted : sorted.slice(0, CANCEL_PAGE);
+
+  list.innerHTML = rows.map(r => {
+    const fs      = (r.financial_status || '').toLowerCase();
+    const isVoid  = fs === 'voided';
+    const label   = isVoid ? 'Voided' : 'Refunded';
+    const color   = isVoid ? '#dc2626' : '#f97316';
+    const bg      = isVoid ? '#fef2f2' : '#fff7ed';
+    const border  = isVoid ? '#fecaca' : '#fed7aa';
+    const rev     = Number(r.standard_revenue) || 0;
+    const date    = r.order_date || '—';
+    const orderId = r.standard_order_id || '—';
+    const sku     = r.standard_sku || '—';
+    const city    = r.standard_city || '';
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 4px;border-bottom:1px solid #fef2f2;">' +
+      '<div style="flex:1;min-width:0;">' +
+        '<div style="display:flex;align-items:center;gap:7px;margin-bottom:3px;">' +
+          '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;background:' + bg + ';color:' + color + ';border:1px solid ' + border + ';">' + label + '</span>' +
+          '<span style="font-size:12px;font-weight:700;color:#1e293b;font-family:var(--font-mono);">' + orderId + '</span>' +
+          (city ? '<span style="font-size:10px;color:#94a3b8;">· ' + city + '</span>' : '') +
+        '</div>' +
+        '<div style="font-size:11px;color:#64748b;">' + sku + ' &nbsp;·&nbsp; ' + date + '</div>' +
+      '</div>' +
+      '<div style="text-align:right;flex-shrink:0;">' +
+        '<div style="font-size:13px;font-weight:700;color:' + color + ';">' + fmtRevenue(rev) + '</div>' +
+        '<div style="font-size:10px;color:#94a3b8;">lost</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  if (showMore) {
+    showMore.style.display = (!showAll && sorted.length > CANCEL_PAGE) ? 'block' : 'none';
+  }
+}
+
+function cancelTrackerShowAll() {
+  if (!_cancelData) return;
+  _cancelShowAll = true;
+  const sorted = [..._cancelData].sort((a, b) => (Number(b.standard_revenue)||0) - (Number(a.standard_revenue)||0));
+  _renderCancelRows(sorted, true);
+}
+
+function exportCancellationTracker() {
+  if (!_cancelData || !_cancelData.length) { alert('No cancellation data to export.'); return; }
+  const sorted = [..._cancelData].sort((a, b) => (Number(b.standard_revenue)||0) - (Number(a.standard_revenue)||0));
+  const hdr = ['Order ID','Date','SKU','City','Financial Status','Revenue Lost (₹)'];
+  const rows = sorted.map(r => [
+    r.standard_order_id || '',
+    r.order_date || '',
+    r.standard_sku || '',
+    r.standard_city || '',
+    r.financial_status || '',
+    Number(r.standard_revenue) || 0,
+  ]);
+  _downloadCsv([hdr, ...rows], 'cancellations_' + new Date().toISOString().slice(0,10) + '.csv');
+}
+
+// ─── HIGH RISK ORDERS ─────────────────────────────────────────────
+function renderHighRiskOrders(highRisk, totalOrders) {
+  const meta      = document.getElementById('highRiskTabMeta');
+  const list      = document.getElementById('highRiskList');
+  const showMore  = document.getElementById('highRiskShowMore');
+  const exportBtn = document.getElementById('highRiskExportBtn');
+
+  const totalHrRev = highRisk.reduce((s, r) => s + (Number(r.standard_revenue) || 0), 0);
+  const hrShare    = totalOrders > 0 ? ((highRisk.length / totalOrders) * 100).toFixed(1) : '0.0';
+
+  const kpiCount   = document.getElementById('hrKpiCount');
+  const kpiRevenue = document.getElementById('hrKpiRevenue');
+  const kpiShare   = document.getElementById('hrKpiShare');
+  if (kpiCount)   kpiCount.textContent   = highRisk.length.toLocaleString('en-IN');
+  if (kpiRevenue) kpiRevenue.textContent = fmtRevenue(totalHrRev);
+  if (kpiShare)   kpiShare.textContent   = hrShare + '%';
+
+  if (meta) meta.textContent = highRisk.length
+    ? highRisk.length + ' active high-risk order' + (highRisk.length !== 1 ? 's' : '') +
+      ' · ' + fmtRevenue(totalHrRev) + ' currently counted in revenue · will auto-move to Cancellation Tracker if cancelled'
+    : 'No active high-risk orders in this date range';
+
+  if (!highRisk.length) {
+    if (list) list.innerHTML = '<div style="text-align:center;padding:24px 0;color:#94a3b8;font-size:12px;">No high-risk orders in the selected period.</div>';
+    if (exportBtn) exportBtn.style.display = 'none';
+    if (showMore)  showMore.style.display  = 'none';
+    return;
+  }
+
+  if (exportBtn) exportBtn.style.display = 'flex';
+
+  const sorted = [...highRisk].sort((a, b) => (Number(b.standard_revenue)||0) - (Number(a.standard_revenue)||0));
+  _renderHrRows(sorted, false);
+}
+
+function _renderHrRows(sorted, showAll) {
+  const list     = document.getElementById('highRiskList');
+  const showMore = document.getElementById('highRiskShowMore');
+  if (!list) return;
+
+  const rows = showAll ? sorted : sorted.slice(0, HR_PAGE);
+
+  list.innerHTML = rows.map(r => {
+    const rev    = Number(r.standard_revenue) || 0;
+    const date   = r.order_date || '—';
+    const orderId = r.standard_order_id || '—';
+    const sku    = r.standard_sku || '—';
+    const city   = r.standard_city || '';
+    const fs     = r.financial_status || 'pending';
+    const isDup  = (r.tags || '').includes('DUPLICATE_ORDER');
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 4px;border-bottom:1px solid #fffbeb;">' +
+      '<div style="flex:1;min-width:0;">' +
+        '<div style="display:flex;align-items:center;gap:7px;margin-bottom:3px;flex-wrap:wrap;">' +
+          '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;background:#fff7ed;color:#d97706;border:1px solid #fed7aa;">⚠ High Risk</span>' +
+          (isDup ? '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;">Duplicate</span>' : '') +
+          '<span style="font-size:12px;font-weight:700;color:#1e293b;font-family:var(--font-mono);">' + orderId + '</span>' +
+          (city ? '<span style="font-size:10px;color:#94a3b8;">· ' + city + '</span>' : '') +
+        '</div>' +
+        '<div style="font-size:11px;color:#64748b;">' + sku + ' &nbsp;·&nbsp; ' + date + ' &nbsp;·&nbsp; <span style="text-transform:capitalize;">' + fs + '</span></div>' +
+      '</div>' +
+      '<div style="text-align:right;flex-shrink:0;">' +
+        '<div style="font-size:13px;font-weight:700;color:#d97706;">' + fmtRevenue(rev) + '</div>' +
+        '<div style="font-size:10px;color:#94a3b8;">in revenue</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  if (showMore) {
+    showMore.style.display = (!showAll && sorted.length > HR_PAGE) ? 'block' : 'none';
+  }
+}
+
+function highRiskShowAll() {
+  if (!_highRiskData) return;
+  _hrShowAll = true;
+  const sorted = [..._highRiskData].sort((a, b) => (Number(b.standard_revenue)||0) - (Number(a.standard_revenue)||0));
+  _renderHrRows(sorted, true);
+}
+
+function exportHighRiskOrders() {
+  if (!_highRiskData || !_highRiskData.length) { alert('No high-risk data to export.'); return; }
+  const sorted = [..._highRiskData].sort((a, b) => (Number(b.standard_revenue)||0) - (Number(a.standard_revenue)||0));
+  const hdr = ['Order ID','Date','SKU','City','Financial Status','Revenue (₹)','Duplicate Flag'];
+  const rows = sorted.map(r => [
+    r.standard_order_id || '',
+    r.order_date || '',
+    r.standard_sku || '',
+    r.standard_city || '',
+    r.financial_status || '',
+    Number(r.standard_revenue) || 0,
+    (r.tags || '').includes('DUPLICATE_ORDER') ? 'Yes' : 'No',
+  ]);
+  _downloadCsv([hdr, ...rows], 'high_risk_orders_' + new Date().toISOString().slice(0,10) + '.csv');
+}
+
+// ─── Shared CSV download helper ───────────────────────────────────
+function _downloadCsv(rows, filename) {
+  const csv = rows.map(r =>
+    r.map(cell => {
+      const s = String(cell ?? '');
+      return s.includes(',') || s.includes('"') || s.includes('\n')
+        ? '"' + s.replace(/"/g, '""') + '"'
+        : s;
+    }).join(',')
+  ).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), { href: url, download: filename });
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // CANCELLATION / FRAUD PATTERN WATCH
@@ -7467,22 +8057,33 @@ async function loadUtmInventoryAlerts() {
       el.innerHTML = '<div style="padding:16px 0;text-align:center;color:#94a3b8;font-size:12px;">No low-stock alerts right now — everything is above its threshold, or no warehouses/stock have been set up yet in Inventory Settings.</div>';
       return;
     }
-    el.innerHTML = alerts.map(a => {
-      const urgent = a.daysRemainingEstimate != null && a.daysRemainingEstimate <= 7;
-      const dayLabel = a.daysRemainingEstimate != null
-        ? (a.daysRemainingEstimate <= 0 ? 'Out of stock at current pace' : '~' + a.daysRemainingEstimate + ' day' + (a.daysRemainingEstimate === 1 ? '' : 's') + ' remaining')
-        : 'Not enough recent sales to estimate';
-      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid #f1f5f9;">' +
-        '<div>' +
-          '<span style="font-size:12px;font-weight:600;color:#1e293b;">' + a.sku + '</span>' +
-          '<span style="font-size:11px;color:#94a3b8;margin-left:8px;">' + a.warehouseName + '</span>' +
-        '</div>' +
-        '<div style="text-align:right;">' +
-          '<span style="font-size:12px;font-weight:700;color:' + (urgent ? '#dc2626' : '#d97706') + ';">' + a.quantityOnHand + ' left</span>' +
-          '<span style="font-size:10.5px;color:' + (urgent ? '#dc2626' : '#94a3b8') + ';margin-left:8px;">' + dayLabel + '</span>' +
-        '</div>' +
-      '</div>';
-    }).join('');
+    // Render as a table matching the ALL STOCK section style —
+    // SKU, Warehouse, QTY ON HAND, ALERT BELOW, UPDATED columns.
+    el.innerHTML =
+      '<table style="width:100%;border-collapse:collapse;">' +
+        '<thead><tr>' +
+          '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">SKU</th>' +
+          '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">Warehouse</th>' +
+          '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">Qty on Hand</th>' +
+          '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">Alert Below</th>' +
+          '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">Days Est.</th>' +
+        '</tr></thead>' +
+        '<tbody>' +
+        alerts.map(a => {
+          const urgent = a.quantityOnHand <= 0;
+          const qtyColour = urgent ? 'color:#dc2626;font-weight:700;' : 'color:#d97706;font-weight:700;';
+          const dayLabel = a.daysRemainingEstimate != null
+            ? (a.daysRemainingEstimate <= 0 ? 'Out of stock' : '~' + a.daysRemainingEstimate + 'd')
+            : '—';
+          return '<tr>' +
+            '<td style="padding:8px 10px;font-size:12px;font-weight:600;color:#1e293b;">' + a.sku + '</td>' +
+            '<td style="padding:8px 10px;font-size:11px;color:#94a3b8;">' + a.warehouseName + '</td>' +
+            '<td style="padding:8px 10px;font-size:12px;' + qtyColour + '">' + a.quantityOnHand + '</td>' +
+            '<td style="padding:8px 10px;font-size:12px;color:#64748b;">' + a.lowStockThreshold + '</td>' +
+            '<td style="padding:8px 10px;font-size:11px;color:' + (a.daysRemainingEstimate != null && a.daysRemainingEstimate <= 0 ? '#dc2626' : '#94a3b8') + ';">' + dayLabel + '</td>' +
+          '</tr>';
+        }).join('') +
+        '</tbody></table>';
   } catch (e) {
     el.innerHTML = '<div style="padding:16px 0;text-align:center;color:#94a3b8;font-size:12px;">Failed to load inventory alerts: ' + e.message + '</div>';
   }
@@ -7971,6 +8572,8 @@ function setCaAppearanceScope(scope) {
     if (fieldLabel) fieldLabel.textContent = 'Client Name';
     if (hint) hint.innerHTML = 'Editing branding for <strong>' + label + '\'s</strong> dashboard — visible only when viewing their data.';
   }
+  // Show/hide the View as Client toggle based on scope and CA selection
+  updateViewAsToggleUI();
   prefillAppearanceTab();
 }
 
@@ -7999,14 +8602,41 @@ async function prefillAppearanceTab() {
     return;
   }
 
-  // scope === 'client': pre-fill from the currently-displayed DOM, same
-  // as before — this reflects whichever client's dashboard is showing.
-  const nameEl = document.getElementById('brandNameInput');
-  const tagEl  = document.getElementById('brandTaglineInput');
-  if (nameEl) nameEl.value = document.querySelector('.logo-text')?.textContent || 'Neat Everyday';
-  if (tagEl)  tagEl.value  = document.querySelector('.logo-sub')?.textContent  || 'Semya Digital';
-  _caClientLogoDataUrl = null;
-  applyLogoPreview(document.getElementById('logoImg')?.src || null);
+  // scope === 'client': load from the server for the client selected in
+  // Client Administration (caState.clientSlug), NOT from the live DOM —
+  // the DOM always reflects whichever client's data is on-screen, which
+  // may be a different client entirely from the one being edited here.
+  const targetSlug = caState.clientSlug;
+  if (!targetSlug) {
+    // No client selected yet — clear the form
+    const nameEl = document.getElementById('brandNameInput');
+    const tagEl  = document.getElementById('brandTaglineInput');
+    if (nameEl) nameEl.value = '';
+    if (tagEl)  tagEl.value  = '';
+    _caClientLogoDataUrl = null;
+    applyLogoPreview(null);
+    return;
+  }
+  try {
+    const cfg = await apiFetch('/clients/' + targetSlug + '/dashboard-config');
+    const nameEl = document.getElementById('brandNameInput');
+    const tagEl  = document.getElementById('brandTaglineInput');
+    if (nameEl) nameEl.value = cfg?.client?.name || '';
+    if (tagEl)  tagEl.value  = 'Semya Digital';
+    _caClientLogoDataUrl = null;
+    applyLogoPreview(cfg?.client?.logoUrl || null);
+    if (cfg?.client?.theme) {
+      const themeIdx = THEME_PRESETS.findIndex(t => t.primary === cfg.client.theme.primary);
+      _activeThemeIdx = themeIdx >= 0 ? themeIdx : 0;
+      // Only update the swatch selection — don't touch the live header
+      // since the admin may be editing a different client than the one
+      // currently displayed on the dashboard.
+      applyThemeColourPreviewOnly(cfg.client.theme.primary, cfg.client.theme.deep, cfg.client.theme.accent);
+      renderThemeSwatches();
+    }
+  } catch (e) {
+    console.warn('[appearance] failed to load client branding for', targetSlug, e.message);
+  }
 }
 
 // Sets the small preview swatch in the modal without touching the live
@@ -8030,10 +8660,23 @@ function applyLogoPreview(src) {
 // when previewing the admin login page's theme (which isn't visible
 // anywhere in this dashboard at all).
 function applyThemeColourPreviewOnly(primary, deep, accent) {
+  // Update the hex readout and colour picker swatch in the modal
   const hex = document.getElementById('customColourHex');
   const picker = document.getElementById('customColourPicker');
   if (hex) hex.textContent = primary;
   if (picker) picker.value = primary;
+  // Re-render swatches so the selected one gets its highlight border —
+  // without this, clicking a swatch in admin scope looked like it did
+  // nothing because the border never updated.
+  renderThemeSwatches();
+  // Track the pending admin theme so saveAppearance can read it back,
+  // including for custom colours (not just preset swatches).
+  if (caAppearanceScope === 'admin') {
+    if (!_caAdminThemeSnapshot) _caAdminThemeSnapshot = {};
+    _caAdminThemeSnapshot.primary = primary;
+    if (deep)   _caAdminThemeSnapshot.deep   = deep;
+    if (accent) _caAdminThemeSnapshot.accent = accent;
+  }
 }
 
 // ─── UTM Campaign Tools modal ───────────────────────────────────
@@ -8531,15 +9174,43 @@ function selectThemePreset(idx) {
   _activeThemeIdx = idx;
   const t = THEME_PRESETS[idx];
   if (caAppearanceScope === 'admin') {
+    // Admin login page — never touch the live dashboard CSS variables
     applyThemeColourPreviewOnly(t.primary, t.deep, t.accent);
   } else {
-    applyThemeColour(t.primary, t.deep, t.accent);
+    // Client scope: only update the live header when the admin is
+    // editing the SAME client currently shown on the dashboard, or
+    // when they're actively previewing this client via "View as Client".
+    // Editing a different client's branding should never change the
+    // header of whichever client's data is currently on screen.
+    const editingCurrentClient = caState.clientSlug && caState.clientSlug === state.clientSlug;
+    const previewingThisClient = getViewAsClient() && caState.clientSlug === state.clientSlug;
+    if (editingCurrentClient || previewingThisClient) {
+      applyThemeColour(t.primary, t.deep, t.accent);
+    } else {
+      applyThemeColourPreviewOnly(t.primary, t.deep, t.accent);
+    }
   }
   const picker = document.getElementById('customColourPicker');
   const hex    = document.getElementById('customColourHex');
   if (picker) picker.value = t.primary;
   if (hex)    hex.textContent = t.primary;
   renderThemeSwatches();
+}
+
+function onCustomColourInput(primary) {
+  // Custom colour picker — same scoping rules as selectThemePreset:
+  // admin scope → preview only; client scope → live only if same client
+  if (caAppearanceScope === 'admin') {
+    applyThemeColourPreviewOnly(primary);
+    return;
+  }
+  const editingCurrentClient = caState.clientSlug && caState.clientSlug === state.clientSlug;
+  const previewingThisClient = getViewAsClient() && caState.clientSlug === state.clientSlug;
+  if (editingCurrentClient || previewingThisClient) {
+    applyThemeColour(primary);
+  } else {
+    applyThemeColourPreviewOnly(primary);
+  }
 }
 
 function applyThemeColour(primary, deep, accent) {
@@ -8626,8 +9297,21 @@ async function saveAppearance() {
 
   const nameVal = document.getElementById('brandNameInput')?.value.trim();
   const tagVal  = document.getElementById('brandTaglineInput')?.value.trim();
-  const t = THEME_PRESETS[_activeThemeIdx];
-  const themePayload = { primary: t.primary, deep: t.deep, accent: t.accent };
+  // For admin scope: prefer the tracked _caAdminThemeSnapshot (updated
+  // by every swatch click AND custom colour input) so a custom colour
+  // is preserved correctly. Fall back to the preset if not set.
+  // For client scope: always read from the preset index.
+  let themePayload;
+  if (caAppearanceScope === 'admin' && _caAdminThemeSnapshot?.primary) {
+    themePayload = {
+      primary: _caAdminThemeSnapshot.primary,
+      deep:    _caAdminThemeSnapshot.deep   || adjustColour(_caAdminThemeSnapshot.primary, -30),
+      accent:  _caAdminThemeSnapshot.accent || adjustColour(_caAdminThemeSnapshot.primary, 15),
+    };
+  } else {
+    const t = THEME_PRESETS[_activeThemeIdx];
+    themePayload = { primary: t.primary, deep: t.deep, accent: t.accent };
+  }
 
   if (caAppearanceScope === 'admin') {
     let saveOk = false;
@@ -8714,9 +9398,19 @@ async function saveAppearance() {
   if (btn) {
     if (clientSaveOk) {
       btn.textContent = '✓ Saved';
-      // If an admin is currently previewing THIS client via "View as
-      // Client", reflect the change on the live header immediately.
-      if (getViewAsClient() && targetSlug === state.clientSlug) applyBranding(_lastDashboardConfig);
+      // Only reflect the change on the live header if the admin is
+      // actively previewing THIS specific client via "View as Client".
+      // Never update the header when editing a different client's
+      // branding, or when View as Client is off (admin sees Semya
+      // branding, not this client's — a save should never change that).
+      if (getViewAsClient() && targetSlug === state.clientSlug) {
+        // Reload the config fresh so the new logo/theme is picked up
+        try {
+          const cfg = await apiFetch('/clients/' + targetSlug + '/dashboard-config');
+          _lastDashboardConfig = cfg;
+          applyBranding(cfg);
+        } catch(e) { console.warn('[appearance] live header refresh failed:', e.message); }
+      }
     } else {
       btn.textContent = '✗ Failed to save — see console';
       btn.style.color = '#dc2626';
@@ -8788,14 +9482,23 @@ async function loadUploadHistory() {
         const type = u.data_type === 'revenue' ? '📊 Revenue' : '📣 Campaign';
         const rows = (u.row_count || 0).toLocaleString('en-IN');
         const file = (u.original_filename || '—').slice(0, 28);
+        // Upload status badge (ingestion success/failure)
         const statusBadge = u.status === 'error'
           ? '<span style="color:#dc2626;font-size:9px;font-weight:700;">FAILED</span>'
           : '<span style="color:#059669;font-size:9px;font-weight:700;">OK</span>';
+        // Validation badge (data quality check result)
+        const v = u.validation;
+        const validBadge = !v ? '<span style="color:#94a3b8;font-size:9px;">Validating…</span>'
+          : v.status === 'ok'      ? '<span title="' + (v.ai_summary||'') + '" style="cursor:help;color:#059669;font-size:10px;font-weight:700;">✅ Valid</span>'
+          : v.status === 'warning' ? '<span title="' + (v.ai_summary||'') + '" style="cursor:help;color:#d97706;font-size:10px;font-weight:700;">⚠️ Check</span>'
+          : v.status === 'error'   ? '<span title="' + (v.ai_summary||'') + '" style="cursor:help;color:#dc2626;font-size:10px;font-weight:700;">❌ Issues</span>'
+          : '<span style="color:#94a3b8;font-size:9px;">—</span>';
         return '<div class="dm-history-row">' +
           '<span style="font-size:11px;color:#374151;">' + date + '</span>' +
           '<span><span class="platform-pill ' + pm.pillClass + '" style="font-size:9px;padding:2px 7px;">' + pm.label + '</span></span>' +
           '<span style="color:#64748b;">' + type + '</span>' +
           '<span style="font-family:var(--font-mono);color:#0f172a;">' + rows + '</span>' +
+          '<span>' + validBadge + '</span>' +
           '<span style="color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (u.original_filename||'') + '">' + file + '</span>' +
           '<button class="dm-delete-btn"' +
             ' data-uid="' + u.id + '"' +
@@ -9063,8 +9766,6 @@ function _buildPrompt(data) {
 
   return prompt;
 }
-
-
 
 </script>
 
