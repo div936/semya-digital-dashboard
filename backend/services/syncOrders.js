@@ -82,7 +82,7 @@ function mapOrder(order) {
 
   return {
     client_id:          CLIENT_ID,
-    platform:           'website',  // All Shopify orders → Website tab in dashboard
+    platform:           utmFields.utm_source === 'google' ? 'google' : 'meta',  // google if UTM=google, otherwise meta
     order_date:         order.created_at?.split('T')[0] || null,
     standard_order_id:  order.name,            // NEAT-16463
     standard_revenue:   netRevenue,
