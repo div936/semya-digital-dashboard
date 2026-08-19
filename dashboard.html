@@ -9775,88 +9775,18 @@ function _buildPrompt(data) {
 </script>
 
 
-<!-- AI SETTINGS MODAL -->
-<div class="modal-overlay" id="aiSettingsModal" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.6);z-index:2147483647;align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:16px;padding:32px;width:480px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
-      <div>
-        <div style="font-size:18px;font-weight:700;color:#1e293b;">AI Settings</div>
-        <div style="font-size:12px;color:#64748b;margin-top:2px;">Connect your AI provider to unlock AI Insights</div>
-      </div>
-      <button onclick="closeAiSettingsModal()" style="border:none;background:none;cursor:pointer;font-size:20px;color:#94a3b8;">✕</button>
-    </div>
-
-    <!-- Provider Selection -->
-    <div style="margin-bottom:20px;">
-      <label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:8px;">AI PROVIDER</label>
-      <div style="display:flex;gap:12px;">
-        <label style="flex:1;cursor:pointer;">
-          <input type="radio" name="ai_provider" value="gemini" id="aiProviderGemini" style="display:none;" onchange="onAiProviderChange()">
-          <div id="aiProviderGeminiCard" style="border:2px solid #e2e8f0;border-radius:12px;padding:16px;text-align:center;transition:all .2s;">
-            <div style="font-size:24px;">🔮</div>
-            <div style="font-size:13px;font-weight:600;color:#1e293b;margin-top:4px;">Gemini</div>
-            <div style="font-size:10px;color:#64748b;">Google AI · Free tier</div>
-          </div>
-        </label>
-        <label style="flex:1;cursor:pointer;">
-          <input type="radio" name="ai_provider" value="claude" id="aiProviderClaude" style="display:none;" onchange="onAiProviderChange()">
-          <div id="aiProviderClaudeCard" style="border:2px solid #e2e8f0;border-radius:12px;padding:16px;text-align:center;transition:all .2s;">
-            <div style="font-size:24px;">🤖</div>
-            <div style="font-size:13px;font-weight:600;color:#1e293b;margin-top:4px;">Claude</div>
-            <div style="font-size:10px;color:#64748b;">Anthropic · Paid</div>
-          </div>
-        </label>
-      </div>
-    </div>
-
-    <!-- Model Selection -->
-    <div style="margin-bottom:20px;" id="aiModelSection">
-      <label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:8px;">MODEL</label>
-      <select id="aiModelSelect" style="width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;">
-        <option value="">— Select provider first —</option>
-      </select>
-    </div>
-
-    <!-- API Key -->
-    <div style="margin-bottom:24px;">
-      <label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:8px;">API KEY</label>
-      <div style="position:relative;">
-        <input type="password" id="aiApiKeyInput" placeholder="Paste your API key here..." 
-          style="width:100%;padding:10px 40px 10px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;color:#1e293b;box-sizing:border-box;">
-        <button onclick="toggleAiKeyVisibility()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);border:none;background:none;cursor:pointer;color:#94a3b8;font-size:16px;" id="aiKeyToggleBtn">👁</button>
-      </div>
-      <div id="aiKeyStatus" style="font-size:11px;margin-top:6px;color:#64748b;"></div>
-    </div>
-
-    <!-- Info box -->
-    <div id="aiProviderInfo" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:20px;font-size:11px;color:#475569;display:none;"></div>
-
-    <!-- Actions -->
-    <div style="display:flex;gap:12px;">
-      <button onclick="saveAiSettings()" id="aiSaveBtn"
-        style="flex:1;padding:12px;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
-        Save AI Settings
-      </button>
-      <button onclick="clearAiSettings()"
-        style="padding:12px 16px;background:#fee2e2;color:#dc2626;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
-        Clear
-      </button>
-    </div>
-  </div>
-</div>
-
 <script>
-// ── AI Settings Modal ─────────────────────────────────────────────
+// ── AI Settings Modal — dynamically injected to avoid CSS conflicts ──
 const AI_MODELS = {
   gemini: [
-    { value: 'gemini-3-flash',      label: 'Gemini 3 Flash (Free · Recommended)' },
+    { value: 'gemini-3-flash',        label: 'Gemini 3 Flash (Free · Recommended)' },
     { value: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite (Free · Fastest)' },
-    { value: 'gemini-2.5-flash',    label: 'Gemini 2.5 Flash (Free)' },
+    { value: 'gemini-2.5-flash',      label: 'Gemini 2.5 Flash (Free)' },
   ],
   claude: [
-    { value: 'claude-haiku-4-5',    label: 'Claude Haiku 4.5 (Cheapest)' },
-    { value: 'claude-sonnet-4-6',   label: 'Claude Sonnet 4.6 (Balanced)' },
-    { value: 'claude-opus-4-6',     label: 'Claude Opus 4.6 (Most capable)' },
+    { value: 'claude-haiku-4-5',  label: 'Claude Haiku 4.5 (Cheapest)' },
+    { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (Balanced)' },
+    { value: 'claude-opus-4-6',   label: 'Claude Opus 4.6 (Most capable)' },
   ],
 };
 
@@ -9866,75 +9796,124 @@ const AI_INFO = {
 };
 
 function openAiSettingsModal() {
-  const m = document.getElementById('aiSettingsModal');
-  document.body.appendChild(m); // move to top of DOM to avoid z-index stacking issues
-  m.style.display = 'flex';
-  m.style.alignItems = 'center';
-  m.style.justifyContent = 'center';
-  loadCurrentAiSettings();
+  // Remove any existing modal
+  const existing = document.getElementById('aiSettingsModalDyn');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'aiSettingsModalDyn';
+  modal.setAttribute('style', 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.65);z-index:2147483647;display:flex;align-items:center;justify-content:center;');
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:32px;width:480px;max-width:92vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.25);position:relative;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+        <div>
+          <div style="font-size:18px;font-weight:700;color:#1e293b;">AI Settings</div>
+          <div style="font-size:12px;color:#64748b;margin-top:2px;">Connect your AI provider to unlock AI Insights</div>
+        </div>
+        <button onclick="document.getElementById('aiSettingsModalDyn').remove()" style="border:none;background:#f1f5f9;border-radius:8px;cursor:pointer;width:32px;height:32px;font-size:16px;color:#64748b;">✕</button>
+      </div>
+
+      <div style="margin-bottom:18px;">
+        <div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:10px;letter-spacing:.05em;">SELECT PROVIDER</div>
+        <div style="display:flex;gap:12px;">
+          <label style="flex:1;cursor:pointer;" onclick="aiSelectProvider('gemini')">
+            <div id="aiCardGemini" style="border:2px solid #e2e8f0;border-radius:12px;padding:16px;text-align:center;transition:all .15s;">
+              <div style="font-size:22px;">🔮</div>
+              <div style="font-size:13px;font-weight:600;color:#1e293b;margin-top:4px;">Gemini</div>
+              <div style="font-size:10px;color:#64748b;">Google · Free tier</div>
+            </div>
+          </label>
+          <label style="flex:1;cursor:pointer;" onclick="aiSelectProvider('claude')">
+            <div id="aiCardClaude" style="border:2px solid #e2e8f0;border-radius:12px;padding:16px;text-align:center;transition:all .15s;">
+              <div style="font-size:22px;">🤖</div>
+              <div style="font-size:13px;font-weight:600;color:#1e293b;margin-top:4px;">Claude</div>
+              <div style="font-size:10px;color:#64748b;">Anthropic · Paid</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <div style="margin-bottom:18px;">
+        <div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:8px;letter-spacing:.05em;">MODEL</div>
+        <select id="aiModelSelectDyn" style="width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;box-sizing:border-box;">
+          <option value="">— Select provider first —</option>
+        </select>
+      </div>
+
+      <div style="margin-bottom:18px;">
+        <div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:8px;letter-spacing:.05em;">API KEY</div>
+        <input type="password" id="aiApiKeyDyn" placeholder="Paste your API key here..."
+          style="width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;color:#1e293b;box-sizing:border-box;">
+        <div id="aiKeyStatusDyn" style="font-size:11px;color:#64748b;margin-top:6px;"></div>
+      </div>
+
+      <div id="aiInfoBoxDyn" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:18px;font-size:11px;color:#475569;display:none;"></div>
+
+      <div style="display:flex;gap:10px;">
+        <button id="aiSaveBtnDyn" onclick="saveAiSettingsDyn()"
+          style="flex:1;padding:12px;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
+          Save AI Settings
+        </button>
+        <button onclick="clearAiSettingsDyn()"
+          style="padding:12px 16px;background:#fee2e2;color:#dc2626;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
+          Clear
+        </button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(modal);
+  window._aiProvider = null;
+  loadCurrentAiSettingsDyn();
 }
 
-function closeAiSettingsModal() {
-  document.getElementById('aiSettingsModal').style.display = 'none';
+function aiSelectProvider(provider) {
+  window._aiProvider = provider;
+  const gemCard = document.getElementById('aiCardGemini');
+  const cluCard = document.getElementById('aiCardClaude');
+  if (gemCard) gemCard.style.border = provider === 'gemini' ? '2px solid #3b82f6' : '2px solid #e2e8f0';
+  if (cluCard) cluCard.style.border = provider === 'claude' ? '2px solid #3b82f6' : '2px solid #e2e8f0';
+
+  const select = document.getElementById('aiModelSelectDyn');
+  if (select) select.innerHTML = AI_MODELS[provider].map(m => `<option value="${m.value}">${m.label}</option>`).join('');
+
+  const info = document.getElementById('aiInfoBoxDyn');
+  if (info) { info.innerHTML = AI_INFO[provider]; info.style.display = 'block'; }
 }
 
-async function loadCurrentAiSettings() {
+async function loadCurrentAiSettingsDyn() {
   try {
-    const slug = window.SEMYA_CLIENT_SLUG || 'neat-everyday';
+    const slug  = window.SEMYA_CLIENT_SLUG || document.querySelector('[data-client-slug]')?.dataset?.clientSlug || 'neat-everyday';
     const token = localStorage.getItem('token') || localStorage.getItem('semya_token');
-    const res = await fetch(`https://semya-api.onrender.com/clients/${slug}/ai-settings`, {
+    const res   = await fetch(`https://semya-api.onrender.com/clients/${slug}/ai-settings`, {
       headers: { 'Authorization': 'Bearer ' + token }
     });
     const data = await res.json();
-
     if (data.ai_provider) {
-      document.getElementById('aiProvider' + data.ai_provider.charAt(0).toUpperCase() + data.ai_provider.slice(1)).checked = true;
-      onAiProviderChange();
-      if (data.ai_model) document.getElementById('aiModelSelect').value = data.ai_model;
+      aiSelectProvider(data.ai_provider);
+      if (data.ai_model) {
+        const sel = document.getElementById('aiModelSelectDyn');
+        if (sel) sel.value = data.ai_model;
+      }
     }
     if (data.ai_key_set) {
-      document.getElementById('aiKeyStatus').innerHTML = '✅ API key is set. Enter a new key to replace it.';
-      document.getElementById('aiApiKeyInput').placeholder = '••••••••••••••••••••••';
+      const status = document.getElementById('aiKeyStatusDyn');
+      if (status) status.innerHTML = '✅ API key is set. Enter a new key to replace it.';
+      const input = document.getElementById('aiApiKeyDyn');
+      if (input) input.placeholder = '••••••••••••••••••••••';
     }
-  } catch(e) {
-    console.log('[ai-settings] load error:', e.message);
-  }
+  } catch(e) { console.log('[ai-settings] load error:', e.message); }
 }
 
-function onAiProviderChange() {
-  const provider = document.querySelector('input[name="ai_provider"]:checked')?.value;
-  if (!provider) return;
+async function saveAiSettingsDyn() {
+  const provider = window._aiProvider;
+  const model    = document.getElementById('aiModelSelectDyn')?.value;
+  const apiKey   = document.getElementById('aiApiKeyDyn')?.value.trim();
+  const btn      = document.getElementById('aiSaveBtnDyn');
 
-  // Update card styles
-  document.getElementById('aiProviderGeminiCard').style.border = provider === 'gemini' ? '2px solid #3b82f6' : '2px solid #e2e8f0';
-  document.getElementById('aiProviderClaudeCard').style.border = provider === 'claude' ? '2px solid #3b82f6' : '2px solid #e2e8f0';
-
-  // Update model dropdown
-  const select = document.getElementById('aiModelSelect');
-  select.innerHTML = AI_MODELS[provider].map(m => `<option value="${m.value}">${m.label}</option>`).join('');
-
-  // Show info
-  const infoEl = document.getElementById('aiProviderInfo');
-  infoEl.innerHTML = AI_INFO[provider];
-  infoEl.style.display = 'block';
-}
-
-function toggleAiKeyVisibility() {
-  const input = document.getElementById('aiApiKeyInput');
-  input.type = input.type === 'password' ? 'text' : 'password';
-}
-
-async function saveAiSettings() {
-  const provider = document.querySelector('input[name="ai_provider"]:checked')?.value;
-  const model    = document.getElementById('aiModelSelect').value;
-  const apiKey   = document.getElementById('aiApiKeyInput').value.trim();
-  const btn      = document.getElementById('aiSaveBtn');
-
-  if (!provider) { alert('Please select an AI provider.'); return; }
+  if (!provider) { alert('Please select an AI provider first.'); return; }
   if (!model)    { alert('Please select a model.'); return; }
 
-  btn.textContent = 'Saving...';
-  btn.disabled = true;
+  if (btn) { btn.textContent = 'Saving...'; btn.disabled = true; }
 
   try {
     const slug  = window.SEMYA_CLIENT_SLUG || 'neat-everyday';
@@ -9946,35 +9925,26 @@ async function saveAiSettings() {
     });
     const data = await res.json();
     if (data.ok) {
-      btn.textContent = '✅ Saved!';
-      document.getElementById('aiKeyStatus').innerHTML = '✅ API key saved successfully.';
-      setTimeout(() => { btn.textContent = 'Save AI Settings'; btn.disabled = false; }, 2000);
-    } else {
-      throw new Error(data.error);
-    }
+      const status = document.getElementById('aiKeyStatusDyn');
+      if (status) status.innerHTML = '✅ Saved! AI Insights will now use your key.';
+      if (btn) { btn.textContent = '✅ Saved!'; setTimeout(() => { btn.textContent = 'Save AI Settings'; btn.disabled = false; }, 2000); }
+    } else throw new Error(data.error);
   } catch(e) {
-    btn.textContent = 'Save AI Settings';
-    btn.disabled = false;
-    alert('Error saving: ' + e.message);
+    if (btn) { btn.textContent = 'Save AI Settings'; btn.disabled = false; }
+    alert('Error: ' + e.message);
   }
 }
 
-async function clearAiSettings() {
-  if (!confirm('Remove AI key? AI Insights will be disabled until you add a new key.')) return;
+async function clearAiSettingsDyn() {
+  if (!confirm('Remove AI key? AI Insights will be disabled.')) return;
   const slug  = window.SEMYA_CLIENT_SLUG || 'neat-everyday';
   const token = localStorage.getItem('token') || localStorage.getItem('semya_token');
   await fetch(`https://semya-api.onrender.com/clients/${slug}/ai-settings`, {
-    method:  'POST',
+    method: 'POST',
     headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
     body: JSON.stringify({ ai_api_key: '' }),
   });
-  document.getElementById('aiKeyStatus').innerHTML = '🗑 Key removed.';
-  document.querySelectorAll('input[name="ai_provider"]').forEach(r => r.checked = false);
-  document.getElementById('aiProviderGeminiCard').style.border = '2px solid #e2e8f0';
-  document.getElementById('aiProviderClaudeCard').style.border = '2px solid #e2e8f0';
-  document.getElementById('aiModelSelect').innerHTML = '<option value="">— Select provider first —</option>';
-  document.getElementById('aiProviderInfo').style.display = 'none';
-  document.getElementById('aiApiKeyInput').value = '';
+  document.getElementById('aiSettingsModalDyn')?.remove();
 }
 </script>
 
