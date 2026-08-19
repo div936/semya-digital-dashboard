@@ -62,8 +62,17 @@ function mapOrder(order) {
   // Paid line items only (price > 0) for unit count
   const paidItems  = (order.line_items || []).filter(li => parseFloat(li.price) > 0);
   const totalUnits = paidItems.reduce((s, li) => s + li.quantity, 0);
-  const primarySku = paidItems[0]?.sku || null;
-  const primaryName = paidItems[0]?.name || null;
+  const primarySku  = paidItems.find(li => li.sku)?.sku || null;
+  const primaryName = paidItems.find(li => li.name)?.name || null;
+  // Fulfillment channel: 'manual' = Merchant, 'amazon_marketplace_web' = FBA, etc.
+  const fulfillmentChannel = (() => {
+    const fuls = order.fulfillments || [];
+    if (fuls.length === 0) return order.fulfillment_status === null ? 'meta' : 'manual';
+    const svc = (fuls[0]?.service || '').toLowerCase();
+    if (svc.includes('amazon') || svc.includes('fba')) return 'Amazon: FBA';
+    if (svc === 'manual' || svc === '') return 'Merchant';
+    return svc || 'manual';
+  })();
 
   // Net revenue = total minus any already-processed refunds
   const totalRefunded = (order.refunds || []).reduce((s, r) =>
@@ -93,6 +102,7 @@ function mapOrder(order) {
     standard_state:     order.shipping_address?.province || order.billing_address?.province || null,
     standard_status,
     financial_status:   finStatus,
+    standard_fulfillment_channel: fulfillmentChannel,
     risk_level:         riskLevel,
     tags,
     is_duplicate_flag:  tags.includes('DUPLICATE_ORDER'),
@@ -112,7 +122,7 @@ export async function syncShopifyOrders(updatedAtMin = null) {
     fields: [
       'id','name','created_at','financial_status','fulfillment_status',
       'total_price','refunds','line_items','note_attributes','tags',
-      'risk_level','shipping_address','billing_address','test',
+      'risk_level','shipping_address','billing_address','test','fulfillments',
     ].join(','),
   };
   if (updatedAtMin) params.updated_at_min = updatedAtMin;
