@@ -954,8 +954,12 @@ async function aggregatePlatformSales(rows, excludeStatuses = new Set(), exclude
     // but they should still be counted as orders.
     if (row.standard_order_id) {
       byPlatform[p]._orderIds.add(row.standard_order_id);
-      if ((row.standard_status || '').toLowerCase() === 'delivered') {
+      const st = (row.standard_status || '').toLowerCase();
+      if (st === 'delivered' || st === 'paid') {
         byPlatform[p]._fulfilledIds.add(row.standard_order_id);
+      } else if (st === 'pending') {
+        if (!byPlatform[p]._pendingIds) byPlatform[p]._pendingIds = new Set();
+        byPlatform[p]._pendingIds.add(row.standard_order_id);
       }
     } else if (isMainRow) {
       // Only count rows without an order ID if they have revenue
