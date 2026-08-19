@@ -9779,9 +9779,9 @@ function _buildPrompt(data) {
 // ── AI Settings Modal — dynamically injected to avoid CSS conflicts ──
 const AI_MODELS = {
   gemini: [
-    { value: 'gemini-3-flash',        label: 'Gemini 3 Flash (Free · Recommended)' },
+    { value: 'gemini-3.7-flash',      label: 'Gemini 3.7 Flash (Latest · Recommended)' },
+    { value: 'gemini-3.6-flash',      label: 'Gemini 3.6 Flash (Fast)' },
     { value: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite (Free · Fastest)' },
-    { value: 'gemini-2.5-flash',      label: 'Gemini 2.5 Flash (Free)' },
   ],
   claude: [
     { value: 'claude-haiku-4-5',  label: 'Claude Haiku 4.5 (Cheapest)' },
@@ -9883,7 +9883,7 @@ function aiSelectProvider(provider) {
 async function loadCurrentAiSettingsDyn() {
   try {
     const slug  = window.SEMYA_CLIENT_SLUG || document.querySelector('[data-client-slug]')?.dataset?.clientSlug || 'neat-everyday';
-    const token = localStorage.getItem('token') || localStorage.getItem('semya_token');
+    const token = localStorage.getItem('semya_token') || localStorage.getItem('token');
     const res   = await fetch(`https://semya-api.onrender.com/clients/${slug}/ai-settings`, {
       headers: { 'Authorization': 'Bearer ' + token }
     });
@@ -9917,7 +9917,7 @@ async function saveAiSettingsDyn() {
 
   try {
     const slug  = window.SEMYA_CLIENT_SLUG || 'neat-everyday';
-    const token = localStorage.getItem('token') || localStorage.getItem('semya_token');
+    const token = localStorage.getItem('semya_token') || localStorage.getItem('token');
     const res = await fetch(`https://semya-api.onrender.com/clients/${slug}/ai-settings`, {
       method:  'POST',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
@@ -9938,7 +9938,7 @@ async function saveAiSettingsDyn() {
 async function clearAiSettingsDyn() {
   if (!confirm('Remove AI key? AI Insights will be disabled.')) return;
   const slug  = window.SEMYA_CLIENT_SLUG || 'neat-everyday';
-  const token = localStorage.getItem('token') || localStorage.getItem('semya_token');
+  const token = localStorage.getItem('semya_token') || localStorage.getItem('token');
   await fetch(`https://semya-api.onrender.com/clients/${slug}/ai-settings`, {
     method: 'POST',
     headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
