@@ -5125,17 +5125,22 @@ function renderPS(data) {
     'AOV: ' + (totalOrders ? fmtRevenue(grandTotal/totalOrders) : '—') +
     (cancelledOrd > 0 ? cancelledLink : '');
 
-  // Fulfilled Orders KPI — counts orders with fulfillment_status = 'fulfilled' or 'Delivered'
-  const fulfilledOrders = platforms.reduce((s, p) => s + (p.fulfilledCount || 0), 0);
+  // Fulfilled + Pending Orders KPI — single card showing both
+  const fulfilledOrders = platforms.reduce((s, p) => s + (p.fulfilledCount || p.fulfilled || 0), 0);
+  const pendingOrders   = platforms.reduce((s, p) => s + (p.pendingCount  || p.pending  || 0), 0);
   const fulfilledEl = document.getElementById('psKpiFulfilled');
   if (fulfilledEl) {
     fulfilledEl.innerHTML = fulfilledOrders > 0
       ? fulfilledOrders.toLocaleString('en-IN')
-      : totalOrders.toLocaleString('en-IN'); // fallback: show total if fulfilled not tracked
+      : totalOrders.toLocaleString('en-IN');
     document.getElementById('psKpiFulfilledDelta').innerHTML = '';
-    document.getElementById('psKpiFulfilledSub').innerHTML = fulfilledOrders > 0
-      ? Math.round(fulfilledOrders / (totalOrders || 1) * 100) + '% fulfillment rate'
-      : 'of total orders';
+    const fulfilledPct = Math.round(fulfilledOrders / (totalOrders || 1) * 100);
+    const pendingPct   = Math.round(pendingOrders   / (totalOrders || 1) * 100);
+    document.getElementById('psKpiFulfilledSub').innerHTML =
+      fulfilledPct + '% fulfillment rate' +
+      (pendingOrders > 0
+        ? '<br><span style="color:#f59e0b;font-size:11px;">⏳ ' + pendingOrders.toLocaleString('en-IN') + ' pending · ' + pendingPct + '% of total</span>'
+        : '');
   }
 
   const splitEl = document.getElementById('psPlatformSplit');
