@@ -1280,7 +1280,7 @@
           </div>
           <div class="status-filter-wrap" style="position:relative;">
             <button type="button" class="sku-pill" id="psStatusFilterBtn" onclick="togglePsStatusMenu()" style="cursor:pointer;appearance:none;-webkit-appearance:none;outline:none;font-family:inherit;line-height:normal;">Order status <span id="psStatusFilterCount"></span> ▾</button>
-            <div id="psStatusFilterMenu" style="display:none;position:absolute;top:110%;left:0;z-index:20;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:10px 12px;min-width:230px;">
+            <div id="psStatusFilterMenu" style="display:none;position:absolute;top:110%;left:0;z-index:1000;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:10px 12px;min-width:230px;">
               <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">Uncheck a status to exclude it from every number below. Everything is included by default.</div>
               <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
                 <input type="checkbox" class="ps-status-cb" value="Cancelled" onchange="onPsStatusChange()"> Cancelled
@@ -1302,7 +1302,7 @@
           <!-- Fulfillment Status filter dropdown -->
           <div class="status-filter-wrap" style="position:relative;">
             <button type="button" class="sku-pill" id="psFulfillFilterBtn" onclick="togglePsFulfillMenu()" style="cursor:pointer;appearance:none;-webkit-appearance:none;outline:none;font-family:inherit;line-height:normal;">Fulfillment <span id="psFulfillFilterCount"></span> ▾</button>
-            <div id="psFulfillFilterMenu" style="display:none;position:absolute;top:110%;left:0;z-index:20;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:10px 12px;min-width:250px;">
+            <div id="psFulfillFilterMenu" style="display:none;position:absolute;top:110%;left:0;z-index:1000;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:10px 12px;min-width:250px;">
               <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">Filter by fulfillment status. All included by default.</div>
               <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
                 <input type="checkbox" class="ps-fulfill-cb" value="Shipped" checked onchange="onPsFulfillChange()"> Shipped
@@ -1351,7 +1351,7 @@
             <button type="button" class="sku-pill" id="psProductFilterBtn" onclick="togglePsProductMenu()" style="cursor:pointer;appearance:none;-webkit-appearance:none;outline:none;font-family:inherit;line-height:normal;">
               <span id="psProductFilterLabel">Product: All</span> ▾
             </button>
-            <div id="psProductFilterMenu" style="display:none;position:absolute;top:110%;left:0;z-index:20;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:8px;min-width:240px;max-height:320px;overflow-y:auto;">
+            <div id="psProductFilterMenu" style="display:none;position:absolute;top:110%;left:0;z-index:1000;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:8px;min-width:240px;max-height:320px;overflow-y:auto;">
               <input type="text" id="psProductSearch" placeholder="Search product…" oninput="filterPsProductOptions(this.value)"
                      style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--color-border);border-radius:6px;margin-bottom:6px;box-sizing:border-box;" />
               <div id="psProductOptionsList"></div>
@@ -4018,7 +4018,20 @@ async function _streamClaudeInsight(prompt, list, confEl) {
       body: JSON.stringify({ prompt })
     });
 
-    if (!response.ok) throw new Error('API ' + response.status);
+    if (!response.ok) {
+      // 402 = no AI key configured — show actionable message, not generic error
+      if (response.status === 402) {
+        const body = await response.json().catch(() => ({}));
+        list.innerHTML = '<div class="ai-insight neutral" style="border-left-color:#7c3aed;background:#faf5ff;">' +
+          '<p style="font-size:12px;color:#4c1d95;line-height:1.65;margin:0;">' +
+          '&#9889; <strong>AI Insights not configured.</strong><br>' +
+          (body.message || 'Add your API key in <strong>Settings → AI Settings</strong> to unlock AI Insights.') +
+          '</p></div>';
+        if (confEl) confEl.textContent = '—';
+        return;
+      }
+      throw new Error('API ' + response.status);
+    }
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
