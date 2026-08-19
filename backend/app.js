@@ -21,6 +21,7 @@ import projectionsRouter from './routes/projectionsRouter.js';
 import platformSettingsRouter from './routes/platformSettingsRouter.js';
 import shopifySyncRouter      from './routes/shopifySyncRouter.js';
 import shopifyAuthRouter      from './routes/shopifyAuthRouter.js';
+import aiSettingsRouter       from './routes/aiSettingsRouter.js';
 import { startScheduler }     from './services/syncScheduler.js';
 
 const app  = express();
@@ -93,6 +94,7 @@ app.use('/clients', targetsRouter);
 app.use('/clients', inventoryRouter);
 app.use('/clients', reconciliationRouter);
 app.use('/clients', insightsRouter);
+app.use('/clients', aiSettingsRouter);
 app.use('/clients', projectionsRouter);
 
 app.use('/shopify', shopifySyncRouter);
