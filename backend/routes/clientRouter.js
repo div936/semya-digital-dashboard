@@ -1031,8 +1031,10 @@ async function aggregatePlatformSales(rows, excludeStatuses = new Set(), exclude
   for (const p of Object.values(byPlatform)) {
     p.orderCount     = p._orderIds.size + p._rowsWithoutOrderId;
     p.fulfilledCount = p._fulfilledIds.size;
+    p.pendingCount   = p._pendingIds ? p._pendingIds.size : 0;
     delete p._orderIds;
     delete p._fulfilledIds;
+    delete p._pendingIds;
     delete p._rowsWithoutOrderId;
   }
 
