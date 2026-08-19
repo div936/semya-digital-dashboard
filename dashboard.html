@@ -3944,7 +3944,8 @@ function _gatherTabData(tabKey) {
     out.totalOrders    = (psData.platforms||[]).reduce((s,p)=>s+(p.orderCount||0),0);
     out.prevOrders     = psData.prevOrders     || 0;
     out.platforms      = (psData.platforms||[]).map(p => ({
-      name: p.platform, revenue: p.totalRevenue, units: p.totalUnits, orders: p.orderCount
+      name: p.platform, revenue: p.totalRevenue, units: p.totalUnits, orders: p.orderCount,
+      fulfilledCount: p.fulfilledCount || 0, pendingCount: p.pendingCount || 0
     }));
     out.topProducts    = (psData.topProducts||[]).slice(0,5).map(p => ({
       sku: p.sku, platform: p.platform, revenue: p.revenue, units: p.units
