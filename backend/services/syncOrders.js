@@ -74,7 +74,7 @@ function mapOrder(order) {
   let standard_status;
   if (finStatus === 'voided' || finStatus === 'refunded') standard_status = 'Cancelled';
   else if (finStatus === 'paid' && order.fulfillment_status === 'fulfilled') standard_status = 'Delivered';
-  else if (finStatus === 'paid') standard_status = 'Paid';
+  else if (finStatus === 'paid') standard_status = 'Delivered';  // Paid = fulfilled (matches Shopify logic)
   else standard_status = 'Pending';
 
   // Risk level — Shopify API returns it as order.risk_level (string) on some versions
