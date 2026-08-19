@@ -32,7 +32,7 @@ async function getClientAiConfig(clientId) {
   if (process.env.GEMINI_API_KEY) {
     return {
       provider: 'gemini',
-      model:    'gemini-3-flash',
+      model:    'gemini-3.7-flash',
       apiKey:   process.env.GEMINI_API_KEY,
       source:   'admin',
     };
