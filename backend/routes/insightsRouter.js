@@ -1,7 +1,7 @@
 // routes/insightsRouter.js
-// ─────────────────────────────────────────────────────────────────
-// AI Insights — uses Google Gemini (free) instead of Claude
-// ─────────────────────────────────────────────────────────────────
+// AI Insights — supports per-client Gemini or Claude key
+// Falls back to admin GEMINI_API_KEY if client has none
+
 import { Router }        from 'express';
 import { rbacMiddleware, requireTab } from '../middleware/rbac.js';
 import { supabaseAdmin } from '../lib/supabase.js';
@@ -10,6 +10,127 @@ import { generateInsights, generateNarrativeSummaries } from '../lib/insightGene
 const router = Router({ mergeParams: true });
 
 const VALID_SCOPES = new Set(['all', 'amazon', 'acutas', 'flipkart', 'blinkit', 'meta', 'google']);
+
+// ─── Helper: get AI config for this client ────────────────────────
+async function getClientAiConfig(clientId) {
+  const { data } = await supabaseAdmin
+    .from('clients')
+    .select('ai_provider, ai_model, ai_api_key')
+    .eq('id', clientId)
+    .maybeSingle();
+
+  if (data?.ai_api_key) {
+    return {
+      provider: data.ai_provider || 'gemini',
+      model:    data.ai_model    || (data.ai_provider === 'claude' ? 'claude-haiku-4-5' : 'gemini-3-flash'),
+      apiKey:   data.ai_api_key,
+      source:   'client',
+    };
+  }
+
+  // Fallback to admin Gemini key
+  if (process.env.GEMINI_API_KEY) {
+    return {
+      provider: 'gemini',
+      model:    'gemini-3-flash',
+      apiKey:   process.env.GEMINI_API_KEY,
+      source:   'admin',
+    };
+  }
+
+  return null; // No AI configured
+}
+
+// ─── Stream Gemini response ───────────────────────────────────────
+async function streamGemini(apiKey, model, prompt, res) {
+  const geminiRes = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: 800 },
+      }),
+    }
+  );
+
+  if (!geminiRes.ok) {
+    const err = await geminiRes.text();
+    console.error('[gemini-insight] API error:', err);
+    throw new Error('Gemini API error: ' + geminiRes.status);
+  }
+
+  const reader = geminiRes.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const jsonStr = line.slice(6).trim();
+      if (jsonStr === '[DONE]') continue;
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const text = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) res.write(text);
+      } catch (_) {}
+    }
+  }
+}
+
+// ─── Stream Claude response ───────────────────────────────────────
+async function streamClaude(apiKey, model, prompt, res) {
+  const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type':      'application/json',
+      'x-api-key':         apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta':    'messages-2023-12-15',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 800,
+      stream: true,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+
+  if (!claudeRes.ok) {
+    const err = await claudeRes.text();
+    console.error('[claude-insight] API error:', err);
+    throw new Error('Claude API error: ' + claudeRes.status);
+  }
+
+  const reader = claudeRes.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const jsonStr = line.slice(6).trim();
+      if (jsonStr === '[DONE]') continue;
+      try {
+        const parsed = JSON.parse(jsonStr);
+        if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+          res.write(parsed.delta.text);
+        }
+      } catch (_) {}
+    }
+  }
+}
 
 // ─── GET /clients/:client_slug/ai-summary ─────────────────────────
 router.get('/:client_slug/ai-summary', rbacMiddleware, async (req, res) => {
@@ -21,10 +142,7 @@ router.get('/:client_slug/ai-summary', rbacMiddleware, async (req, res) => {
     .eq('client_id', client.id)
     .eq('scope', scope)
     .maybeSingle();
-  if (error) {
-    console.error('[ai-summary GET]', error.message);
-    return res.status(500).json({ error: 'Failed to fetch summary.' });
-  }
+  if (error) return res.status(500).json({ error: 'Failed to fetch summary.' });
   return res.json({ scope, summary: data || null });
 });
 
@@ -36,7 +154,6 @@ router.post('/:client_slug/ai-summary/regenerate', rbacMiddleware, async (req, r
     const result = await generateNarrativeSummaries({ clientId: client.id });
     return res.json({ ok: true, ...result });
   } catch (err) {
-    console.error('[ai-summary regenerate]', err.message);
     return res.status(500).json({ error: err.message });
   }
 });
@@ -55,11 +172,8 @@ router.get('/:client_slug/ai-insights', rbacMiddleware, requireTab('ai_insights'
     .limit(limit);
   if (type && ['warn', 'positive', 'neutral'].includes(type)) query = query.eq('insight_type', type);
   const { data, error } = await query;
-  if (error) {
-    console.error('[insights GET]', error.message);
-    return res.status(500).json({ error: 'Failed to fetch insights.' });
-  }
-  return res.json({ insights: data || [], generatedAt: data?.[0]?.generated_at || null, count: data?.length || 0 });
+  if (error) return res.status(500).json({ error: 'Failed to fetch insights.' });
+  return res.json({ insights: data || [], count: data?.length || 0 });
 });
 
 // ─── POST /clients/:client_slug/ai-insights/generate ─────────────
@@ -69,72 +183,45 @@ router.post('/:client_slug/ai-insights/generate', rbacMiddleware, async (req, re
   const { platform } = req.body || {};
   try {
     const result = await generateInsights({ clientId: client.id, uploadId: null, platform: platform || null });
-    return res.json({ ok: true, count: result.insights.length, tokensUsed: result.tokensUsed, insights: result.insights });
+    return res.json({ ok: true, count: result.insights.length, insights: result.insights });
   } catch (err) {
-    console.error('[insights generate]', err.message);
     return res.status(500).json({ error: err.message });
   }
 });
 
-// ─── POST /clients/:client_slug/claude-insight ───────────────────
-// Uses Gemini (free) instead of Claude
+// ─── POST /clients/:client_slug/claude-insight ────────────────────
+// Main AI streaming endpoint — auto-selects provider based on client config
 router.post('/:client_slug/claude-insight', rbacMiddleware, async (req, res) => {
   const { prompt } = req.body || {};
   if (!prompt) return res.status(400).json({ error: 'prompt is required' });
 
-  const GEMINI_KEY = process.env.GEMINI_API_KEY;
-  if (!GEMINI_KEY) return res.status(503).json({ error: 'AI service not configured' });
+  const { client } = req.semya;
+  const aiConfig = await getClientAiConfig(client.id);
+
+  // No AI key configured — tell frontend to show the unlock message
+  if (!aiConfig) {
+    return res.status(402).json({
+      error: 'no_ai_key',
+      message: 'No AI key configured. Add your API key in Settings → AI Settings to unlock AI Insights.',
+    });
+  }
 
   try {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Transfer-Encoding', 'chunked');
     res.setHeader('X-Accel-Buffering', 'no');
+    res.setHeader('X-AI-Provider', aiConfig.provider);
+    res.setHeader('X-AI-Source', aiConfig.source);
 
-    // Gemini streaming API
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${GEMINI_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 800 },
-        }),
-      }
-    );
-
-    if (!geminiRes.ok) {
-      const err = await geminiRes.text();
-      console.error('[gemini-insight] API error:', err);
-      return res.status(500).json({ error: 'Gemini API error' });
+    if (aiConfig.provider === 'claude') {
+      await streamClaude(aiConfig.apiKey, aiConfig.model, prompt, res);
+    } else {
+      await streamGemini(aiConfig.apiKey, aiConfig.model, prompt, res);
     }
 
-    // Stream the response
-    const reader = geminiRes.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop(); // keep incomplete line
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const jsonStr = line.slice(6).trim();
-        if (jsonStr === '[DONE]') continue;
-        try {
-          const parsed = JSON.parse(jsonStr);
-          const text = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (text) res.write(text);
-        } catch (_) {}
-      }
-    }
     res.end();
   } catch (err) {
-    console.error('[gemini-insight]', err.message);
+    console.error('[ai-insight]', err.message);
     if (!res.headersSent) res.status(500).json({ error: err.message });
     else res.end();
   }
