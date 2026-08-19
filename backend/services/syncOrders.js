@@ -123,7 +123,7 @@ export async function syncShopifyOrders(updatedAtMin = null) {
   for await (const batch of shopifyPaginate('/orders.json', params, 'orders')) {
     const rows = [];
     for (const order of batch) {
-      if (order.test === true) { skipped++; continue; }  // skip test orders
+      // Note: test orders are included intentionally for development stores
       rows.push(mapOrder(order));
     }
     if (!rows.length) continue;
