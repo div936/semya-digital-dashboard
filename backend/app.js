@@ -104,7 +104,7 @@ app.use('/shopify', shopifyAuthRouter);
 startScheduler();
 
 // ─── Health check ─────────────────────────────────────────────────
-app.get('/health', (_req, res) => res.json({ ok: true, version: 'V39-shopify-sync' }));
+app.get('/health', (_req, res) => res.json({ ok: true, version: 'V40-ai-settings' }));
 
 // ─── 404 ──────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'Route not found.' }));
