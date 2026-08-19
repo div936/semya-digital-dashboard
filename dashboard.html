@@ -9776,7 +9776,7 @@ function _buildPrompt(data) {
 
 
 <!-- AI SETTINGS MODAL -->
-<div class="modal-overlay" id="aiSettingsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;">
+<div class="modal-overlay" id="aiSettingsModal" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.6);z-index:2147483647;align-items:center;justify-content:center;">
   <div style="background:#fff;border-radius:16px;padding:32px;width:480px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
       <div>
@@ -9866,7 +9866,11 @@ const AI_INFO = {
 };
 
 function openAiSettingsModal() {
-  const m = document.getElementById('aiSettingsModal'); m.style.display = 'flex'; m.style.alignItems = 'center'; m.style.justifyContent = 'center';
+  const m = document.getElementById('aiSettingsModal');
+  document.body.appendChild(m); // move to top of DOM to avoid z-index stacking issues
+  m.style.display = 'flex';
+  m.style.alignItems = 'center';
+  m.style.justifyContent = 'center';
   loadCurrentAiSettings();
 }
 
