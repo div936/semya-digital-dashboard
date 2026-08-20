@@ -1129,6 +1129,159 @@
       font-size: 10px; font-weight: 800; margin-left: 6px;
     }
     @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    /* ═══════════════════════════════════════════════════════════════
+       RESPONSIVE SYSTEM — covers 13" (1280px), 15" (1440px), wide
+       Breakpoints:
+         ≤1366px  → "compact"  (13" laptop)
+         ≤1199px  → "narrow"   (small window / low-res)
+    ═══════════════════════════════════════════════════════════════ */
+
+    /* ── 15" and larger: already designed for, just fine-tune ── */
+    @media (max-width: 1440px) {
+      .kpi-value.revenue-kpi { font-size: 28px; }
+      .kpi-value              { font-size: 26px; }
+    }
+
+    /* ── 13" laptop compact mode (≤1366px) ── */
+    @media (max-width: 1366px) {
+
+      /* Shrink sidebar to reclaim main-area width */
+      .layout {
+        grid-template-columns: 1fr 272px;
+      }
+      .sidebar {
+        padding: 16px 16px 16px 4px;
+        gap: 12px;
+      }
+
+      /* Tighten main padding */
+      .main {
+        padding: 14px 14px 14px 18px;
+        gap: 12px;
+      }
+
+      /* Reduce header height slightly */
+      .header {
+        padding: 0 18px;
+      }
+      .nav-tab {
+        padding: 0 13px;
+        font-size: 11.5px;
+        height: 40px;
+      }
+
+      /* KPI values scale down */
+      .kpi-value              { font-size: 24px; }
+      .kpi-value.revenue-kpi  { font-size: 26px; }
+      .kpi-card               { padding: 16px; }
+      .kpi-label              { margin-bottom: 7px; }
+
+      /* 4-col KPI: on 13" with 272px sidebar each card is ~198px — still OK */
+      /* kpi-grid-4 stays 4-col at 1366 */
+
+      /* Campaign cards 3→2 */
+      .campaign-cards { grid-template-columns: repeat(2, 1fr); }
+
+      /* Mid/bot grids get slightly less gap */
+      .mid-grid { gap: 12px; }
+      .bot-grid { gap: 12px; }
+
+      /* Toolbar — prevent multi-row wrapping by condensing elements */
+      .tab-toolbar {
+        gap: 7px;
+        flex-wrap: nowrap;          /* prefer single row */
+        overflow-x: auto;           /* scroll if truly too wide */
+        scrollbar-width: none;      /* hide scrollbar (Firefox) */
+        -ms-overflow-style: none;
+      }
+      .tab-toolbar::-webkit-scrollbar { display: none; }
+
+      /* Date inputs shrink */
+      .date-input {
+        font-size: 11px;
+        padding: 0 7px;
+        height: 30px;
+        max-width: 108px;
+      }
+      .date-sep { display: none; }    /* hide the "—" separator, inputs already imply range */
+
+      /* Platform pills shrink */
+      .sku-pill {
+        font-size: 10px;
+        padding: 3px 9px;
+      }
+
+      /* Tab title hide on small toolbars */
+      .tab-toolbar .tab-title {
+        display: none;
+      }
+
+      /* Card padding */
+      .card    { padding: 16px; }
+      .card-sm { padding: 12px 16px; }
+
+      /* AI panel */
+      .ai-panel { padding: 16px; }
+
+      /* Smaller fetch badge */
+      .fetch-badge { font-size: 9px; padding: 2px 6px; }
+    }
+
+    /* ── Narrow / small window (≤1199px) ── */
+    @media (max-width: 1199px) {
+
+      /* Stack sidebar below main */
+      .layout {
+        grid-template-columns: 1fr;
+        grid-template-rows: 64px auto 1fr auto;
+        grid-template-areas:
+          "header"
+          "nav"
+          "main"
+          "sidebar";
+        height: auto;
+        min-height: 100vh;
+      }
+      .main    { padding: 14px 16px; }
+      .sidebar {
+        padding: 0 16px 20px;
+        gap: 12px;
+        border-top: 1px solid var(--color-border);
+      }
+
+      /* 4-col KPI → 2×2 */
+      .kpi-grid-4 { grid-template-columns: repeat(2, 1fr); }
+
+      /* Mid/bot grids → single column */
+      .mid-grid { grid-template-columns: 1fr; }
+      .bot-grid { grid-template-columns: 1fr; }
+
+      /* Campaign cards → 2-col */
+      .campaign-cards { grid-template-columns: repeat(2, 1fr); }
+
+      /* AI stats row → 3-col still fine since sidebar is now full width */
+
+      /* Toolbar allow wrap but with tight gap */
+      .tab-toolbar {
+        flex-wrap: wrap;
+        gap: 8px;
+        overflow-x: visible;
+      }
+      .tab-toolbar .tab-title { display: block; width: 100%; }
+
+      /* Date inputs restore */
+      .date-input { max-width: unset; height: 32px; font-size: 12px; padding: 0 9px; }
+      .date-sep   { display: inline; }
+    }
+
+    /* ── Toolbar always-visible scrollbar hint on 13" ── */
+    @media (max-width: 1366px) and (min-width: 1200px) {
+      .tab-toolbar::after {
+        content: '';
+        flex: 0 0 1px; /* spacer so last item isn't flush against edge */
+      }
+    }
   </style>
 </head>
 <body>
@@ -1262,115 +1415,61 @@
     <div class="tab-panel active" id="tab-platform_sales">
 
       <!-- Toolbar -->
-      <div class="card card-sm">
-        <div class="tab-toolbar">
-          <span class="tab-title">Platform Sales Overview</span>
-          <div class="date-range-wrap" style="margin-left:0;">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            <input type="date" class="date-input" id="psDateFrom" />
-            <span class="date-sep">→</span>
-            <input type="date" class="date-input" id="psDateTo" />
+      <div class="card card-sm" style="overflow:visible;">
+        <div class="tab-toolbar" style="flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;">
+          <!-- Date range — flex-shrink:0 so it never collapses -->
+          <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5" style="flex-shrink:0;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <input type="date" class="date-input" id="psDateFrom" style="max-width:118px;" />
+            <span class="date-sep" style="flex-shrink:0;">→</span>
+            <input type="date" class="date-input" id="psDateTo" style="max-width:118px;" />
           </div>
-          <div class="sku-pills" style="margin-left:0;">
+
+          <!-- Divider -->
+          <div style="width:1px;height:20px;background:var(--color-border);flex-shrink:0;"></div>
+
+          <!-- Platform pills -->
+          <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
             <div class="sku-pill active" data-ps-platform="">All</div>
             <div class="sku-pill" data-ps-platform="amazon">Amazon</div>
             <div class="sku-pill" data-ps-platform="flipkart">Flipkart</div>
             <div class="sku-pill" data-ps-platform="blinkit">Blinkit</div>
             <div class="sku-pill" data-ps-platform="website">Website</div>
           </div>
-          <div class="status-filter-wrap" style="position:relative;">
-            <button type="button" class="sku-pill" id="psStatusFilterBtn" onclick="togglePsStatusMenu()" style="cursor:pointer;appearance:none;-webkit-appearance:none;outline:none;font-family:inherit;line-height:normal;">Order status <span id="psStatusFilterCount"></span> ▾</button>
-            <div id="psStatusFilterMenu" style="display:none;position:absolute;top:110%;left:0;z-index:1000;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:10px 12px;min-width:230px;">
-              <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">Uncheck a status to exclude it from every number below. Everything is included by default.</div>
-              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
-                <input type="checkbox" class="ps-status-cb" value="Cancelled" onchange="onPsStatusChange()"> Cancelled
-              </label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
-                <input type="checkbox" class="ps-status-cb" value="Pending" checked onchange="onPsStatusChange()"> Pending
-              </label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
-                <input type="checkbox" class="ps-status-cb" value="Unshipped" checked onchange="onPsStatusChange()"> Unshipped
-              </label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
-                <input type="checkbox" class="ps-status-cb" value="Shipped - Returned to Seller" checked onchange="onPsStatusChange()"> Returned to Seller
-              </label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
-                <input type="checkbox" class="ps-status-cb" value="Shipped - Returning to Seller" checked onchange="onPsStatusChange()"> Returning to Seller
-              </label>
+
+          <!-- Divider -->
+          <div style="width:1px;height:20px;background:var(--color-border);flex-shrink:0;"></div>
+
+          <!-- Filter dropdowns -->
+          <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
+            <div class="status-filter-wrap">
+              <button type="button" class="sku-pill" id="psStatusFilterBtn" onclick="togglePsStatusMenu()" style="cursor:pointer;appearance:none;-webkit-appearance:none;outline:none;font-family:inherit;line-height:normal;white-space:nowrap;">Status <span id="psStatusFilterCount"></span> ▾</button>
             </div>
-          </div>
-          <!-- Fulfillment Status filter dropdown -->
-          <div class="status-filter-wrap" style="position:relative;">
-            <button type="button" class="sku-pill" id="psFulfillFilterBtn" onclick="togglePsFulfillMenu()" style="cursor:pointer;appearance:none;-webkit-appearance:none;outline:none;font-family:inherit;line-height:normal;">Fulfillment <span id="psFulfillFilterCount"></span> ▾</button>
-            <div id="psFulfillFilterMenu" style="display:none;position:absolute;top:110%;left:0;z-index:1000;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:10px 12px;min-width:250px;">
-              <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">Filter by fulfillment status. All included by default.</div>
-              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
-                <input type="checkbox" class="ps-fulfill-cb" value="Shipped" checked onchange="onPsFulfillChange()"> Shipped
-              </label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
-                <input type="checkbox" class="ps-fulfill-cb" value="Shipped - Delivered to Buyer" checked onchange="onPsFulfillChange()"> Delivered to Buyer
-              </label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
-                <input type="checkbox" class="ps-fulfill-cb" value="Delivered" checked onchange="onPsFulfillChange()"> Delivered
-              </label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
-                <input type="checkbox" class="ps-fulfill-cb" value="Shipped - Picked Up" checked onchange="onPsFulfillChange()"> Picked Up
-              </label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
-                <input type="checkbox" class="ps-fulfill-cb" value="Shipped - Out for Delivery" checked onchange="onPsFulfillChange()"> Out for Delivery
-              </label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
-                <input type="checkbox" class="ps-fulfill-cb" value="Pending" checked onchange="onPsFulfillChange()"> Pending
-              </label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
-                <input type="checkbox" class="ps-fulfill-cb" value="Pending - Waiting for Pick Up" checked onchange="onPsFulfillChange()"> Waiting for Pick Up
-              </label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
-                <input type="checkbox" class="ps-fulfill-cb" value="Approved" checked onchange="onPsFulfillChange()"> Approved
-              </label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
-                <input type="checkbox" class="ps-fulfill-cb" value="Shipping" checked onchange="onPsFulfillChange()"> Shipping
-              </label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
-                <input type="checkbox" class="ps-fulfill-cb" value="Shipped - Returned to Seller" checked onchange="onPsFulfillChange()"> Returned to Seller
-              </label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
-                <input type="checkbox" class="ps-fulfill-cb" value="Shipped - Returning to Seller" checked onchange="onPsFulfillChange()"> Returning to Seller
-              </label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
-                <input type="checkbox" class="ps-fulfill-cb" value="Return Requested" checked onchange="onPsFulfillChange()"> Return Requested
-              </label>
-              <div style="border-top:1px solid #f1f5f9;margin-top:8px;padding-top:8px;display:flex;gap:8px;">
-                <button onclick="psFulfillSelectAll()" style="font-size:11px;color:#0284c7;background:none;border:none;cursor:pointer;padding:0;">Select all</button>
-                <button onclick="psFulfillClearAll()" style="font-size:11px;color:#64748b;background:none;border:none;cursor:pointer;padding:0;">Clear all</button>
-              </div>
+            <div class="status-filter-wrap">
+              <button type="button" class="sku-pill" id="psFulfillFilterBtn" onclick="togglePsFulfillMenu()" style="cursor:pointer;appearance:none;-webkit-appearance:none;outline:none;font-family:inherit;line-height:normal;white-space:nowrap;">Fulfillment ▾</button>
+            </div>
+            <div class="status-filter-wrap">
+              <button type="button" class="sku-pill" id="psProductFilterBtn" onclick="togglePsProductMenu()" style="cursor:pointer;appearance:none;-webkit-appearance:none;outline:none;font-family:inherit;line-height:normal;white-space:nowrap;">
+                <span id="psProductFilterLabel">Product: All</span> ▾
+              </button>
             </div>
           </div>
 
-          <div class="status-filter-wrap" style="position:relative;">
-            <button type="button" class="sku-pill" id="psProductFilterBtn" onclick="togglePsProductMenu()" style="cursor:pointer;appearance:none;-webkit-appearance:none;outline:none;font-family:inherit;line-height:normal;">
-              <span id="psProductFilterLabel">Product: All</span> ▾
-            </button>
-            <div id="psProductFilterMenu" style="display:none;position:absolute;top:110%;left:0;z-index:1000;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:8px;min-width:240px;max-height:320px;overflow-y:auto;">
-              <input type="text" id="psProductSearch" placeholder="Search product…" oninput="filterPsProductOptions(this.value)"
-                     style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--color-border);border-radius:6px;margin-bottom:6px;box-sizing:border-box;" />
-              <div id="psProductOptionsList"></div>
-            </div>
+          <!-- Discount toggle + status badge pushed to far right -->
+          <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-shrink:0;">
+            <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:#64748b;white-space:nowrap;cursor:pointer;">
+              <input type="checkbox" id="psApplyDiscountsToggle" onchange="onPsDiscountToggle()" style="cursor:pointer;accent-color:var(--theme-primary);">
+              Apply discounts
+            </label>
+            <span class="fetch-badge loading" id="psFetchBadge">
+              <span class="fetch-dot"></span><span id="psFetchText">Loading</span>
+            </span>
           </div>
-          <!-- Discount toggle — gross vs net revenue -->
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-text-secondary);white-space:nowrap;cursor:pointer;padding:0 4px;">
-            <input type="checkbox" id="psApplyDiscountsToggle" onchange="onPsDiscountToggle()" style="cursor:pointer;">
-            Apply discounts
-          </label>
-
-          <span class="fetch-badge loading" id="psFetchBadge" style="margin-left:auto;">
-            <span class="fetch-dot"></span><span id="psFetchText">Loading</span>
-          </span>
         </div>
       </div>
 
       <!-- KPI Row -->
-      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
+      <div class="kpi-grid-4">
         <div class="kpi-card">
           <div class="kpi-icon">&#8377;</div>
           <div class="kpi-label">Total Net Revenue</div>
@@ -1478,39 +1577,51 @@
     <div class="tab-panel" id="tab-sku_performance">
 
     <!-- SKU Selector -->
-    <div class="card card-sm">
-      <div class="sku-selector-bar">
-        <span class="sku-label">Product Name</span>
-        <div class="sku-custom-wrap" id="skuCustomWrap">
-          <div class="sku-custom-trigger" id="skuCustomTrigger" onclick="toggleSkuDropdown(event)">
-            <span id="skuCustomLabel">Loading SKUs…</span>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+    <div class="card card-sm" style="overflow:visible;">
+      <div class="tab-toolbar" style="flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;">
+        <!-- SKU dropdown -->
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;min-width:0;">
+          <span class="sku-label" style="white-space:nowrap;">Product Name</span>
+          <div class="sku-custom-wrap" id="skuCustomWrap" style="min-width:180px;max-width:260px;flex:1;">
+            <div class="sku-custom-trigger" id="skuCustomTrigger" onclick="toggleSkuDropdown(event)">
+              <span id="skuCustomLabel">Loading SKUs…</span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="sku-custom-panel" id="skuCustomPanel">
+              <input type="text" class="sku-custom-search" id="skuCustomSearch" placeholder="Search SKU…" oninput="filterSkuOptions(this.value)" />
+              <div class="sku-custom-list" id="skuCustomList"></div>
+              <div class="sku-custom-empty" id="skuCustomEmpty">No matching SKUs</div>
+            </div>
           </div>
-          <div class="sku-custom-panel" id="skuCustomPanel">
-            <input type="text" class="sku-custom-search" id="skuCustomSearch" placeholder="Search SKU…" oninput="filterSkuOptions(this.value)" />
-            <div class="sku-custom-list" id="skuCustomList"></div>
-            <div class="sku-custom-empty" id="skuCustomEmpty">No matching SKUs</div>
-          </div>
+          <input type="hidden" id="skuSelect" value="" />
         </div>
-        <!-- Hidden input to carry the value like the old select -->
-        <input type="hidden" id="skuSelect" value="" />
-        <div class="sku-pills">
+
+        <!-- Divider -->
+        <div style="width:1px;height:20px;background:var(--color-border);flex-shrink:0;"></div>
+
+        <!-- Platform pills -->
+        <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
           <div class="sku-pill active" data-platform="">All</div>
           <div class="sku-pill" data-platform="amazon">Amazon</div>
           <div class="sku-pill" data-platform="flipkart">Flipkart</div>
           <div class="sku-pill" data-platform="blinkit">Blinkit</div>
           <div class="sku-pill" data-platform="website">Website</div>
         </div>
-        <div class="date-range-wrap">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          <input type="date" class="date-input" id="dateFrom" />
+
+        <!-- Divider -->
+        <div style="width:1px;height:20px;background:var(--color-border);flex-shrink:0;"></div>
+
+        <!-- Date range + badge -->
+        <div style="display:flex;align-items:center;gap:6px;margin-left:auto;flex-shrink:0;">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5" style="flex-shrink:0;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <input type="date" class="date-input" id="dateFrom" style="max-width:118px;" />
           <span class="date-sep">→</span>
-          <input type="date" class="date-input" id="dateTo" />
+          <input type="date" class="date-input" id="dateTo" style="max-width:118px;" />
+          <span class="fetch-badge loading" id="fetchBadge">
+            <span class="fetch-dot"></span>
+            <span id="fetchBadgeText">Loading</span>
+          </span>
         </div>
-        <span class="fetch-badge loading" id="fetchBadge">
-          <span class="fetch-dot"></span>
-          <span id="fetchBadgeText">Loading</span>
-        </span>
       </div>
     </div>
 
@@ -1625,22 +1736,22 @@
 
       <!-- Toolbar -->
       <div class="card card-sm">
-        <div class="tab-toolbar">
-          <span class="tab-title">Campaign Insights</span>
-          <div class="date-range-wrap" style="margin-left:0;">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            <input type="date" class="date-input" id="ciDateFrom" />
+        <div class="tab-toolbar" style="flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;">
+          <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5" style="flex-shrink:0;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <input type="date" class="date-input" id="ciDateFrom" style="max-width:118px;" />
             <span class="date-sep">→</span>
-            <input type="date" class="date-input" id="ciDateTo" />
+            <input type="date" class="date-input" id="ciDateTo" style="max-width:118px;" />
           </div>
-          <div class="sku-pills" style="margin-left:0;">
+          <div style="width:1px;height:20px;background:var(--color-border);flex-shrink:0;"></div>
+          <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
             <div class="sku-pill active" data-ci-platform="">All</div>
             <div class="sku-pill" data-ci-platform="amazon">Amazon</div>
             <div class="sku-pill" data-ci-platform="flipkart">Flipkart</div>
             <div class="sku-pill" data-ci-platform="blinkit">Blinkit</div>
             <div class="sku-pill" data-ci-platform="website">Website</div>
           </div>
-          <span class="fetch-badge loading" id="ciFetchBadge" style="margin-left:auto;">
+          <span class="fetch-badge loading" id="ciFetchBadge" style="margin-left:auto;flex-shrink:0;">
             <span class="fetch-dot"></span><span id="ciFetchText">Loading</span>
           </span>
         </div>
@@ -1782,22 +1893,22 @@
 
       <!-- Toolbar -->
       <div class="card card-sm">
-        <div class="tab-toolbar">
-          <span class="tab-title">Geographic Analysis</span>
-          <div class="date-range-wrap" style="margin-left:0;">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            <input type="date" class="date-input" id="geoDateFrom" />
-            <span class="date-sep">&rarr;</span>
-            <input type="date" class="date-input" id="geoDateTo" />
+        <div class="tab-toolbar" style="flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;">
+          <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5" style="flex-shrink:0;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <input type="date" class="date-input" id="geoDateFrom" style="max-width:118px;" />
+            <span class="date-sep">→</span>
+            <input type="date" class="date-input" id="geoDateTo" style="max-width:118px;" />
           </div>
-          <div class="sku-pills" style="margin-left:0;">
+          <div style="width:1px;height:20px;background:var(--color-border);flex-shrink:0;"></div>
+          <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
             <div class="sku-pill active" data-geo-platform="">All</div>
             <div class="sku-pill" data-geo-platform="amazon">Amazon</div>
             <div class="sku-pill" data-geo-platform="flipkart">Flipkart</div>
             <div class="sku-pill" data-geo-platform="blinkit">Blinkit</div>
             <div class="sku-pill" data-geo-platform="website">Website</div>
           </div>
-          <span class="fetch-badge loading" id="geoFetchBadge" style="margin-left:auto;">
+          <span class="fetch-badge loading" id="geoFetchBadge" style="margin-left:auto;flex-shrink:0;">
             <span class="fetch-dot"></span><span id="geoFetchText">Loading</span>
           </span>
         </div>
@@ -1886,13 +1997,12 @@
 
       <!-- Toolbar -->
       <div class="card card-sm">
-        <div class="tab-toolbar">
-          <span class="tab-title">Daily Targets</span>
-          <div class="date-range-wrap" style="margin-left:0;">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            <input type="date" class="date-input" id="dtDate" />
+        <div class="tab-toolbar" style="flex-wrap:nowrap;">
+          <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5" style="flex-shrink:0;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <input type="date" class="date-input" id="dtDate" style="max-width:140px;" />
           </div>
-          <span class="fetch-badge loading" id="dtFetchBadge" style="margin-left:auto;">
+          <span class="fetch-badge loading" id="dtFetchBadge" style="margin-left:auto;flex-shrink:0;">
             <span class="fetch-dot"></span><span id="dtFetchText">Loading</span>
           </span>
         </div>
@@ -4814,27 +4924,8 @@ const MOCK_PS = {
   ],
 };
 
-function togglePsStatusMenu() {
-  const m = document.getElementById('psStatusFilterMenu');
-  if (m) m.style.display = m.style.display === 'none' ? 'block' : 'none';
-  const pm = document.getElementById('psProductFilterMenu');
-  if (pm) pm.style.display = 'none';
-}
-function togglePsProductMenu() {
-  const m = document.getElementById('psProductFilterMenu');
-  if (m) m.style.display = m.style.display === 'none' ? 'block' : 'none';
-  const sm = document.getElementById('psStatusFilterMenu');
-  if (sm) sm.style.display = 'none';
-}
-document.addEventListener('click', function(e) {
-  // Fixed: was querySelector (singular) — only closed whichever
-  // .status-filter-wrap happened to be found first, leaving the other
-  // dropdown (status vs product) stuck open when clicking outside it.
-  document.querySelectorAll('.status-filter-wrap').forEach(wrap => {
-    const menu = wrap.querySelector('div[id$="FilterMenu"]');
-    if (menu && !wrap.contains(e.target)) menu.style.display = 'none';
-  });
-});
+// togglePsStatusMenu, togglePsProductMenu, togglePsFulfillMenu and outside-click handler
+// are defined in the portal-dropdown script block at end of body.
 function onPsStatusChange() {
   // Unchecked box = excluded status. Checked (default) = included, same
   // sense as the old dashboard's "all checked by default" filter.
@@ -4855,15 +4946,7 @@ function onPsDiscountToggle() {
 }
 
 // ── Fulfillment Status filter ────────────────────────────────────
-function togglePsFulfillMenu() {
-  const m  = document.getElementById('psFulfillFilterMenu');
-  if (m) m.style.display = m.style.display === 'none' ? 'block' : 'none';
-  // Close other menus
-  const sm = document.getElementById('psStatusFilterMenu');
-  if (sm) sm.style.display = 'none';
-  const pm = document.getElementById('psProductFilterMenu');
-  if (pm) pm.style.display = 'none';
-}
+// togglePsFulfillMenu is defined in the portal-dropdown script block at end of body.
 
 function onPsFulfillChange() {
   const unchecked = Array.from(document.querySelectorAll('.ps-fulfill-cb'))
@@ -9961,5 +10044,120 @@ async function clearAiSettingsDyn() {
 }
 </script>
 
+<!-- ── PORTAL DROPDOWNS — rendered at body level to escape flex/overflow contexts ── -->
+<div id="psStatusFilterMenu" style="display:none;position:fixed;z-index:9999;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:10px 12px;min-width:230px;">
+  <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">Uncheck a status to exclude it from every number below. Everything is included by default.</div>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-status-cb" value="Cancelled" onchange="onPsStatusChange()"> Cancelled</label>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-status-cb" value="Pending" checked onchange="onPsStatusChange()"> Pending</label>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-status-cb" value="Unshipped" checked onchange="onPsStatusChange()"> Unshipped</label>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-status-cb" value="Shipped - Returned to Seller" checked onchange="onPsStatusChange()"> Returned to Seller</label>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-status-cb" value="Shipped - Returning to Seller" checked onchange="onPsStatusChange()"> Returning to Seller</label>
+</div>
+
+<div id="psFulfillFilterMenu" style="display:none;position:fixed;z-index:9999;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:10px 12px;min-width:250px;max-height:340px;overflow-y:auto;">
+  <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">Filter by fulfillment status. All included by default.</div>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Shipped" checked onchange="onPsFulfillChange()"> Shipped</label>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Shipped - Delivered to Buyer" checked onchange="onPsFulfillChange()"> Delivered to Buyer</label>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Delivered" checked onchange="onPsFulfillChange()"> Delivered</label>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Shipped - Picked Up" checked onchange="onPsFulfillChange()"> Picked Up</label>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Shipped - Out for Delivery" checked onchange="onPsFulfillChange()"> Out for Delivery</label>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Pending" checked onchange="onPsFulfillChange()"> Pending</label>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Pending - Waiting for Pick Up" checked onchange="onPsFulfillChange()"> Waiting for Pick Up</label>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Approved" checked onchange="onPsFulfillChange()"> Approved</label>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Shipping" checked onchange="onPsFulfillChange()"> Shipping</label>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Shipped - Returned to Seller" checked onchange="onPsFulfillChange()"> Returned to Seller</label>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Shipped - Returning to Seller" checked onchange="onPsFulfillChange()"> Returning to Seller</label>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Return Requested" checked onchange="onPsFulfillChange()"> Return Requested</label>
+  <div style="border-top:1px solid #f1f5f9;margin-top:8px;padding-top:8px;display:flex;gap:8px;">
+    <button onclick="psFulfillSelectAll()" style="font-size:11px;color:#0284c7;background:none;border:none;cursor:pointer;padding:0;">Select all</button>
+    <button onclick="psFulfillClearAll()" style="font-size:11px;color:#64748b;background:none;border:none;cursor:pointer;padding:0;">Clear all</button>
+  </div>
+</div>
+
+<div id="psProductFilterMenu" style="display:none;position:fixed;z-index:9999;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:8px;min-width:240px;max-height:320px;overflow-y:auto;">
+  <input type="text" id="psProductSearch" placeholder="Search product…" oninput="filterPsProductOptions(this.value)"
+         style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--color-border);border-radius:6px;margin-bottom:6px;box-sizing:border-box;" />
+  <div id="psProductOptionsList"></div>
+</div>
+
+<script>
+// ── Portal dropdown helpers — position menus using fixed coords from button's bounding rect ──
+function _positionDropdown(menuId, btnId) {
+  const menu = document.getElementById(menuId);
+  const btn  = document.getElementById(btnId);
+  if (!menu || !btn) return;
+  const r = btn.getBoundingClientRect();
+  menu.style.top  = (r.bottom + 6) + 'px';
+  menu.style.left = r.left + 'px';
+  // Prevent right-edge overflow
+  const menuW = menu.offsetWidth || parseInt(menu.style.minWidth) || 240;
+  if (r.left + menuW > window.innerWidth - 12) {
+    menu.style.left = Math.max(8, window.innerWidth - menuW - 12) + 'px';
+  }
+}
+
+function _closeAllPsMenus() {
+  ['psStatusFilterMenu','psFulfillFilterMenu','psProductFilterMenu'].forEach(id => {
+    const m = document.getElementById(id);
+    if (m) m.style.display = 'none';
+  });
+}
+
+function togglePsStatusMenu() {
+  const m = document.getElementById('psStatusFilterMenu');
+  if (!m) return;
+  const wasOpen = m.style.display !== 'none';
+  _closeAllPsMenus();
+  if (!wasOpen) { m.style.display = 'block'; _positionDropdown('psStatusFilterMenu', 'psStatusFilterBtn'); }
+}
+
+function togglePsFulfillMenu() {
+  const m = document.getElementById('psFulfillFilterMenu');
+  if (!m) return;
+  const wasOpen = m.style.display !== 'none';
+  _closeAllPsMenus();
+  if (!wasOpen) { m.style.display = 'block'; _positionDropdown('psFulfillFilterMenu', 'psFulfillFilterBtn'); }
+}
+
+function togglePsProductMenu() {
+  const m = document.getElementById('psProductFilterMenu');
+  if (!m) return;
+  const wasOpen = m.style.display !== 'none';
+  _closeAllPsMenus();
+  if (!wasOpen) { m.style.display = 'block'; _positionDropdown('psProductFilterMenu', 'psProductFilterBtn'); }
+}
+
+// Close on outside click
+document.addEventListener('click', function(e) {
+  const menuIds = ['psStatusFilterMenu','psFulfillFilterMenu','psProductFilterMenu'];
+  const btnIds  = ['psStatusFilterBtn','psFulfillFilterBtn','psProductFilterBtn'];
+  const clickedInsideAny = menuIds.some(id => {
+    const el = document.getElementById(id);
+    return el && el.contains(e.target);
+  }) || btnIds.some(id => {
+    const el = document.getElementById(id);
+    return el && el.contains(e.target);
+  });
+  if (!clickedInsideAny) _closeAllPsMenus();
+}, true);
+
+// Reposition on scroll/resize so menus track their buttons
+window.addEventListener('scroll', function() {
+  ['psStatusFilterMenu','psFulfillFilterMenu','psProductFilterMenu'].forEach((id, i) => {
+    const m = document.getElementById(id);
+    if (m && m.style.display !== 'none') {
+      _positionDropdown(id, ['psStatusFilterBtn','psFulfillFilterBtn','psProductFilterBtn'][i]);
+    }
+  });
+}, true);
+window.addEventListener('resize', function() {
+  ['psStatusFilterMenu','psFulfillFilterMenu','psProductFilterMenu'].forEach((id, i) => {
+    const m = document.getElementById(id);
+    if (m && m.style.display !== 'none') {
+      _positionDropdown(id, ['psStatusFilterBtn','psFulfillFilterBtn','psProductFilterBtn'][i]);
+    }
+  });
+});
+</script>
 </body>
 </html>
