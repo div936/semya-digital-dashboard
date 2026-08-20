@@ -22,7 +22,8 @@ async function getClientAiConfig(clientId) {
   if (data?.ai_api_key) {
     return {
       provider: data.ai_provider || 'gemini',
-      model:    data.ai_model    || (data.ai_provider === 'claude' ? 'claude-haiku-4-5' : 'gemini-3-flash'),
+      // FIX: correct Gemini model name — API uses 'gemini-1.5-flash' not 'gemini-3-flash'
+      model:    data.ai_model    || (data.ai_provider === 'claude' ? 'claude-haiku-4-5-20251001' : 'gemini-1.5-flash'),
       apiKey:   data.ai_api_key,
       source:   'client',
     };
@@ -32,13 +33,20 @@ async function getClientAiConfig(clientId) {
   if (process.env.GEMINI_API_KEY) {
     return {
       provider: 'gemini',
-      model:    'gemini-3.7-flash',
+      model:    'gemini-1.5-flash',   // FIX: was 'gemini-3.7-flash' — not a valid model ID
       apiKey:   process.env.GEMINI_API_KEY,
       source:   'admin',
     };
   }
 
   return null; // No AI configured
+}
+
+// ─── SSE helper — write a plain-text chunk as an SSE data line ────
+// Both streamGemini and streamClaude use this so the frontend only
+// needs one parser regardless of which provider is active.
+function sseWrite(res, text) {
+  if (text) res.write('data: ' + JSON.stringify({ text }) + '\n\n');
 }
 
 // ─── Stream Gemini response ───────────────────────────────────────
@@ -78,7 +86,8 @@ async function streamGemini(apiKey, model, prompt, res) {
       try {
         const parsed = JSON.parse(jsonStr);
         const text = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) res.write(text);
+        // FIX: was res.write(text) — now uses SSE format so frontend parser works
+        if (text) sseWrite(res, text);
       } catch (_) {}
     }
   }
@@ -92,7 +101,9 @@ async function streamClaude(apiKey, model, prompt, res) {
       'Content-Type':      'application/json',
       'x-api-key':         apiKey,
       'anthropic-version': '2023-06-01',
-      'anthropic-beta':    'messages-2023-12-15',
+      // FIX: removed invalid 'anthropic-beta: messages-2023-12-15' header
+      // — streaming works with just anthropic-version, the beta header
+      // caused 400 errors from the Anthropic API
     },
     body: JSON.stringify({
       model,
@@ -125,7 +136,8 @@ async function streamClaude(apiKey, model, prompt, res) {
       try {
         const parsed = JSON.parse(jsonStr);
         if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
-          res.write(parsed.delta.text);
+          // FIX: was res.write(parsed.delta.text) — now uses SSE format
+          sseWrite(res, parsed.delta.text);
         }
       } catch (_) {}
     }
@@ -190,7 +202,9 @@ router.post('/:client_slug/ai-insights/generate', rbacMiddleware, async (req, re
 });
 
 // ─── POST /clients/:client_slug/claude-insight ────────────────────
-// Main AI streaming endpoint — auto-selects provider based on client config
+// Main AI streaming endpoint — auto-selects provider based on client config.
+// Streams response as SSE: each chunk is sent as `data: {"text":"..."}\n\n`
+// so the frontend's single parser works for both Gemini and Claude.
 router.post('/:client_slug/claude-insight', rbacMiddleware, async (req, res) => {
   const { prompt } = req.body || {};
   if (!prompt) return res.status(400).json({ error: 'prompt is required' });
@@ -207,7 +221,9 @@ router.post('/:client_slug/claude-insight', rbacMiddleware, async (req, res) => 
   }
 
   try {
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
     res.setHeader('Transfer-Encoding', 'chunked');
     res.setHeader('X-Accel-Buffering', 'no');
     res.setHeader('X-AI-Provider', aiConfig.provider);
@@ -219,6 +235,8 @@ router.post('/:client_slug/claude-insight', rbacMiddleware, async (req, res) => 
       await streamGemini(aiConfig.apiKey, aiConfig.model, prompt, res);
     }
 
+    // Signal end of stream
+    res.write('data: [DONE]\n\n');
     res.end();
   } catch (err) {
     console.error('[ai-insight]', err.message);
