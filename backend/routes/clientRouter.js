@@ -686,8 +686,12 @@ function aggregateCampaignInsights(campaignRows, revenueRows) {
   const byFulfillment = {};
   for (const row of revenueRows) {
     const isAware = FULFILLMENT_AWARE_PLATFORMS.has((row.platform || '').toLowerCase());
+    // Amazon/Acutas FBA rows always have the channel populated in their
+    // export; rows with null channel are overwhelmingly Merchant-fulfilled.
+    // Default null Amazon/Acutas rows to "Merchant" rather than "Not specified"
+    // to avoid an uninformative bucket in the Fulfillment Channel split.
     const ch = row.standard_fulfillment_channel
-      || (isAware ? 'Not specified' : (row.platform || 'Unknown platform'));
+      || (isAware ? 'Merchant' : (row.platform || 'Unknown platform'));
     if (!byFulfillment[ch]) byFulfillment[ch] = { channel: ch, revenue: 0, units: 0, orders: 0, _orderIds: new Set(), _rowsWithoutOrderId: 0 };
     byFulfillment[ch].revenue += Number(row.standard_revenue) || 0;
     byFulfillment[ch].units   += Number(row.standard_units)   || 0;
@@ -709,17 +713,20 @@ function aggregateCampaignInsights(campaignRows, revenueRows) {
     // is more useful than grouping everything into a single "No SKU"
     // bucket, which hid ₹60L+ of Meta revenue behind a meaningless
     // label and made the Top Products table almost useless for Meta.
-    const displayKey = (row.standard_sku && row.standard_sku.trim())
-      ? row.standard_sku.trim()
-      : (row.standard_product_name && row.standard_product_name.trim())
-        ? row.standard_product_name.trim()
-        : 'Unknown product';
+    // Prefer SKU, fall back to product name, then campaign name (for Meta/Google
+    // rows that have no product-level signal but have a campaign name that 
+    // gives meaningful context), and finally a platform-labelled placeholder.
+    const skuVal  = row.standard_sku && row.standard_sku.trim();
+    const nameVal = row.standard_product_name && row.standard_product_name.trim();
+    const displayKey = skuVal || nameVal || '(Ad platform revenue — no product data)';
     const key = row.platform + '|' + displayKey;
     if (!byProduct[key]) byProduct[key] = { sku: displayKey, platform: row.platform, revenue: 0, units: 0 };
     byProduct[key].revenue += Number(row.standard_revenue) || 0;
     byProduct[key].units   += Number(row.standard_units)   || 0;
   }
-  const topProducts = Object.values(byProduct).sort((a, b) => b.revenue - a.revenue).slice(0, 15);
+  const topProducts = Object.values(byProduct)
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 15);
 
   return {
     platformSummary,
@@ -1001,7 +1008,7 @@ async function aggregatePlatformSales(rows, excludeStatuses = new Set(), exclude
       ? row.standard_sku.trim()
       : (row.standard_product_name && row.standard_product_name.trim())
         ? row.standard_product_name.trim()
-        : 'Unknown product';
+        : '(Ad platform revenue — no product data)';
     const prodKey = p + '|' + displaySku;
     if (!byProduct[prodKey]) byProduct[prodKey] = { sku: displaySku, platform: p, revenue: 0, units: 0 };
     byProduct[prodKey].revenue += isCancelled ? 0 : rev;
