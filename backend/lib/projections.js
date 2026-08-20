@@ -87,8 +87,18 @@ export function computeProfitSeries(revenueRows, campaignRows, costRows, assumpt
     const unitCost = resolveSkuCost(costRows, row.standard_sku, row.order_date);
     if (unitCost === null && row.standard_sku) {
       unpricedSkus.add(row.standard_sku);
+      // Track unpriced revenue but still add it to the bucket so ad-spend ROAS
+      // and revenue trend are visible even without cost prices configured.
+      // Profit calculation will exclude these rows (cogs treated as 0 = profit = revenue,
+      // which would be misleading), so we zero-out cogs/commission for now and flag
+      // the revenue as "unpriced" for the frontend to annotate.
       unpricedRevenue += isCancelled ? 0 : revenue;
-      continue; // can't compute profit for this row without a cost — exclude rather than assume ₹0 cost
+      if (!isCancelled) {
+        b.revenue    += revenue;   // show revenue trend
+        b.unpricedRevenue = (b.unpricedRevenue || 0) + revenue; // flag it
+        // profit contribution is excluded (we subtract it back out)
+      }
+      continue; // still skip cogs/commission/profit calculation
     }
     const cogs = (unitCost || 0) * units;
     const shipping = extractShippingFromRow(row) ?? platformAssump.shipping_cost_flat;
@@ -114,8 +124,10 @@ export function computeProfitSeries(revenueRows, campaignRows, costRows, assumpt
   const series = Object.entries(buckets)
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([period, b]) => {
-      const profit = b.revenue - b.cogs - b.shipping - b.commission - b.adSpend;
-      return { period, ...b, profit };
+      // Exclude unpriced revenue from profit so it's not misleading
+      const pricedRevenue = b.revenue - (b.unpricedRevenue || 0);
+      const profit = pricedRevenue - b.cogs - b.shipping - b.commission - b.adSpend;
+      return { period, ...b, pricedRevenue, profit };
     });
 
   const totals = series.reduce((acc, s) => {
