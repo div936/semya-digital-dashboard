@@ -4160,7 +4160,13 @@ async function _streamClaudeInsight(prompt, list, confEl) {
         if (raw === '[DONE]') break;
         try {
           const evt = JSON.parse(raw);
-          if (evt.type === 'content_block_delta' && evt.delta?.text) {
+          // Backend now sends a unified SSE format for both Claude and Gemini:
+          //   data: {"text": "..."} 
+          // This replaces the old Claude-only content_block_delta parsing.
+          if (evt.text) {
+            fullText += evt.text;
+          } else if (evt.type === 'content_block_delta' && evt.delta?.text) {
+            // Fallback: handle legacy Claude SSE format if backend hasn't updated yet
             fullText += evt.delta.text;
           }
         } catch {}
@@ -9916,9 +9922,9 @@ function _buildPrompt(data) {
 // ── AI Settings Modal — dynamically injected to avoid CSS conflicts ──
 const AI_MODELS = {
   gemini: [
-    { value: 'gemini-3.7-flash',      label: 'Gemini 3.7 Flash (Latest · Recommended)' },
-    { value: 'gemini-3.6-flash',      label: 'Gemini 3.6 Flash (Fast)' },
-    { value: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite (Free · Fastest)' },
+    { value: 'gemini-2.0-flash',      label: 'Gemini 2.0 Flash (Latest · Recommended)' },
+    { value: 'gemini-1.5-flash',      label: 'Gemini 1.5 Flash (Fast · Reliable)' },
+    { value: 'gemini-1.5-flash-8b',   label: 'Gemini 1.5 Flash 8B (Free · Fastest)' },
   ],
   claude: [
     { value: 'claude-haiku-4-5',  label: 'Claude Haiku 4.5 (Cheapest)' },
