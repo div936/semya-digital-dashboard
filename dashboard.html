@@ -4761,7 +4761,9 @@ function setViewAsClient(on) {
 }
 
 async function applyBranding(cfg) {
-  const isAdmin = !!cfg?.user?.isAdmin;
+  // isAdmin comes from the server-rendered config. Fall back to
+  // window.semyaUser.role if cfg hasn't loaded yet (race condition).
+  const isAdmin = !!(cfg?.user?.isAdmin || window.semyaUser?.role === 'admin');
   state.isAdmin = isAdmin;
   updateViewAsToggleUI();
 
@@ -4772,7 +4774,16 @@ async function applyBranding(cfg) {
   // when it wasn't checking anything at all). Now genuinely reflects
   // cfg.user.isAdmin from this request.
   const adminBadgeEl = document.getElementById('headerAdminBadge');
-  if (adminBadgeEl) adminBadgeEl.style.display = isAdmin ? 'inline-block' : 'none';
+  if (adminBadgeEl) {
+    adminBadgeEl.style.display = isAdmin ? 'inline-block' : 'none';
+    // Clicking the ADMIN badge forces a full branding reset (recovery action)
+    adminBadgeEl.title = 'Admin mode — click to reset branding if stuck';
+    adminBadgeEl.style.cursor = 'pointer';
+    adminBadgeEl.onclick = function() {
+      try { localStorage.removeItem('semya_view_as_client'); } catch(e) {}
+      if (_lastDashboardConfig) applyBranding(_lastDashboardConfig);
+    };
+  }
 
   const viewingAsClient = isAdmin && getViewAsClient();
   const badgeEl = document.getElementById('headerViewAsClientBadge');
@@ -4787,11 +4798,12 @@ async function applyBranding(cfg) {
     try {
       const settings = await apiFetch('/platform-settings');
       console.log('[branding] /platform-settings response:', settings);
+      // Always show Semya Digital in admin view — never show client name
       setHeaderBranding(
-        settings.brandName || 'Semya Digital',
-        settings.brandTagline || 'Analytics Platform',
-        settings.logoUrl,
-        settings.theme
+        settings?.brandName   || 'Semya Digital',
+        settings?.brandTagline || 'Analytics Platform',
+        settings?.logoUrl     || null,
+        settings?.theme       || null
       );
     } catch (e) {
       console.warn('[branding] failed to load admin/platform branding — header will keep showing whatever it last had (likely the static "Neat Everyday" fallback baked into the page):', e.message);
@@ -7972,9 +7984,15 @@ async function loadClientSwitcher() {
       const hqOption = state.isAdmin
         ? '<option value="__semya_hq__" style="font-weight:700;color:#7c3aed;">&#9889; Semya HQ (All Clients)</option>'
         : '';
-      sw.innerHTML = hqOption + clients.map(c =>
-        '<option value="' + c.slug + '"' + (c.slug === state.clientSlug ? ' selected' : '') + '>' + c.name + '</option>'
+      sw.innerHTML = hqOption + clients.map(cl =>
+        '<option value="' + cl.slug + '"' + (cl.slug === state.clientSlug ? ' selected' : '') + '>' + cl.name + '</option>'
       ).join('');
+
+      // Honour ?client= URL param (shareable links) — only if the client exists in the list
+      if (window._sharedClientSlug && state.isAdmin) {
+        const found = clients.find(cl => cl.slug === window._sharedClientSlug);
+        if (found) { sw.value = found.slug; window._sharedClientSlug = null; switchClient(found.slug); }
+      }
     } else {
       // Fetch succeeded but returned nothing usable — still show
       // something rather than leaving the switcher blank.
@@ -8012,26 +8030,39 @@ async function switchClient(newSlug) {
 document.getElementById('clientSwitcher')?.addEventListener('change', function(e) {
   const val = e.target.value;
   if (val === '__semya_hq__') {
-    // Cross-client view — don't switchClient(), just show the comparison UI
     loadCrossClientView();
     return;
   }
-  // Switching back from HQ view or switching between clients:
-  // restore the normal dashboard layout if we were in HQ mode
-  const main = document.querySelector('.main');
-  if (main && main.dataset.mode === 'hq') {
-    main.dataset.mode = '';
-    // Restore sidebar elements
-    document.querySelectorAll('[data-hq-hidden="true"]').forEach(el => {
-      el.style.display = ''; delete el.dataset.hqHidden;
-    });
-    main.innerHTML = window._mainOriginalHTML || '';
-    window._mainOriginalHTML = null; // reset so it's re-cached next HQ visit
-    // If original HTML was not cached, full reload is safest
-    if (!window._mainOriginalHTML && !main.innerHTML.trim()) { location.reload(); return; }
-  }
+  // Exiting HQ mode — restore the normal layout before switching client data
+  _exitHqMode();
   switchClient(val);
 });
+
+// Cleanly exit HQ comparison mode and restore the normal per-client layout
+function _exitHqMode() {
+  const main = document.querySelector('.main');
+  if (!main || main.dataset.mode !== 'hq') return; // not in HQ mode, nothing to do
+
+  main.dataset.mode = '';
+
+  // Restore sidebar
+  document.querySelectorAll('[data-hq-hidden="true"]').forEach(el => {
+    el.style.display = '';
+    delete el.dataset.hqHidden;
+  });
+
+  // Restore nav tabs (they were hidden/greyed in HQ mode)
+  document.querySelectorAll('.nav-tab').forEach(t => {
+    t.style.opacity = ''; t.style.pointerEvents = '';
+  });
+
+  // Restore main content from cache, or fall back to the active tab skeleton
+  if (window._mainOriginalHTML) {
+    main.innerHTML = window._mainOriginalHTML;
+    window._mainOriginalHTML = null;
+  }
+  // Never reload — just let switchClient() + fetchAndRender() repopulate
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // UTM ANALYTICS TAB
@@ -8549,6 +8580,11 @@ const FRONTEND_BUILD = 'V38-onclick-quote-fix'; // bump alongside backend health
 console.log('[Semya] Frontend build:', FRONTEND_BUILD);
 
 async function boot(user) {
+  // Always reset "View as Client" on fresh page load — admins should
+  // start in admin view, not stuck in client-preview mode from a prior session.
+  // They can re-enable it explicitly via Settings → "Preview as client".
+  try { localStorage.removeItem('semya_view_as_client'); } catch(e) {}
+
   state.token      = user && user.token ? user.token : getToken();
   state.clientSlug = (user && user.clientSlug) || (window.location.pathname.match(/\/clients\/([^/]+)/)||[])[1] || 'neat-everyday';
   initDates();
@@ -10468,11 +10504,13 @@ async function loadCrossClientView() {
   }
   main.dataset.mode = 'hq';
 
-  // Hide Platform Health sidebar section — irrelevant in multi-client view
-  const sidebar = document.querySelector('.sidebar');
-  if (sidebar) sidebar.dataset.hiddenForHq = 'true';
-  document.querySelectorAll('.sidebar .card, .sidebar .ai-panel, aside .card, aside .ai-panel').forEach(el => {
-    el.dataset.hqHidden = 'true'; el.style.display = 'none';
+  // Hide entire sidebar — irrelevant in multi-client comparison view
+  const aside = document.querySelector('aside.sidebar');
+  if (aside) { aside.dataset.hqHidden = 'true'; aside.style.display = 'none'; }
+
+  // Grey-out nav tabs so they don't fire fetchAndRender() while in HQ mode
+  document.querySelectorAll('.nav-tab').forEach(t => {
+    t.style.opacity = '0.4'; t.style.pointerEvents = 'none';
   });
 
   main.innerHTML = '<div style="padding:24px;">' +
@@ -10532,13 +10570,11 @@ async function loadCrossClientView() {
 }
 
 function switchToClient(slug) {
-  // Switch the main dashboard to view that client's data
+  // Exit HQ mode first, then switch to the chosen client's data
+  _exitHqMode();
   const sw = document.getElementById('clientSwitcher');
-  if (sw) {
-    sw.value = slug;
-    // Dispatch change event — our fixed handler will restore layout and call switchClient()
-    sw.dispatchEvent(new Event('change'));
-  }
+  if (sw) sw.value = slug;
+  switchClient(slug);
 }
 
 // Switch what metric the HQ comparison shows per tab
