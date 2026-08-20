@@ -3380,14 +3380,19 @@ function isTokenExpired(token) {
 }
 
 // Handle session expiry — clear state and redirect to login
+let _sessionExpiryFired = false; // guard against parallel apiFetch calls all triggering this
 function handleSessionExpiry() {
+  if (_sessionExpiryFired) return; // already redirecting — ignore duplicate calls
+  _sessionExpiryFired = true;
   localStorage.removeItem(TOKEN_KEY);
   if (window._supabaseClient) {
     window._supabaseClient.auth.signOut().catch(() => {});
   }
   // Small delay so any in-flight UI updates complete
   setTimeout(() => {
-    window.location.href = '/index.html';
+    // Use absolute path that works on both GitHub Pages and custom domain
+    const loginPath = window.location.pathname.replace(/\/[^/]+$/, '/index.html');
+    window.location.href = loginPath || '/index.html';
   }, 300);
 }
 
@@ -3608,21 +3613,14 @@ async function apiFetch(path, opts, _retryCount = 0) {
 
     if (res.status === 401) {
       const freshToken = await getFreshToken();
-      if (!freshToken) {
-        // No session at all — send user to login rather than silently showing zeros
-        handleSessionExpiry();
-        return null;
-      }
+      if (!freshToken) return null; // getFreshToken already calls handleSessionExpiry if needed
       res = await fetchWithTimeout(url, {
         ...opts,
         headers: { 'Authorization': 'Bearer ' + freshToken, 'Content-Type': 'application/json', ...(opts?.headers || {}) },
         credentials: 'include',
       }, 15000);
-      // If the refreshed token is STILL rejected, session is completely gone
-      if (res.status === 401) {
-        handleSessionExpiry();
-        return null;
-      }
+      // Retry also 401 — session is gone; getFreshToken guard handles the redirect
+      if (res.status === 401) { handleSessionExpiry(); return null; }
     }
 
     if (!res.ok) throw new Error('API ' + res.status + ': ' + path);
