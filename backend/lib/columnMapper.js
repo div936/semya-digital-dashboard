@@ -287,6 +287,15 @@ export const CAMPAIGN_MAP = {
   'campaign date':              'campaign_date',
   'start date':                 'campaign_date',
   'reporting starts':           'campaign_date',   // Meta ads export
+  'reporting period start':     'campaign_date',   // some Meta/Google exports
+  'period start':               'campaign_date',
+  'week start date':            'campaign_date',   // Google Ads weekly export
+  'month':                      'campaign_date',   // monthly summary exports
+  'week':                       'campaign_date',   // weekly summary exports
+  'ad date':                    'campaign_date',
+  'transaction date':           'campaign_date',
+  'activity date':              'campaign_date',
+  'impression date':            'campaign_date',
   'day':                        'campaign_date',
   // NOTE: Flipkart's "campaign_start_date" column is deliberately NOT
   // mapped here. It's campaign metadata — when the campaign itself was
