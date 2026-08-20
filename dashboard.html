@@ -4435,6 +4435,9 @@ function renderPlatformHealth(byPlatform, campaigns) {
 }
 
 // ─── AGGREGATE RAW REVENUE ROWS → summary shape ───────────────────
+// Revenue logic mirrors aggregatePlatformSales on the backend:
+//   - Cancelled orders contribute ZERO to revenue and units
+//   - This keeps SKU Performance totals consistent with Platform Sales
 function aggregateRevenue(rows) {
   if (!rows || !rows.length) return null;
   const byCity     = {};
@@ -4445,10 +4448,15 @@ function aggregateRevenue(rows) {
   let totalRevenue = 0, totalUnits = 0;
 
   for (const r of rows) {
-    const rev   = Number(r.standard_revenue) || 0;
-    const units = Number(r.standard_units)   || 0;
+    // Skip cancelled orders for revenue — matches Platform Sales backend
+    const isCancelled = (r.standard_status || '').toLowerCase() === 'cancelled';
+    const rev   = isCancelled ? 0 : (Number(r.standard_revenue) || 0);
+    const units = isCancelled ? 0 : (Number(r.standard_units)   || 0);
     totalRevenue += rev;
     totalUnits   += units;
+
+    // Only accumulate non-zero revenue into breakdowns
+    if (rev <= 0) continue;
 
     const city = r.standard_city || 'Unknown';
     byCity[city] = (byCity[city] || 0) + rev;
@@ -5047,8 +5055,10 @@ async function fetchAndRenderPS() {
         const globalOrderIds = new Set();
         let globalRowsWithoutOrderId = 0;
         skuR.revenue.forEach(r => {
-          const rev = Number(r.standard_revenue) || 0;
-          const units = Number(r.standard_units) || 0;
+          // Exclude cancelled orders from revenue — matches backend aggregatePlatformSales
+          const isCancelled = (r.standard_status || '').toLowerCase() === 'cancelled';
+          const rev   = isCancelled ? 0 : (Number(r.standard_revenue) || 0);
+          const units = isCancelled ? 0 : (Number(r.standard_units)   || 0);
           const plat = r.platform || 'unknown';
           if (!byPlat[plat]) byPlat[plat] = { platform: plat, totalRevenue: 0, totalUnits: 0, orderCount: 0, _orderIds: new Set(), _rowsWithoutOrderId: 0 };
           byPlat[plat].totalRevenue += rev;
