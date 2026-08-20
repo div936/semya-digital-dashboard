@@ -1587,11 +1587,6 @@
               <span id="skuCustomLabel">Loading SKUs…</span>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
             </div>
-            <div class="sku-custom-panel" id="skuCustomPanel">
-              <input type="text" class="sku-custom-search" id="skuCustomSearch" placeholder="Search SKU…" oninput="filterSkuOptions(this.value)" />
-              <div class="sku-custom-list" id="skuCustomList"></div>
-              <div class="sku-custom-empty" id="skuCustomEmpty">No matching SKUs</div>
-            </div>
           </div>
           <input type="hidden" id="skuSelect" value="" />
         </div>
@@ -8500,13 +8495,28 @@ document.addEventListener('click', function(e) {
 
 function toggleSkuDropdown(e) {
   e.stopPropagation();
-  const wrap = document.getElementById('skuCustomWrap');
-  const open = wrap.classList.contains('open');
-  wrap.classList.toggle('open', !open);
-  if (!open) {
-    const search = document.getElementById('skuCustomSearch');
-    if (search) { search.value = ''; filterSkuOptions(''); search.focus(); }
+  const panel = document.getElementById('skuCustomPanel');
+  const wrap  = document.getElementById('skuCustomWrap');
+  if (!panel || !wrap) return;
+  const isOpen = panel.style.display !== 'none';
+  if (isOpen) {
+    panel.style.display = 'none';
+    wrap.classList.remove('open');
+    return;
   }
+  // Position panel below the trigger using fixed coords
+  const r = wrap.getBoundingClientRect();
+  panel.style.display = 'block';
+  panel.style.top  = (r.bottom + 6) + 'px';
+  panel.style.left = r.left + 'px';
+  // Prevent right-edge overflow
+  const panelW = panel.offsetWidth || 280;
+  if (r.left + panelW > window.innerWidth - 12) {
+    panel.style.left = Math.max(8, window.innerWidth - panelW - 12) + 'px';
+  }
+  wrap.classList.add('open');
+  const search = document.getElementById('skuCustomSearch');
+  if (search) { search.value = ''; filterSkuOptions(''); search.focus(); }
 }
 
 function filterSkuOptions(query) {
@@ -8544,9 +8554,30 @@ function selectSkuOption(el) {
 
 // Close SKU dropdown on outside click
 document.addEventListener('click', function(e) {
-  const wrap = document.getElementById('skuCustomWrap');
-  if (wrap && !wrap.contains(e.target)) wrap.classList.remove('open');
+  const wrap  = document.getElementById('skuCustomWrap');
+  const panel = document.getElementById('skuCustomPanel');
+  if (!wrap || !panel) return;
+  if (!wrap.contains(e.target) && !panel.contains(e.target)) {
+    panel.style.display = 'none';
+    wrap.classList.remove('open');
+  }
 });
+
+// Reposition SKU panel on scroll/resize so it tracks the trigger
+function _repositionSkuPanel() {
+  const panel = document.getElementById('skuCustomPanel');
+  const wrap  = document.getElementById('skuCustomWrap');
+  if (!panel || !wrap || panel.style.display === 'none') return;
+  const r = wrap.getBoundingClientRect();
+  panel.style.top  = (r.bottom + 6) + 'px';
+  panel.style.left = r.left + 'px';
+  const panelW = panel.offsetWidth || 280;
+  if (r.left + panelW > window.innerWidth - 12) {
+    panel.style.left = Math.max(8, window.innerWidth - panelW - 12) + 'px';
+  }
+}
+window.addEventListener('scroll', _repositionSkuPanel, true);
+window.addEventListener('resize', _repositionSkuPanel);
 
 // ── Daily Targets Modal ─────────────────────────────────────────
 function openDailyTargetsPanel() {
@@ -10045,6 +10076,13 @@ async function clearAiSettingsDyn() {
 </script>
 
 <!-- ── PORTAL DROPDOWNS — rendered at body level to escape flex/overflow contexts ── -->
+
+<!-- SKU Performance dropdown -->
+<div id="skuCustomPanel" style="display:none;position:fixed;z-index:9999;background:#fff;border:1px solid var(--color-border);border-radius:var(--radius-md);box-shadow:0 8px 24px rgba(2,132,199,.13);min-width:260px;max-width:360px;overflow:hidden;">
+  <input type="text" class="sku-custom-search" id="skuCustomSearch" placeholder="Search SKU…" oninput="filterSkuOptions(this.value)" />
+  <div class="sku-custom-list" id="skuCustomList"></div>
+  <div class="sku-custom-empty" id="skuCustomEmpty">No matching SKUs</div>
+</div>
 <div id="psStatusFilterMenu" style="display:none;position:fixed;z-index:9999;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:10px 12px;min-width:230px;">
   <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">Uncheck a status to exclude it from every number below. Everything is included by default.</div>
   <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-status-cb" value="Cancelled" onchange="onPsStatusChange()"> Cancelled</label>
