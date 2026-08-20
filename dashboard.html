@@ -1319,6 +1319,12 @@
 
       <span class="tag-admin" id="headerAdminBadge" style="display:none;">Admin</span>
 
+      <!-- Notification Bell — Pending Access Requests (admin only) -->
+      <div id="headerNotifBell" style="display:none;position:relative;cursor:pointer;" onclick="openClientAdminModal(); setTimeout(()=>setCaTab('client'),100);" title="Pending access requests">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#64748b;display:block;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span id="headerNotifCount" style="display:none;position:absolute;top:-5px;right:-6px;background:#dc2626;color:#fff;font-size:9px;font-weight:800;min-width:16px;height:16px;border-radius:99px;display:flex;align-items:center;justify-content:center;padding:0 3px;border:2px solid #fff;line-height:1;">0</span>
+      </div>
+
       <!-- Client Switcher -->
       <select class="select-styled" id="clientSwitcher" title="Switch client">
         <option value="neat-everyday" selected>Neat Everyday</option>
@@ -2096,7 +2102,7 @@
            contain", not a historical rollup. -->
       <div class="card" style="margin-top:18px;">
         <div class="card-header">
-          <span class="card-title">Campaign Performance — Highest to Lowest Gross Sales</span>
+          <span class="card-title">Campaign Performance — Net Revenue &amp; Orders</span>
           <span class="card-badge" id="dtCampaignRankingBadge">Selected date</span>
         </div>
         <div id="dtCampaignRanking" style="display:flex;flex-direction:column;gap:0;">
@@ -2381,7 +2387,7 @@
 
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px;">
         <div class="card">
-          <div class="card-header"><span class="card-title">Net Profit</span></div>
+          <div class="card-header"><span class="card-title" id="projKpiProfitLabel">Net Profit</span></div>
           <div style="font-size:24px;font-weight:800;margin-top:6px;" id="projKpiProfit">—</div>
           <div style="font-size:11px;color:#94a3b8;margin-top:4px;" id="projKpiProfitSub">for selected period</div>
         </div>
@@ -2572,6 +2578,15 @@
         </button>
       </div>
 
+      <!-- Client selector for Appearance tab -->
+      <div style="margin-bottom:14px;">
+        <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:6px;">Edit Appearance For</label>
+        <select id="caAppearanceClientSelect" onchange="onCaAppearanceClientSelect(this.value)"
+          style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;font-family:var(--font-display);color:#1e293b;background:var(--color-surface);cursor:pointer;">
+          <option value="">— Choose a client —</option>
+        </select>
+      </div>
+
       <div style="display:flex;gap:0;background:#f1f5f9;border-radius:var(--radius-sm);padding:3px;margin-bottom:20px;width:fit-content;">
         <button type="button" class="ca-appearance-scope-btn active" id="caScopeBtn-client" onclick="setCaAppearanceScope('client')"
           style="padding:7px 16px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;background:#fff;color:#1e293b;box-shadow:0 1px 2px rgba(0,0,0,.06);">
@@ -2651,6 +2666,15 @@
 
     <!-- ═══ ACCESS CONTROL ═══ -->
     <div id="caPanel-access" class="dm-panel" style="display:none;">
+      <!-- Client selector — pick which client's permissions to manage -->
+      <div style="margin-bottom:14px;">
+        <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:6px;">Select Client</label>
+        <select id="caAccessClientSelect" onchange="onCaAccessClientSelect(this.value)"
+          style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;font-family:var(--font-display);color:#1e293b;background:var(--color-surface);cursor:pointer;">
+          <option value="">— Choose a client —</option>
+        </select>
+      </div>
+
       <div style="margin-bottom:6px;padding:10px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:var(--radius-sm);display:flex;align-items:center;gap:8px;">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         <span style="font-size:11px;color:#0284c7;">Managing access for: <strong id="caAccessClientName">—</strong></span>
@@ -2658,8 +2682,8 @@
 
       <div style="height:14px;"></div>
 
-      <div id="caAccessNoClientNotice" style="display:none;text-align:center;padding:32px 16px;color:#94a3b8;font-size:12px;">
-        Access Control doesn't apply to Semya Admins — they always have full access to every client by design. Select a specific client in Client Section to manage its tab permissions.
+      <div id="caAccessNoClientNotice" style="display:block;text-align:center;padding:32px 16px;color:#94a3b8;font-size:12px;">
+        Select a client above to manage their dashboard tab permissions.
       </div>
 
       <div class="acl-section-label">Dashboard Tabs</div>
@@ -4498,6 +4522,7 @@ function aggregateRevenue(rows) {
 
   const cities = Object.entries(byCity)
     .map(([city, revenue]) => ({ city, revenue }))
+    .filter(d => d.city && d.city.toLowerCase() !== 'unknown') // hide unresolvable unknowns
     .sort((a, b) => b.revenue - a.revenue);
 
   const byPlatformArr = Object.entries(byPlatform)
@@ -4685,6 +4710,12 @@ async function loadTabPermissions() {
   try {
     const cfg = await apiFetch('/clients/' + clientSlug + '/dashboard-config');
     state.tabPermissions = cfg?.tabs || null;
+    // Start polling for pending requests notification bell
+    if (state.isAdmin && !window._notifPollingStarted) {
+      window._notifPollingStarted = true;
+      _startNotifPolling();
+      loadPendingRequests(); // fetch immediately on load
+    }
     _lastDashboardConfig = cfg;
     applyLockBadgesToNav();
     applyBranding(cfg);
@@ -6025,13 +6056,21 @@ async function loadDTCampaignRanking(date, myToken) {
 
   const row = (c, rank) => {
     const m = PLATFORM_META[c.platform] || { label: (c.platform || '').toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
-    const rev = c.standard_revenue || 0;
+    // Use actual order-side revenue (standard_spend = ad cost, standard_revenue = 
+    // campaign-reported attributed rev which can be ₹1 noise). The /campaign-insights
+    // endpoint also returns actualRevenue per platform — but for per-campaign ranking
+    // we use standard_revenue as a proxy, annotated clearly.
+    const rev    = c.standard_revenue || 0;
+    const spend  = c.standard_spend   || 0;
+    const orders = c.standard_orders  || null;
+    const roas   = spend > 0 && rev > 0 ? (rev / spend).toFixed(1) + 'x' : null;
     const rankColor = rev > 0 ? '#059669' : '#94a3b8';
-    return '<div class="dt-campaign-row" data-name="' + (c.campaign_name || '').toLowerCase().replace(/"/g, '&quot;') + '" data-platform="' + (c.platform || '') + '" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9;">' +
-      '<span style="width:26px;font-size:11px;font-weight:700;color:' + rankColor + ';flex-shrink:0;">' + rank + '</span>' +
-      '<span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;flex-shrink:0;">' + m.label + '</span>' +
-      '<span style="flex:1;font-size:12px;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (c.campaign_name || '').replace(/"/g, '&quot;') + '">' + (c.campaign_name || 'Unnamed campaign') + '</span>' +
-      '<span style="font-size:12px;font-weight:700;color:' + (rev > 0 ? '#1e293b' : '#cbd5e1') + ';width:90px;text-align:right;flex-shrink:0;">' + fmtRevenue(rev) + '</span>' +
+    return '<div class="dt-campaign-row" data-name="' + (c.campaign_name || '').toLowerCase().replace(/"/g, '&quot;') + '" data-platform="' + (c.platform || '') + '" style="display:grid;grid-template-columns:26px auto 1fr auto auto;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f1f5f9;">' +
+      '<span style="font-size:11px;font-weight:700;color:' + rankColor + ';">' + rank + '</span>' +
+      '<span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span>' +
+      '<span style="font-size:12px;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (c.campaign_name || '').replace(/"/g, '&quot;') + '">' + (c.campaign_name || 'Unnamed campaign') + '</span>' +
+      '<span style="font-size:11px;color:#64748b;text-align:right;white-space:nowrap;">' + (orders != null ? orders + ' orders' : (spend > 0 ? 'Spend: ' + fmtRevenue(spend) : '')) + (roas ? ' · ' + roas + ' ROAS' : '') + '</span>' +
+      '<span style="font-size:12px;font-weight:700;color:' + (rev > 0 ? '#059669' : '#cbd5e1') + ';min-width:80px;text-align:right;">' + fmtRevenue(rev) + '</span>' +
     '</div>';
   };
 
@@ -6521,11 +6560,14 @@ async function loadCaClients() {
             '<div style="font-size:11px;color:#94a3b8;">' + c.employeeCount + ' employee' + (c.employeeCount !== 1 ? 's' : '') + '</div></div>' +
             '<div style="display:flex;gap:6px;">' +
               '<button class="btn btn-ghost" style="font-size:11px;padding:6px 12px;" onclick="selectCaClient(' + jsAttr(c.id) + ',' + jsAttr(c.slug) + ',' + jsAttr(c.name) + ')">' + (c.id === caState.clientId ? 'Selected' : 'Manage') + '</button>' +
+              '<button class="btn btn-ghost" style="font-size:11px;padding:6px 12px;" onclick="copyClientShareLink(' + jsAttr(c.slug) + ',' + jsAttr(c.name) + ')" title="Copy shareable dashboard link for this client">&#128279; Link</button>' +
               '<button class="btn btn-ghost" style="font-size:11px;padding:6px 12px;color:#dc2626;" onclick="deleteCaClient(' + jsAttr(c.id) + ',' + jsAttr(c.name) + ')" title="Permanently delete this client and all its data">Delete</button>' +
             '</div>' +
           '</div>'
         )).join('');
     list.innerHTML = semyaCard + clientsHtml;
+    // Populate the Access Control and Appearance client selectors
+    setTimeout(_populateCaSelectors, 0);
   } catch (e) {
     list.innerHTML = semyaCard + '<div style="text-align:center;padding:16px 0;color:#94a3b8;font-size:12px;">Failed to load clients.</div>';
   }
@@ -6812,8 +6854,10 @@ async function loadClients() {
 
 // Load pending access requests from backend
 async function loadPendingRequests() {
-  const list  = document.getElementById('pendingRequestsList');
-  const badge = document.getElementById('pendingCount');
+  const list    = document.getElementById('pendingRequestsList');
+  const badge   = document.getElementById('pendingCount');
+  const bellEl  = document.getElementById('headerNotifBell');
+  const bellCnt = document.getElementById('headerNotifCount');
   if (!list) return;
 
   try {
@@ -6823,6 +6867,14 @@ async function loadPendingRequests() {
     if (!res.ok) return;
     const requests = await res.json();
     const pending  = requests.filter(r => r.status === 'pending');
+    // Update header notification bell (admin-only)
+    if (bellEl && state.isAdmin) {
+      bellEl.style.display = 'block';
+      if (bellCnt) {
+        bellCnt.textContent = pending.length;
+        bellCnt.style.display = pending.length > 0 ? 'flex' : 'none';
+      }
+    }
 
     if (badge) {
       badge.textContent = pending.length;
@@ -7904,13 +7956,18 @@ document.getElementById('uploadDrawer').addEventListener('click', e => { if (e.t
 
 // ─── CLIENT SWITCHER ────────────────────────────────────────────────
 async function loadClientSwitcher() {
+  // Ensure the Semya HQ comparison view option is present for admins
   const sw = document.getElementById('clientSwitcher');
   if (!sw) return;
   try {
     const resp = await apiFetch('/auth/clients');
     const clients = resp?.clients || [];
     if (clients.length) {
-      sw.innerHTML = clients.map(c =>
+      // Admin gets a "Semya HQ" option at the top to view cross-client comparison
+      const hqOption = state.isAdmin
+        ? '<option value="__semya_hq__" style="font-weight:700;color:#7c3aed;">&#9889; Semya HQ (All Clients)</option>'
+        : '';
+      sw.innerHTML = hqOption + clients.map(c =>
         '<option value="' + c.slug + '"' + (c.slug === state.clientSlug ? ' selected' : '') + '>' + c.name + '</option>'
       ).join('');
     } else {
@@ -8231,17 +8288,35 @@ function renderProjections(resp) {
   const { totals, projection, unpricedSkus, unpricedRevenue, series } = resp;
 
   const note = document.getElementById('projUnpricedNote');
-  if (unpricedSkus && unpricedSkus.length) {
+  const hasAnyCosts = totals && (totals.profit !== 0 || totals.returnLoss > 0 || totals.adSpend > 0);
+  const noSkuCosts  = unpricedSkus && unpricedSkus.length > 0 && totals && totals.profit === 0;
+
+  if (noSkuCosts) {
+    // No cost prices at all — show revenue-only mode with setup guidance
+    note.style.display = '';
+    note.innerHTML = '<strong>&#9888; Cost prices not set yet.</strong> Add SKU cost prices in <strong>Settings → Projections → SKU Cost Prices</strong> to unlock profit calculations. ' +
+      'Showing <strong>revenue trend only</strong> for now — all ' + unpricedSkus.length + ' SKU' + (unpricedSkus.length !== 1 ? 's are' : ' is') + ' unpriced.';
+  } else if (unpricedSkus && unpricedSkus.length) {
     note.style.display = '';
     note.innerHTML = '⚠ ' + unpricedSkus.length + ' SKU' + (unpricedSkus.length !== 1 ? 's have' : ' has') +
-      ' no cost price set (' + fmtRevenue(unpricedRevenue) + ' in revenue excluded from this calculation) — add pricing below for a complete picture. Missing: ' +
+      ' no cost price set (' + fmtRevenue(unpricedRevenue) + ' in revenue excluded) — add pricing below for a complete picture. Missing: ' +
       unpricedSkus.slice(0, 6).join(', ') + (unpricedSkus.length > 6 ? '…' : '');
   } else {
     note.style.display = 'none';
   }
 
-  document.getElementById('projKpiProfit').innerHTML = fmtRevenue(totals.profit);
-  document.getElementById('projKpiProfit').style.color = totals.profit >= 0 ? '#059669' : '#dc2626';
+  // Revenue-only mode: show revenue in the Net Profit card with a label
+  const profitEl = document.getElementById('projKpiProfit');
+  const profitLabelEl = document.getElementById('projKpiProfitLabel');
+  if (noSkuCosts && totals.revenue > 0) {
+    profitEl.innerHTML = fmtRevenue(totals.revenue);
+    profitEl.style.color = '#0284c7';
+    if (profitLabelEl) profitLabelEl.textContent = 'Total Revenue (no costs set)';
+  } else {
+    profitEl.innerHTML = fmtRevenue(totals.profit);
+    profitEl.style.color = totals.profit >= 0 ? '#059669' : '#dc2626';
+    if (profitLabelEl) profitLabelEl.textContent = 'Net Profit';
+  }
   document.getElementById('projKpiReturnLoss').innerHTML = fmtRevenue(totals.returnLoss);
   document.getElementById('projKpiAdSpend').innerHTML = fmtRevenue(totals.adSpend);
   document.getElementById('projKpiAdSpendSub').textContent = totals.revenue > 0 ? (((totals.adSpend / totals.revenue) * 100).toFixed(1) + '% of revenue') : '—';
@@ -10212,6 +10287,211 @@ window.addEventListener('resize', function() {
     }
   });
 });
+
+// ══════════════════════════════════════════════════════════════
+// ISSUE 8 — Shareable Client Dashboard Link
+// Generates a link to the dashboard pre-scoped to a specific client
+// ══════════════════════════════════════════════════════════════
+function copyClientShareLink(clientSlug, clientName) {
+  // Link is just the dashboard URL with ?client=slug appended.
+  // On load the app reads this param and switches to that client
+  // automatically. Clients who don't have admin role only see
+  // their own client anyway — this just makes sharing easier.
+  const base = window.location.origin + window.location.pathname;
+  const link = base + '?client=' + encodeURIComponent(clientSlug);
+  navigator.clipboard.writeText(link).then(() => {
+    const btn = event?.target;
+    if (btn) { const orig = btn.innerHTML; btn.innerHTML = '✓ Copied!'; btn.style.color = '#059669'; setTimeout(() => { btn.innerHTML = orig; btn.style.color = ''; }, 2200); }
+  }).catch(() => {
+    prompt('Copy this link for ' + clientName + ':', link);
+  });
+}
+
+// On page load: honour ?client= param to auto-switch to a shared client link
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const sharedClient = params.get('client');
+  if (sharedClient) {
+    // Will be picked up after auth + client list loads
+    window._sharedClientSlug = sharedClient;
+  }
+})();
+
+// ══════════════════════════════════════════════════════════════
+// ISSUE 9 — Poll pending requests every 5 min for bell badge
+// ══════════════════════════════════════════════════════════════
+function _startNotifPolling() {
+  if (!state.isAdmin) return;
+  // Show bell immediately
+  const bellEl = document.getElementById('headerNotifBell');
+  if (bellEl) bellEl.style.display = 'block';
+  // Poll every 5 minutes
+  setInterval(() => {
+    if (state.isAdmin) loadPendingRequests();
+  }, 5 * 60 * 1000);
+}
+
+// ══════════════════════════════════════════════════════════════
+// ISSUE 10 — Access Control: client selector handler
+// ══════════════════════════════════════════════════════════════
+function _populateCaSelectors() {
+  // Populate both the Access Control and Appearance client selectors
+  // from the cached client list whenever it's loaded
+  const clients = _caClientsCache;
+  if (!clients || !clients.length) return;
+
+  const opts = '<option value="">— Choose a client —</option>' +
+    clients.map(cl => '<option value="' + cl.slug + '" data-id="' + cl.id + '" data-name="' + cl.name.replace(/"/g,'&quot;') + '">' + cl.name + '</option>').join('');
+
+  const accessSel = document.getElementById('caAccessClientSelect');
+  const appSel    = document.getElementById('caAppearanceClientSelect');
+  if (accessSel) accessSel.innerHTML = opts;
+  if (appSel)    appSel.innerHTML    = opts;
+
+  // Pre-select whichever client is currently active in caState
+  if (caState.clientSlug) {
+    if (accessSel) accessSel.value = caState.clientSlug;
+    if (appSel)    appSel.value    = caState.clientSlug;
+  }
+}
+
+function onCaAccessClientSelect(slug) {
+  if (!slug) return;
+  const sel = document.getElementById('caAccessClientSelect');
+  const opt = sel?.querySelector('option[value="' + slug + '"]');
+  const id   = opt?.dataset?.id   || null;
+  const name = opt?.dataset?.name || slug;
+  // Update caState so Access Control loads the right client
+  caState.clientSlug = slug; caState.clientId = id; caState.clientName = name;
+  updateCaAccessHeader();
+  const rows   = document.querySelector('#caPanel-access .acl-rows');
+  const notice = document.getElementById('caAccessNoClientNotice');
+  if (rows)   rows.style.display   = '';
+  if (notice) notice.style.display = 'none';
+  loadAccessControlForClient(slug);
+}
+
+// ══════════════════════════════════════════════════════════════
+// ISSUE 11 — Appearance: client selector handler
+// ══════════════════════════════════════════════════════════════
+function onCaAppearanceClientSelect(slug) {
+  if (!slug) return;
+  const sel  = document.getElementById('caAppearanceClientSelect');
+  const opt  = sel?.querySelector('option[value="' + slug + '"]');
+  const id   = opt?.dataset?.id   || null;
+  const name = opt?.dataset?.name || slug;
+  // Update caState so saveAppearance / loadAppearance targets the right client
+  caState.clientSlug = slug; caState.clientId = id; caState.clientName = name;
+  const hint = document.getElementById('caAppearanceScopeHint');
+  const lbl  = document.getElementById('caScopeClientName');
+  if (lbl)  lbl.textContent  = name + "'s";
+  if (hint) hint.style.display = '';
+  // Update "View as Client" toggle visibility
+  updateViewAsToggleUI();
+  // Pre-fill the brand name inputs with this client's current name
+  const brandInput = document.getElementById('brandNameInput');
+  if (brandInput) brandInput.value = name;
+  // Reload appearance for the newly selected client
+  if (typeof loadAppearanceForSlug === 'function') loadAppearanceForSlug(slug);
+}
+
+// ══════════════════════════════════════════════════════════════
+// ISSUE 7 — Semya cross-client comparison view
+// Admin can switch to "Semya" in the client switcher to see a
+// comparison dashboard of all clients side by side.
+// ══════════════════════════════════════════════════════════════
+async function loadCrossClientView() {
+  // Show the main area in cross-client mode
+  const main = document.querySelector('.main');
+  if (!main) return;
+
+  main.innerHTML = '<div style="padding:24px;">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">' +
+      '<div>' +
+        '<div style="font-size:18px;font-weight:800;color:#0f172a;">Semya Digital — All Clients</div>' +
+        '<div style="font-size:12px;color:#64748b;margin-top:2px;">Side-by-side revenue comparison</div>' +
+      '</div>' +
+      '<span class="fetch-badge loading" id="crossClientBadge"><span class="fetch-dot"></span>Loading…</span>' +
+    '</div>' +
+    '<div id="crossClientGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;"></div>' +
+  '</div>';
+
+  // Fetch all clients from admin list
+  let clients = [];
+  try {
+    const resp = await apiFetch('/auth/admin/clients');
+    clients = resp?.clients || [];
+  } catch (e) {
+    document.getElementById('crossClientGrid').innerHTML =
+      '<div style="color:#dc2626;font-size:13px;">Failed to load clients: ' + e.message + '</div>';
+    return;
+  }
+
+  const badge = document.getElementById('crossClientBadge');
+  if (badge) { badge.className = 'fetch-badge live'; badge.innerHTML = '<span class="fetch-dot"></span>Live'; }
+
+  const grid = document.getElementById('crossClientGrid');
+  if (!clients.length) {
+    grid.innerHTML = '<div style="color:#94a3b8;font-size:13px;">No clients found.</div>';
+    return;
+  }
+
+  // Fetch platform-sales summary for each client in parallel
+  const today = new Date().toISOString().slice(0, 10);
+  const yearStart = new Date().getFullYear() + '-01-01';
+
+  const results = await Promise.allSettled(
+    clients.map(cl => apiFetch('/clients/' + cl.slug + '/platform-sales?from=' + yearStart + '&to=' + today))
+  );
+
+  grid.innerHTML = clients.map((cl, i) => {
+    const res = results[i];
+    const data = res.status === 'fulfilled' ? res.value : null;
+    const rev  = data?.grandTotal || 0;
+    const plats = (data?.platforms || []).slice(0, 4);
+    const pctChange = data?.prevGrandTotal > 0
+      ? (((rev - data.prevGrandTotal) / data.prevGrandTotal) * 100).toFixed(1)
+      : null;
+    const deltaColor = pctChange > 0 ? '#059669' : pctChange < 0 ? '#dc2626' : '#64748b';
+    const platformRows = plats.map(p => {
+      const pm = PLATFORM_META[p.platform] || { label: p.platform, pillClass: 'pill-amz' };
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:12px;">' +
+        '<span class="platform-pill ' + pm.pillClass + '" style="font-size:9px;padding:2px 7px;">' + pm.label + '</span>' +
+        '<span style="font-weight:600;color:#1e293b;">' + fmtRevenue(p.totalRevenue) + '</span>' +
+        '<span style="color:#94a3b8;">' + (data.grandTotal > 0 ? (p.totalRevenue / data.grandTotal * 100).toFixed(1) + '%' : '—') + '</span>' +
+      '</div>';
+    }).join('');
+
+    return '<div class="card" style="cursor:pointer;" onclick="switchToClient(' + JSON.stringify(cl.slug) + ')">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
+        '<div style="font-size:14px;font-weight:700;color:#1e293b;">' + cl.name + '</div>' +
+        (pctChange != null ? '<span style="font-size:11px;font-weight:600;color:' + deltaColor + ';background:' + (pctChange > 0 ? 'rgba(5,150,105,.1)' : 'rgba(220,38,38,.08)') + ';padding:2px 8px;border-radius:99px;">' + (pctChange > 0 ? '▲' : '▼') + ' ' + Math.abs(pctChange) + '%</span>' : '') +
+      '</div>' +
+      '<div style="font-size:26px;font-weight:800;color:#0f172a;letter-spacing:-0.02em;margin-bottom:4px;">' + fmtRevenue(rev) + '</div>' +
+      '<div style="font-size:11px;color:#94a3b8;margin-bottom:14px;">YTD Net Revenue · ' + (data?.platforms?.length || 0) + ' platforms</div>' +
+      (platformRows ? '<div>' + platformRows + '</div>' : '<div style="font-size:12px;color:#94a3b8;padding:8px 0;">No data yet — upload files to get started.</div>') +
+      '<div style="margin-top:12px;text-align:right;"><span style="font-size:11px;color:var(--theme-primary);font-weight:600;">View Dashboard →</span></div>' +
+    '</div>';
+  }).join('');
+}
+
+function switchToClient(slug) {
+  // Switch the main dashboard to view that client's data
+  const sw = document.getElementById('clientSwitcher');
+  if (sw) { sw.value = slug; sw.dispatchEvent(new Event('change')); }
+}
+
+// Hook into setCrossClientMode when admin switches to 'semya' (empty) in the switcher
+const _origSwitcherChange = window.onClientSwitcherChange;
+(function patchSwitcherForCrossClient() {
+  const sw = document.getElementById('clientSwitcher');
+  if (!sw) return;
+  sw.addEventListener('change', function() {
+    if (this.value === '__semya_hq__') {
+      loadCrossClientView();
+    }
+  });
+})();
 </script>
 </body>
 </html>
