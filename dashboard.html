@@ -7526,12 +7526,17 @@ function renderFraudPatterns(resp) {
   const multiName = flagged.filter(f => f.identities.length > 1);
 
   if (meta) {
+    const skippedMsg = resp.skippedNoIdentity
+      ? ' (' + resp.skippedNoIdentity.toLocaleString('en-IN') + ' rows from Amazon/Acutas skipped — those exports never include buyer contact details)'
+      : '';
+    const uploadHint = (resp.skippedNoIdentity > 0 && !flagged.length)
+      ? ' · Upload Shopify, Flipkart, or Blinkit order files — those include buyer phone/pincode needed for pattern detection.'
+      : '';
     meta.textContent = flagged.length
       ? flagged.length + ' flagged contact' + (flagged.length !== 1 ? 's' : '') +
         (multiName.length ? ' · ' + multiName.length + ' involve multiple names on one contact' : '') +
-        (resp.skippedNoIdentity ? ' · ' + resp.skippedNoIdentity.toLocaleString('en-IN') + ' rows had no buyer details to check (e.g. Amazon/Acutas)' : '')
-      : 'No repeat-cancellation patterns found' +
-        (resp.skippedNoIdentity ? ' (' + resp.skippedNoIdentity.toLocaleString('en-IN') + ' rows had no buyer details to check, e.g. Amazon/Acutas)' : '');
+        (resp.skippedNoIdentity ? ' · ' + resp.skippedNoIdentity.toLocaleString('en-IN') + ' Amazon/Acutas rows skipped (no buyer PII in those exports)' : '')
+      : 'No repeat-cancellation patterns found' + skippedMsg + uploadHint;
   }
 
   if (!flagged.length) {
@@ -8004,7 +8009,29 @@ async function switchClient(newSlug) {
   fetchAndRender();
 }
 
-document.getElementById('clientSwitcher')?.addEventListener('change', (e) => switchClient(e.target.value));
+document.getElementById('clientSwitcher')?.addEventListener('change', function(e) {
+  const val = e.target.value;
+  if (val === '__semya_hq__') {
+    // Cross-client view — don't switchClient(), just show the comparison UI
+    loadCrossClientView();
+    return;
+  }
+  // Switching back from HQ view or switching between clients:
+  // restore the normal dashboard layout if we were in HQ mode
+  const main = document.querySelector('.main');
+  if (main && main.dataset.mode === 'hq') {
+    main.dataset.mode = '';
+    // Restore sidebar elements
+    document.querySelectorAll('[data-hq-hidden="true"]').forEach(el => {
+      el.style.display = ''; delete el.dataset.hqHidden;
+    });
+    main.innerHTML = window._mainOriginalHTML || '';
+    window._mainOriginalHTML = null; // reset so it's re-cached next HQ visit
+    // If original HTML was not cached, full reload is safest
+    if (!window._mainOriginalHTML && !main.innerHTML.trim()) { location.reload(); return; }
+  }
+  switchClient(val);
+});
 
 // ═══════════════════════════════════════════════════════════════════
 // UTM ANALYTICS TAB
@@ -8275,7 +8302,10 @@ async function fetchAndRenderProjections() {
   try {
     const resp = await apiFetch('/clients/' + clientSlug + '/projections?bucket=' + bucket + '&periodsAhead=8');
     renderProjections(resp);
-    setBadgeProj(resp?.series?.length ? 'live' : 'empty');
+    // Show as live if we have either series data OR ad spend data
+    const hasUsefulData = resp?.series?.length > 0 ||
+      (resp?.totals && (resp.totals.adSpend > 0 || resp.totals.revenue > 0));
+    setBadgeProj(hasUsefulData ? 'live' : 'empty');
   } catch (e) {
     console.warn('[projections]', e.message);
     setBadgeProj('empty');
@@ -8308,18 +8338,28 @@ function renderProjections(resp) {
   // Revenue-only mode: show revenue in the Net Profit card with a label
   const profitEl = document.getElementById('projKpiProfit');
   const profitLabelEl = document.getElementById('projKpiProfitLabel');
+  const hasAdSpendOnly = totals.adSpend > 0 && totals.revenue === 0;
+
   if (noSkuCosts && totals.revenue > 0) {
+    // Has revenue but no cost prices — show revenue as proxy
     profitEl.innerHTML = fmtRevenue(totals.revenue);
     profitEl.style.color = '#0284c7';
     if (profitLabelEl) profitLabelEl.textContent = 'Total Revenue (no costs set)';
+  } else if (hasAdSpendOnly) {
+    // Has campaign spend data but no revenue rows with dates — show spend
+    profitEl.innerHTML = fmtRevenue(totals.adSpend);
+    profitEl.style.color = '#d97706';
+    if (profitLabelEl) profitLabelEl.textContent = 'Ad Spend (no revenue data yet)';
   } else {
     profitEl.innerHTML = fmtRevenue(totals.profit);
     profitEl.style.color = totals.profit >= 0 ? '#059669' : '#dc2626';
     if (profitLabelEl) profitLabelEl.textContent = 'Net Profit';
   }
   document.getElementById('projKpiReturnLoss').innerHTML = fmtRevenue(totals.returnLoss);
-  document.getElementById('projKpiAdSpend').innerHTML = fmtRevenue(totals.adSpend);
-  document.getElementById('projKpiAdSpendSub').textContent = totals.revenue > 0 ? (((totals.adSpend / totals.revenue) * 100).toFixed(1) + '% of revenue') : '—';
+  document.getElementById('projKpiAdSpend').innerHTML    = fmtRevenue(totals.adSpend);
+  document.getElementById('projKpiAdSpendSub').textContent = totals.revenue > 0
+    ? (((totals.adSpend / totals.revenue) * 100).toFixed(1) + '% of revenue')
+    : (totals.adSpend > 0 ? 'No revenue data to compare against yet' : '—');
 
   if (projection) {
     document.getElementById('projKpiStatus').textContent = projection.isProfitableNow ? '✓ Profitable' : 'Not yet profitable';
@@ -8364,7 +8404,13 @@ function renderProjChart(series, projection) {
   const actualLabels = (series || []).map(s => s.period);
   const actualCum = [];
   let running = 0;
-  (series || []).forEach(s => { running += s.profit; actualCum.push(+running.toFixed(2)); });
+  // If all series have zero profit but have revenue, show cumulative revenue instead
+  const allZeroProfit = (series || []).every(s => s.profit === 0);
+  const useRevenue = allZeroProfit && (series || []).some(s => s.revenue > 0 || s.adSpend > 0);
+  (series || []).forEach(s => {
+    running += useRevenue ? (s.revenue || 0) - (s.adSpend || 0) : s.profit;
+    actualCum.push(+running.toFixed(2));
+  });
 
   const futureCount = projection?.linear?.projectedCumulative?.length || 0;
   const futureLabels = Array.from({ length: futureCount }, (_, i) => '+' + (i + 1));
@@ -10293,18 +10339,29 @@ window.addEventListener('resize', function() {
 // Generates a link to the dashboard pre-scoped to a specific client
 // ══════════════════════════════════════════════════════════════
 function copyClientShareLink(clientSlug, clientName) {
-  // Link is just the dashboard URL with ?client=slug appended.
-  // On load the app reads this param and switches to that client
-  // automatically. Clients who don't have admin role only see
-  // their own client anyway — this just makes sharing easier.
   const base = window.location.origin + window.location.pathname;
   const link = base + '?client=' + encodeURIComponent(clientSlug);
-  navigator.clipboard.writeText(link).then(() => {
-    const btn = event?.target;
-    if (btn) { const orig = btn.innerHTML; btn.innerHTML = '✓ Copied!'; btn.style.color = '#059669'; setTimeout(() => { btn.innerHTML = orig; btn.style.color = ''; }, 2200); }
-  }).catch(() => {
-    prompt('Copy this link for ' + clientName + ':', link);
-  });
+  const btn  = event?.currentTarget || event?.target;
+
+  const showCopied = () => {
+    if (btn) {
+      const orig = btn.innerHTML;
+      btn.innerHTML = '✓ Copied!';
+      btn.style.color = '#059669';
+      setTimeout(() => { btn.innerHTML = orig; btn.style.color = ''; }, 2500);
+    }
+  };
+
+  // Show the link in a small inline tooltip first (always visible)
+  // then try clipboard
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(link).then(showCopied).catch(() => {
+      prompt('Copy this dashboard link for ' + clientName + ':', link);
+    });
+  } else {
+    // Non-secure context (HTTP) — use the prompt fallback
+    prompt('Copy this dashboard link for ' + clientName + ':', link);
+  }
 }
 
 // On page load: honour ?client= param to auto-switch to a shared client link
@@ -10405,13 +10462,33 @@ async function loadCrossClientView() {
   const main = document.querySelector('.main');
   if (!main) return;
 
+  // Cache original HTML so we can restore it when switching back
+  if (!window._mainOriginalHTML) {
+    window._mainOriginalHTML = main.innerHTML;
+  }
+  main.dataset.mode = 'hq';
+
+  // Hide Platform Health sidebar section — irrelevant in multi-client view
+  const sidebar = document.querySelector('.sidebar');
+  if (sidebar) sidebar.dataset.hiddenForHq = 'true';
+  document.querySelectorAll('.sidebar .card, .sidebar .ai-panel, aside .card, aside .ai-panel').forEach(el => {
+    el.dataset.hqHidden = 'true'; el.style.display = 'none';
+  });
+
   main.innerHTML = '<div style="padding:24px;">' +
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">' +
       '<div>' +
         '<div style="font-size:18px;font-weight:800;color:#0f172a;">Semya Digital — All Clients</div>' +
-        '<div style="font-size:12px;color:#64748b;margin-top:2px;">Side-by-side revenue comparison</div>' +
+        '<div style="font-size:12px;color:#64748b;margin-top:2px;">YTD revenue comparison across all clients</div>' +
       '</div>' +
       '<span class="fetch-badge loading" id="crossClientBadge"><span class="fetch-dot"></span>Loading…</span>' +
+    '</div>' +
+    // Tab selector for HQ view
+    '<div style="display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap;">' +
+      ['Platform Sales','SKU Performance','Campaign Insights','Geographic Analysis'].map((label, i) => {
+        const active = i === 0;
+        return '<button onclick="switchHqTab(this,'' + label + '')" style="padding:6px 14px;border-radius:99px;border:1px solid ' + (active ? 'var(--theme-primary)' : 'var(--color-border)') + ';background:' + (active ? 'var(--theme-primary)' : 'var(--color-surface-2)') + ';color:' + (active ? '#fff' : 'var(--theme-muted)') + ';font-size:11px;font-weight:600;cursor:pointer;">' + label + '</button>';
+      }).join('') +
     '</div>' +
     '<div id="crossClientGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;"></div>' +
   '</div>';
@@ -10444,54 +10521,89 @@ async function loadCrossClientView() {
     clients.map(cl => apiFetch('/clients/' + cl.slug + '/platform-sales?from=' + yearStart + '&to=' + today))
   );
 
-  grid.innerHTML = clients.map((cl, i) => {
-    const res = results[i];
-    const data = res.status === 'fulfilled' ? res.value : null;
-    const rev  = data?.grandTotal || 0;
-    const plats = (data?.platforms || []).slice(0, 4);
-    const pctChange = data?.prevGrandTotal > 0
-      ? (((rev - data.prevGrandTotal) / data.prevGrandTotal) * 100).toFixed(1)
-      : null;
-    const deltaColor = pctChange > 0 ? '#059669' : pctChange < 0 ? '#dc2626' : '#64748b';
-    const platformRows = plats.map(p => {
-      const pm = PLATFORM_META[p.platform] || { label: p.platform, pillClass: 'pill-amz' };
-      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:12px;">' +
-        '<span class="platform-pill ' + pm.pillClass + '" style="font-size:9px;padding:2px 7px;">' + pm.label + '</span>' +
-        '<span style="font-weight:600;color:#1e293b;">' + fmtRevenue(p.totalRevenue) + '</span>' +
-        '<span style="color:#94a3b8;">' + (data.grandTotal > 0 ? (p.totalRevenue / data.grandTotal * 100).toFixed(1) + '%' : '—') + '</span>' +
-      '</div>';
-    }).join('');
+  // Store data for tab switching
+  window._hqClientsData = clients.map((cl, i) => ({
+    cl,
+    data: results[i].status === 'fulfilled' ? results[i].value : null
+  }));
 
-    return '<div class="card" style="cursor:pointer;" onclick="switchToClient(' + JSON.stringify(cl.slug) + ')">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
-        '<div style="font-size:14px;font-weight:700;color:#1e293b;">' + cl.name + '</div>' +
-        (pctChange != null ? '<span style="font-size:11px;font-weight:600;color:' + deltaColor + ';background:' + (pctChange > 0 ? 'rgba(5,150,105,.1)' : 'rgba(220,38,38,.08)') + ';padding:2px 8px;border-radius:99px;">' + (pctChange > 0 ? '▲' : '▼') + ' ' + Math.abs(pctChange) + '%</span>' : '') +
-      '</div>' +
-      '<div style="font-size:26px;font-weight:800;color:#0f172a;letter-spacing:-0.02em;margin-bottom:4px;">' + fmtRevenue(rev) + '</div>' +
-      '<div style="font-size:11px;color:#94a3b8;margin-bottom:14px;">YTD Net Revenue · ' + (data?.platforms?.length || 0) + ' platforms</div>' +
-      (platformRows ? '<div>' + platformRows + '</div>' : '<div style="font-size:12px;color:#94a3b8;padding:8px 0;">No data yet — upload files to get started.</div>') +
-      '<div style="margin-top:12px;text-align:right;"><span style="font-size:11px;color:var(--theme-primary);font-weight:600;">View Dashboard →</span></div>' +
-    '</div>';
-  }).join('');
+  // Render using the unified grid renderer
+  renderHqGrid(window._hqClientsData, window._hqCurrentTab || 'Platform Sales');
 }
 
 function switchToClient(slug) {
   // Switch the main dashboard to view that client's data
   const sw = document.getElementById('clientSwitcher');
-  if (sw) { sw.value = slug; sw.dispatchEvent(new Event('change')); }
+  if (sw) {
+    sw.value = slug;
+    // Dispatch change event — our fixed handler will restore layout and call switchClient()
+    sw.dispatchEvent(new Event('change'));
+  }
 }
 
-// Hook into setCrossClientMode when admin switches to 'semya' (empty) in the switcher
-const _origSwitcherChange = window.onClientSwitcherChange;
-(function patchSwitcherForCrossClient() {
-  const sw = document.getElementById('clientSwitcher');
-  if (!sw) return;
-  sw.addEventListener('change', function() {
-    if (this.value === '__semya_hq__') {
-      loadCrossClientView();
-    }
+// Switch what metric the HQ comparison shows per tab
+window._hqCurrentTab = 'Platform Sales';
+function switchHqTab(btn, tabLabel) {
+  window._hqCurrentTab = tabLabel;
+  // Update button styles
+  btn.closest('div').querySelectorAll('button').forEach(b => {
+    b.style.background  = b === btn ? 'var(--theme-primary)' : 'var(--color-surface-2)';
+    b.style.color       = b === btn ? '#fff' : 'var(--theme-muted)';
+    b.style.borderColor = b === btn ? 'var(--theme-primary)' : 'var(--color-border)';
   });
-})();
+  // Re-render the grid with the same client data but different metric
+  const grid = document.getElementById('crossClientGrid');
+  if (!grid || !window._hqClientsData) return;
+  renderHqGrid(window._hqClientsData, tabLabel);
+}
+
+function renderHqGrid(clientData, tabLabel) {
+  const grid = document.getElementById('crossClientGrid');
+  if (!grid) return;
+  grid.innerHTML = clientData.map(({ cl, data }) => {
+    // Pick the right metric depending on tab
+    let primaryValue = '—', subLabel = '', platformRows = '', hasData = false;
+    const d = data;
+
+    if (tabLabel === 'Platform Sales' || tabLabel === 'SKU Performance') {
+      const rev = d?.grandTotal || 0;
+      primaryValue = fmtRevenue(rev);
+      subLabel = 'YTD Net Revenue · ' + (d?.platforms?.length || 0) + ' platforms';
+      hasData = rev > 0;
+      const pctChange = d?.prevGrandTotal > 0 ? (((rev - d.prevGrandTotal) / d.prevGrandTotal) * 100).toFixed(1) : null;
+      const deltaHtml = pctChange != null
+        ? '<span style="font-size:11px;font-weight:600;color:' + (pctChange > 0 ? '#059669' : '#dc2626') + ';background:' + (pctChange > 0 ? 'rgba(5,150,105,.1)' : 'rgba(220,38,38,.08)') + ';padding:2px 8px;border-radius:99px;">' + (pctChange > 0 ? '▲' : '▼') + ' ' + Math.abs(pctChange) + '%</span>'
+        : '';
+      const plats = (d?.platforms || []).slice(0, 4);
+      platformRows = (plats.length ? plats : []).map(p => {
+        const pm = PLATFORM_META[p.platform] || { label: p.platform, pillClass: 'pill-amz' };
+        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:12px;">' +
+          '<span class="platform-pill ' + pm.pillClass + '" style="font-size:9px;padding:2px 7px;">' + pm.label + '</span>' +
+          '<span style="font-weight:600;color:#1e293b;">' + fmtRevenue(p.totalRevenue) + '</span>' +
+          '<span style="color:#94a3b8;">' + (rev > 0 ? (p.totalRevenue / rev * 100).toFixed(1) + '%' : '—') + '</span>' +
+        '</div>';
+      }).join('');
+      return '<div class="card" style="cursor:pointer;" onclick="switchToClient('' + cl.slug + '')">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
+          '<div style="font-size:14px;font-weight:700;color:#1e293b;">' + cl.name + '</div>' + deltaHtml +
+        '</div>' +
+        '<div style="font-size:26px;font-weight:800;color:#0f172a;letter-spacing:-0.02em;margin-bottom:4px;">' + primaryValue + '</div>' +
+        '<div style="font-size:11px;color:#94a3b8;margin-bottom:14px;">' + subLabel + '</div>' +
+        (hasData ? '<div>' + platformRows + '</div>' : '<div style="font-size:12px;color:#94a3b8;padding:8px 0;">No data yet — upload files to get started.</div>') +
+        '<div style="margin-top:12px;text-align:right;"><span style="font-size:11px;color:var(--theme-primary);font-weight:600;">View Dashboard →</span></div>' +
+      '</div>';
+    }
+
+    // Fallback for other tabs
+    return '<div class="card" style="cursor:pointer;" onclick="switchToClient('' + cl.slug + '')">' +
+      '<div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:12px;">' + cl.name + '</div>' +
+      '<div style="font-size:12px;color:#94a3b8;">Switch to this client to view ' + tabLabel + '</div>' +
+      '<div style="margin-top:12px;text-align:right;"><span style="font-size:11px;color:var(--theme-primary);font-weight:600;">View Dashboard →</span></div>' +
+    '</div>';
+  }).join('');
+}
+
+// (patchSwitcherForCrossClient merged into main change handler above)
 </script>
 </body>
 </html>
