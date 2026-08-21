@@ -8983,7 +8983,8 @@ async function loadCrossClientView() {
     '<div style="display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap;">' +
       ['Platform Sales','SKU Performance','Campaign Insights','Geographic Analysis'].map((label, i) => {
         const active = i === 0;
-        return '<button onclick="switchHqTab(this,'' + label + '')" style="padding:6px 14px;border-radius:99px;border:1px solid ' + (active ? 'var(--theme-primary)' : 'var(--color-border)') + ';background:' + (active ? 'var(--theme-primary)' : 'var(--color-surface-2)') + ';color:' + (active ? '#fff' : 'var(--theme-muted)') + ';font-size:11px;font-weight:600;cursor:pointer;">' + label + '</button>';
+        const slug = label.toLowerCase().replace(/ /g,'_');
+        return '<button onclick="switchHqTab(this,\''+slug+'\')" style="padding:6px 14px;border-radius:99px;border:1px solid '+(active?'var(--theme-primary)':'var(--color-border)')+';background:'+(active?'var(--theme-primary)':'var(--color-surface-2)')+';color:'+(active?'#fff':'var(--theme-muted)')+';font-size:11px;font-weight:600;cursor:pointer;">'+label+'</button>';
       }).join('') +
     '</div>' +
     '<div id="crossClientGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;"></div>' +
@@ -9078,7 +9079,7 @@ function renderHqGrid(clientData, tabLabel) {
           '<span style="color:#94a3b8;">' + (rev > 0 ? (p.totalRevenue / rev * 100).toFixed(1) + '%' : '—') + '</span>' +
         '</div>';
       }).join('');
-      return '<div class="card" style="cursor:pointer;" onclick="switchToClient('' + cl.slug + '')">' +
+      return '<div class="card" style="cursor:pointer;" onclick="switchToClient(' + JSON.stringify(cl.slug) + ')">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
           '<div style="font-size:14px;font-weight:700;color:#1e293b;">' + cl.name + '</div>' + deltaHtml +
         '</div>' +
@@ -9090,7 +9091,7 @@ function renderHqGrid(clientData, tabLabel) {
     }
 
     // Fallback for other tabs
-    return '<div class="card" style="cursor:pointer;" onclick="switchToClient('' + cl.slug + '')">' +
+    return '<div class="card" style="cursor:pointer;" onclick="switchToClient(' + JSON.stringify(cl.slug) + ')">' +
       '<div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:12px;">' + cl.name + '</div>' +
       '<div style="font-size:12px;color:#94a3b8;">Switch to this client to view ' + tabLabel + '</div>' +
       '<div style="margin-top:12px;text-align:right;"><span style="font-size:11px;color:var(--theme-primary);font-weight:600;">View Dashboard →</span></div>' +
