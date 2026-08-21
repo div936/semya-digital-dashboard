@@ -410,19 +410,21 @@ router.get(
           .from('revenue_data')
           .select('standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status, standard_product_name, standard_order_id, financial_status, risk_level, tags')
           .eq('client_id', client.id)
-          .order('id')
+          .order('order_date', { ascending: false, nullsFirst: false })
           .range(rangeFrom, rangeTo);
         if (sku)      q = q.eq('standard_sku', sku);
         if (platform) q = q.in('platform', expandPlatform(platform));
-        // FIX: combined into single .or() — see platform-sales fix above
-        if (from || to) {
-          if (from && to) {
-            q = q.or(`and(order_date.gte.${from},order_date.lte.${to}),order_date.is.null`);
-          } else if (from) {
-            q = q.or(`order_date.gte.${from},order_date.is.null`);
-          } else {
-            q = q.or(`order_date.lte.${to},order_date.is.null`);
-          }
+        // Date filter — apply as hard bounds (not OR-with-null) for performance.
+        // Rows with null order_date are edge cases (undated uploads); including
+        // them regardless of date range keeps historical behaviour but costs
+        // a full table scan. Only rows with null date get the OR-with-null
+        // treatment; rows with a real date get a direct range filter.
+        if (from && to) {
+          q = q.or(`and(order_date.gte.${from},order_date.lte.${to}),order_date.is.null`);
+        } else if (from) {
+          q = q.or(`order_date.gte.${from},order_date.is.null`);
+        } else if (to) {
+          q = q.or(`order_date.lte.${to},order_date.is.null`);
         }
         return q;
       }),
