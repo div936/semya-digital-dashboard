@@ -13,33 +13,43 @@ const VALID_SCOPES = new Set(['all', 'amazon', 'acutas', 'flipkart', 'blinkit', 
 
 // ─── Helper: get AI config for this client ────────────────────────
 async function getClientAiConfig(clientId) {
-  const { data } = await supabaseAdmin
-    .from('clients')
-    .select('ai_provider, ai_model, ai_api_key')
-    .eq('id', clientId)
-    .maybeSingle();
+  // Wrapped in try/catch: ai_provider, ai_model, ai_api_key columns may not
+  // exist yet if the AI settings migration hasn't been run. A missing column
+  // causes Supabase to throw, which previously 500'd every claude-insight
+  // request. Treat any failure here as "no client AI key configured" and fall
+  // through to the admin env-var key — same as if the columns existed but
+  // were empty. This is the same defensive pattern used for registered_brands
+  // and access_expires_at elsewhere in the codebase.
+  let data = null;
+  try {
+    const result = await supabaseAdmin
+      .from('clients')
+      .select('ai_provider, ai_model, ai_api_key')
+      .eq('id', clientId)
+      .maybeSingle();
+    data = result.data;
+  } catch (_) { /* columns may not exist yet — fall through to env key */ }
 
   if (data?.ai_api_key) {
     return {
       provider: data.ai_provider || 'gemini',
-      // FIX: correct Gemini model name — API uses 'gemini-1.5-flash' not 'gemini-3-flash'
       model:    data.ai_model    || (data.ai_provider === 'claude' ? 'claude-haiku-4-5-20251001' : 'gemini-1.5-flash'),
       apiKey:   data.ai_api_key,
       source:   'client',
     };
   }
 
-  // Fallback to admin Gemini key
+  // Fallback to admin Gemini key from environment
   if (process.env.GEMINI_API_KEY) {
     return {
       provider: 'gemini',
-      model:    'gemini-1.5-flash',   // FIX: was 'gemini-3.7-flash' — not a valid model ID
+      model:    'gemini-1.5-flash',
       apiKey:   process.env.GEMINI_API_KEY,
       source:   'admin',
     };
   }
 
-  return null; // No AI configured
+  return null; // No AI configured anywhere
 }
 
 // ─── SSE helper — write a plain-text chunk as an SSE data line ────
