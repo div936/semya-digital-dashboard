@@ -3790,7 +3790,11 @@ function renderKPIs(rev, campaigns, prevRev) {
   document.getElementById('kpiUnitsSub').innerHTML = `Ad spend: ${fmtRevenue(totalSpend)} &nbsp;·&nbsp; Campaign rev: ${fmtRevenue(campaignRev)}`;
 
   document.getElementById('kpiRoas').innerHTML = roas > 0 ? fmtRoas(roas) : '—';
-  document.getElementById('kpiRoasDelta').innerHTML = roas > 0 ? deltaHtml(((roas - 5.1) / 5.1 * 100).toFixed(1)) : '';
+  // No hardcoded baseline — delta only shown if prev period ROAS is available
+  const prevRoas = payload?.prevRoas || null;
+  document.getElementById('kpiRoasDelta').innerHTML = (roas > 0 && prevRoas > 0)
+    ? deltaHtml(((roas - prevRoas) / prevRoas * 100).toFixed(1))
+    : '';
   document.getElementById('kpiRoasSub').innerHTML = `Ad spend: ${fmtRevenue(totalSpend)} &nbsp;·&nbsp; Campaign rev: ${fmtRevenue(campaignRev)}`;
 }
 
@@ -5520,6 +5524,8 @@ function renderCI(payload) {
   const totalClicks = campaigns.reduce((s, c) => s + (c.standard_clicks || 0), 0);
   const totalImpr   = campaigns.reduce((s, c) => s + (c.standard_impressions || 0), 0);
   const blendedRoas = payload.overallRoas != null ? payload.overallRoas : (totalSpend > 0 ? totalRev / totalSpend : 0);
+  // weeklyRoas is passed through from the backend — used for the ROAS trend chart.
+  // No fallback needed: renderOrUpdateChart handles empty arrays gracefully.
   const avgCTR      = totalImpr  > 0 ? (totalClicks / totalImpr * 100) : 0;
 
   document.getElementById('ciKpiSpend').innerHTML    = fmtRevenue(totalSpend);
@@ -5551,16 +5557,33 @@ function renderCI(payload) {
   document.getElementById('ciKpiClicksDelta').innerHTML = '';
   document.getElementById('ciKpiClicksSub').innerHTML   = 'Avg CTR: ' + avgCTR.toFixed(2) + '% · ' + fmtUnits(totalImpr) + ' impressions';
 
-  const ciWeeks = ['W1 Jul','W2 Jul','W3 Jul','W4 Jul'];
-  const ciRoasVals = [3.8, 4.2, 4.7, blendedRoas > 0 ? +blendedRoas.toFixed(1) : 4.4];
-  renderOrUpdateChart('ciRoasChart', '_ciRoasChart', {
-    type: 'line',
-    data: { labels: ciWeeks, datasets: [
-      { label: 'Blended RoAS', data: ciRoasVals, borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.06)', pointBackgroundColor: '#7c3aed', pointRadius: 5, pointHoverRadius: 7, tension: 0.4, fill: true, borderWidth: 2 },
-      { label: 'Target (4x)',  data: [4,4,4,4],  borderColor: '#d97706', backgroundColor: 'transparent', pointRadius: 0, borderDash: [6,4], borderWidth: 1.5 }
-    ]},
-    options: lineChartOptions('', 'x', 1),
-  });
+  // Use real weekly ROAS from backend — payload.weeklyRoas is an array of
+  // { week, label, spend, rev, roas } sorted chronologically.
+  // Fall back to a single-point chart (just the overall blended ROAS) if 
+  // no weekly breakdown is available.
+  const weeklyRoasData  = (payload.weeklyRoas && payload.weeklyRoas.length > 0)
+    ? payload.weeklyRoas
+    : (blendedRoas > 0 ? [{ label: 'Overall', roas: blendedRoas }] : []);
+
+  const ciWeeks    = weeklyRoasData.map(w => w.label);
+  const ciRoasVals = weeklyRoasData.map(w => w.roas != null ? +Number(w.roas).toFixed(2) : null);
+
+  // Target line — use actual blended ROAS as reference if it's above 1x
+  // (meaning real campaigns ran). Do NOT hardcode 4x as a target.
+  // Show 4x only as a common industry benchmark annotation, not as the axis.
+  const targetVal  = 4; // industry benchmark — kept as dotted reference line
+  const targetData = ciWeeks.map(() => targetVal);
+
+  if (weeklyRoasData.length > 0) {
+    renderOrUpdateChart('ciRoasChart', '_ciRoasChart', {
+      type: 'line',
+      data: { labels: ciWeeks, datasets: [
+        { label: 'Blended RoAS', data: ciRoasVals, borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.06)', pointBackgroundColor: '#7c3aed', pointRadius: ciWeeks.length <= 8 ? 5 : 3, pointHoverRadius: 7, tension: 0.3, fill: true, borderWidth: 2, spanGaps: true },
+        { label: 'Target (4x)',  data: targetData,  borderColor: '#d97706', backgroundColor: 'transparent', pointRadius: 0, borderDash: [6,4], borderWidth: 1.5 }
+      ]},
+      options: lineChartOptions('', 'x', 1),
+    });
+  }
 
   const byPlatform = {};
   campaigns.forEach(c => { byPlatform[c.platform] = (byPlatform[c.platform]||0) + (c.standard_spend||0); });
@@ -10255,6 +10278,80 @@ async function clearAiSettingsDyn() {
 }
 </script>
 
+
+<!-- ═══ CLIENT SHARE LINK MODAL ═══════════════════════════════════════ -->
+<div id="clientShareModal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.45);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.18);width:100%;max-width:480px;margin:20px;overflow:hidden;">
+
+    <!-- Header -->
+    <div style="padding:22px 24px 18px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="font-size:15px;font-weight:800;color:#0f172a;">Share Dashboard Link</div>
+        <div style="font-size:12px;color:#64748b;margin-top:2px;" id="cslClientLabel">—</div>
+      </div>
+      <button onclick="closeShareModal()" style="background:none;border:none;cursor:pointer;color:#94a3b8;padding:4px;border-radius:6px;line-height:0;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <!-- Body -->
+    <div style="padding:22px 24px;">
+
+      <!-- Section 1: Plain dashboard link -->
+      <div style="margin-bottom:20px;">
+        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Dashboard URL</div>
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:10px;">Share this URL with clients who already have a login. They will see only their own data.</div>
+        <div style="display:flex;gap:8px;">
+          <div id="cslPlainUrl" style="flex:1;padding:9px 12px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;font-family:monospace;color:#334155;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
+          <button onclick="cslCopyPlain()" id="cslCopyPlainBtn"
+            style="padding:9px 16px;background:var(--theme-primary);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">
+            Copy
+          </button>
+        </div>
+      </div>
+
+      <!-- Divider -->
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+        <div style="flex:1;height:1px;background:#f1f5f9;"></div>
+        <span style="font-size:11px;color:#94a3b8;font-weight:600;">OR</span>
+        <div style="flex:1;height:1px;background:#f1f5f9;"></div>
+      </div>
+
+      <!-- Section 2: Magic link by email -->
+      <div>
+        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">One-Click Sign-In Link</div>
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:10px;">Enter the client's email to generate a magic link they can click to sign in instantly — no password needed. If they don't have an account yet, one will be created automatically.</div>
+        <div style="display:flex;gap:8px;margin-bottom:10px;">
+          <input id="cslEmailInput" type="email" placeholder="client@example.com"
+            style="flex:1;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;color:#1e293b;outline:none;"
+            onfocus="this.style.borderColor='var(--theme-primary)'" onblur="this.style.borderColor='#e2e8f0'"
+            onkeydown="if(event.key==='Enter') cslGenerateMagicLink()" />
+          <button onclick="cslGenerateMagicLink()" id="cslMagicBtn"
+            style="padding:9px 16px;background:#0f172a;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">
+            Generate
+          </button>
+        </div>
+
+        <!-- Magic link result — hidden until generated -->
+        <div id="cslMagicResult" style="display:none;">
+          <div style="font-size:11px;font-weight:600;color:#059669;margin-bottom:6px;">&#10003; Magic link ready — valid for 24 hours</div>
+          <div style="display:flex;gap:8px;">
+            <div id="cslMagicUrl" style="flex:1;padding:9px 12px;background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:8px;font-size:11px;font-family:monospace;color:#166534;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
+            <button onclick="cslCopyMagic()" id="cslCopyMagicBtn"
+              style="padding:9px 16px;background:#059669;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">
+              Copy
+            </button>
+          </div>
+          <div style="font-size:10px;color:#94a3b8;margin-top:6px;">&#9888; This link signs in as that specific email. Do not share it publicly — send it only to the intended client.</div>
+        </div>
+
+        <!-- Error message -->
+        <div id="cslError" style="display:none;font-size:12px;color:#dc2626;padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;margin-top:8px;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── PORTAL DROPDOWNS — rendered at body level to escape flex/overflow contexts ── -->
 
 <!-- SKU Performance dropdown -->
@@ -10381,29 +10478,104 @@ window.addEventListener('resize', function() {
 // ISSUE 8 — Shareable Client Dashboard Link
 // Generates a link to the dashboard pre-scoped to a specific client
 // ══════════════════════════════════════════════════════════════
+// ── Client Share Link modal ─────────────────────────────────────
+let _cslCurrentSlug = null;
+let _cslMagicLinkUrl = null;
+let _cslPlainUrl     = null;
+
 function copyClientShareLink(clientSlug, clientName) {
+  _cslCurrentSlug  = clientSlug;
+  _cslMagicLinkUrl = null;
+
+  // Build the plain URL
   const base = window.location.origin + window.location.pathname;
-  const link = base + '?client=' + encodeURIComponent(clientSlug);
-  const btn  = event?.currentTarget || event?.target;
+  _cslPlainUrl = base + '?client=' + encodeURIComponent(clientSlug);
 
-  const showCopied = () => {
-    if (btn) {
-      const orig = btn.innerHTML;
-      btn.innerHTML = '✓ Copied!';
-      btn.style.color = '#059669';
-      setTimeout(() => { btn.innerHTML = orig; btn.style.color = ''; }, 2500);
-    }
+  // Populate modal
+  const label = document.getElementById('cslClientLabel');
+  if (label) label.textContent = clientName + ' · Client Dashboard';
+
+  const urlEl = document.getElementById('cslPlainUrl');
+  if (urlEl) urlEl.textContent = _cslPlainUrl;
+
+  // Reset state
+  const result = document.getElementById('cslMagicResult');
+  const errEl  = document.getElementById('cslError');
+  const emailInput = document.getElementById('cslEmailInput');
+  if (result) result.style.display = 'none';
+  if (errEl)  errEl.style.display  = 'none';
+  if (emailInput) emailInput.value = '';
+
+  // Show modal
+  const modal = document.getElementById('clientShareModal');
+  if (modal) { modal.style.display = 'flex'; modal.style.removeProperty('display'); modal.style.display = 'flex'; }
+}
+
+function closeShareModal() {
+  const modal = document.getElementById('clientShareModal');
+  if (modal) modal.style.display = 'none';
+}
+
+// Close on backdrop click
+document.addEventListener('click', function(e) {
+  const modal = document.getElementById('clientShareModal');
+  if (modal && e.target === modal) closeShareModal();
+});
+
+function _cslCopyText(text, btnId) {
+  const btn = document.getElementById(btnId);
+  const orig = btn?.textContent || 'Copy';
+  const done = () => {
+    if (btn) { btn.textContent = '✓ Copied!'; setTimeout(() => { btn.textContent = orig; }, 2500); }
   };
-
-  // Show the link in a small inline tooltip first (always visible)
-  // then try clipboard
   if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(link).then(showCopied).catch(() => {
-      prompt('Copy this dashboard link for ' + clientName + ':', link);
-    });
+    navigator.clipboard.writeText(text).then(done).catch(() => { prompt('Copy this link:', text); done(); });
   } else {
-    // Non-secure context (HTTP) — use the prompt fallback
-    prompt('Copy this dashboard link for ' + clientName + ':', link);
+    prompt('Copy this link:', text);
+    done();
+  }
+}
+
+function cslCopyPlain()  { if (_cslPlainUrl)     _cslCopyText(_cslPlainUrl,     'cslCopyPlainBtn'); }
+function cslCopyMagic()  { if (_cslMagicLinkUrl) _cslCopyText(_cslMagicLinkUrl, 'cslCopyMagicBtn'); }
+
+async function cslGenerateMagicLink() {
+  const email  = document.getElementById('cslEmailInput')?.value?.trim();
+  const errEl  = document.getElementById('cslError');
+  const result = document.getElementById('cslMagicResult');
+  const btn    = document.getElementById('cslMagicBtn');
+
+  if (!email) {
+    if (errEl) { errEl.textContent = 'Please enter the client's email address.'; errEl.style.display = 'block'; }
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (errEl) { errEl.textContent = 'Please enter a valid email address.'; errEl.style.display = 'block'; }
+    return;
+  }
+
+  if (errEl)  errEl.style.display  = 'none';
+  if (result) result.style.display = 'none';
+  if (btn)    { btn.textContent = 'Generating…'; btn.disabled = true; }
+
+  try {
+    const resp = await apiFetch('/auth/admin/client-link', {
+      method: 'POST',
+      body: JSON.stringify({ clientSlug: _cslCurrentSlug, email }),
+    });
+
+    if (resp?.magicLink) {
+      _cslMagicLinkUrl = resp.magicLink;
+      const urlEl = document.getElementById('cslMagicUrl');
+      if (urlEl) urlEl.textContent = resp.magicLink;
+      if (result) result.style.display = 'block';
+    } else {
+      throw new Error(resp?.error || 'No link returned');
+    }
+  } catch (e) {
+    if (errEl) { errEl.textContent = 'Failed to generate link: ' + (e.message || 'Server error'); errEl.style.display = 'block'; }
+  } finally {
+    if (btn) { btn.textContent = 'Generate'; btn.disabled = false; }
   }
 }
 
