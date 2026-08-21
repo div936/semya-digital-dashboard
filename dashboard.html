@@ -3382,28 +3382,19 @@ function isTokenExpired(token) {
 // Handle session expiry — clear state and redirect to login
 let _sessionExpiryFired = false; // guard against parallel apiFetch calls all triggering this
 function handleSessionExpiry() {
-  if (_sessionExpiryFired) return; // already redirecting — ignore duplicate calls
+  if (_sessionExpiryFired) return;
   _sessionExpiryFired = true;
-  localStorage.removeItem(TOKEN_KEY);
-  if (window._supabaseClient) {
-    window._supabaseClient.auth.signOut().catch(() => {});
+  // Delegate to semya_auth_guard.js semyaLogout which has its own
+  // _redirecting guard and handles signOut + redirect cleanly.
+  // This prevents the redirect storm where both this function AND
+  // the auth guard fire window.location simultaneously.
+  if (typeof window.semyaLogout === 'function') {
+    window.semyaLogout();
+    return;
   }
-  // Small delay so any in-flight UI updates complete
-  setTimeout(() => {
-    // Always redirect to index.html in the same directory as dashboard.html.
-    // Using pathname manipulation was producing wrong paths like
-    // /clients/neat-everyday/index.html. Use a fixed relative path instead.
-    const base = window.location.pathname.replace(/\/[^/]*$/, '');
-    const root = base.replace(/\/[^/]*$/, ''); // go up one more if in a subdirectory
-    // Find the repo root by looking for the known path segment
-    const pathParts = window.location.pathname.split('/');
-    // Find 'semya-digital-dashboard' segment or fall back to origin
-    const repoIdx = pathParts.findIndex(p => p === 'semya-digital-dashboard');
-    const loginPath = repoIdx >= 0
-      ? '/' + pathParts.slice(1, repoIdx + 1).join('/') + '/index.html'
-      : '/index.html';
-    window.location.href = loginPath;
-  }, 300);
+  // Fallback: auth guard not loaded yet — do minimal cleanup and redirect
+  localStorage.removeItem(TOKEN_KEY);
+  window.location.replace('/semya-digital-dashboard/index.html');
 }
 
 // Safely embeds a JS value into a double-quoted HTML event-handler
