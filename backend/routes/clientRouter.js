@@ -903,6 +903,41 @@ router.get(
 // includes buyer PII — Amazon/Acutas never do, so their rows are
 // counted in `skippedNoIdentity` rather than silently mis-flagged.
 // ═══════════════════════════════════════════════════════════════════
+// ─── GET /clients/:client_slug/products ──────────────────────────
+// Returns the product catalogue for this client — deduplicated list
+// of all SKUs and product names seen across all uploaded files and
+// API syncs. Isolated by client_id so Neat Everyday never sees Daluci's
+// products and vice versa.
+router.get(
+  '/:client_slug/products',
+  async (req, res) => {
+    const { client } = req.semya;
+    const { platform, search, limit = 200 } = req.query;
+
+    let q = supabaseAdmin
+      .from('products')
+      .select('sku, display_name, platform, first_seen, last_seen')
+      .eq('client_id', client.id)
+      .order('last_seen', { ascending: false, nullsFirst: false })
+      .limit(Math.min(parseInt(limit) || 200, 1000));
+
+    if (platform) q = q.eq('platform', platform);
+    if (search)   q = q.or(`sku.ilike.%${search}%,display_name.ilike.%${search}%`);
+
+    const { data, error } = await q;
+    if (error) {
+      // products table may not exist yet — return empty rather than 500
+      if (error.message.includes('does not exist') || error.code === '42P01') {
+        return res.json({ products: [], count: 0, note: 'Products table not initialised — run products_migration.sql' });
+      }
+      return res.status(500).json({ error: 'Failed to fetch products: ' + error.message });
+    }
+
+    return res.json({ products: data || [], count: data?.length || 0 });
+  }
+);
+
+
 router.get(
   '/:client_slug/fraud-patterns',
   requireTab('ai_insights'),
