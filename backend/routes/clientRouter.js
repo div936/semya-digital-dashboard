@@ -728,31 +728,47 @@ function aggregateCampaignInsights(campaignRows, revenueRows) {
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 15);
 
-  // ── Weekly ROAS trend — real data, not hardcoded ──────────────
-  // Group spend and revenue by ISO week so the frontend can draw
-  // an accurate trend chart rather than fake historical placeholders.
-  const byWeekSpend = {};
-  const byWeekRev   = {};
+  // ── Weekly ROAS trend using ACTUAL order revenue ──────────────
+  // Group ad spend by week (from campaign rows) and actual order
+  // revenue by week (from revenue rows, scoped to campaign-covered
+  // dates per platform — same logic as overallRoas above).
+  // This ensures the chart matches the KPI blendedRoas number.
+  const byWeekSpend  = {};
+  const byWeekActRev = {};
+
+  // Build campaign date coverage per platform (same as platformSummary above)
   for (const row of campaignRows) {
     if (!row.campaign_date) continue;
-    const d  = new Date(row.campaign_date);
-    // ISO week key: YYYY-Www
-    const jan1  = new Date(d.getFullYear(), 0, 1);
-    const wkNum = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
-    const wk    = d.getFullYear() + '-W' + String(wkNum).padStart(2, '0');
+    const d      = new Date(row.campaign_date);
+    const jan1   = new Date(d.getFullYear(), 0, 1);
+    const wkNum  = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+    const wk     = d.getFullYear() + '-W' + String(wkNum).padStart(2, '0');
     byWeekSpend[wk] = (byWeekSpend[wk] || 0) + (Number(row.standard_spend) || 0);
-    byWeekRev[wk]   = (byWeekRev[wk]   || 0) + (Number(row.standard_revenue) || 0);
+  }
+
+  // Map actual order revenue to the same week buckets
+  for (const row of revenueRows) {
+    if (!row.order_date) continue;
+    const p            = row.platform;
+    const coveredDates = campaignDatesByPlatform[p];
+    // Only count revenue on dates where we have campaign spend data
+    const inCoverage   = !coveredDates || coveredDates.size === 0 ||
+                         coveredDates.has(row.order_date);
+    if (!inCoverage) continue;
+    const d      = new Date(row.order_date);
+    const jan1   = new Date(d.getFullYear(), 0, 1);
+    const wkNum  = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+    const wk     = d.getFullYear() + '-W' + String(wkNum).padStart(2, '0');
+    byWeekActRev[wk] = (byWeekActRev[wk] || 0) + (Number(row.standard_revenue) || 0);
   }
 
   const weeklyRoas = Object.keys(byWeekSpend)
     .sort()
     .map(wk => {
-      const spend = byWeekSpend[wk] || 0;
-      const rev   = byWeekRev[wk]   || 0;
-      // Pretty label: "W1 Jul" style
+      const spend = byWeekSpend[wk]  || 0;
+      const rev   = byWeekActRev[wk] || 0; // actual order revenue, not campaign self-reported
       const [yr, wStr] = wk.split('-W');
       const wn = parseInt(wStr, 10);
-      // Approximate the week's start date (Jan 1 + (wn-1)*7 days)
       const weekStart = new Date(parseInt(yr, 10), 0, 1 + (wn - 1) * 7);
       const label = 'W' + wn + ' ' + weekStart.toLocaleDateString('en-IN', { month: 'short' });
       return { week: wk, label, spend, rev, roas: spend > 0 ? +(rev / spend).toFixed(2) : null };
