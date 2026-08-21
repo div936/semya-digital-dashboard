@@ -8825,7 +8825,7 @@ async function cslGenerateMagicLink() {
   const btn    = document.getElementById('cslMagicBtn');
 
   if (!email) {
-    if (errEl) { errEl.textContent = 'Please enter the client's email address.'; errEl.style.display = 'block'; }
+    if (errEl) { errEl.textContent = "Please enter the client's email address."; errEl.style.display = 'block'; }
     return;
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
