@@ -41,6 +41,7 @@ import { parse as parseCsv } from 'csv-parse/sync';
 import { supabaseAdmin }  from '../lib/supabase.js';
 import { REVENUE_MAP, CAMPAIGN_MAP, normaliseBatch, classifyDataType, scoreHeaderRow, detectFallbackMapping } from '../lib/columnMapper.js';
 import { generateInsights, generateNarrativeSummaries } from '../lib/insightGenerator.js';
+import { upsertProductCatalogue } from '../lib/productCatalogue.js';
 import { extractLiteralDate } from '../lib/dateUtils.js';
 import { recordMovement } from '../routes/inventoryRouter.js';
 
@@ -912,7 +913,15 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
       (usedFallbackMapping ? ` | used fallback column detection` : '')
     );
 
-    // 7. Fire-and-forget insight generation (non-blocking)
+    // 7a. Update product catalogue — revenue rows only (campaigns have no SKUs)
+    // Fire-and-forget: a failure here is logged but never fails the upload.
+    if (dataType === 'revenue') {
+      upsertProductCatalogue(rows, clientId).catch(err =>
+        console.warn('[ingestion] Product catalogue update failed (non-fatal):', err.message)
+      );
+    }
+
+    // 7b. Fire-and-forget insight generation (non-blocking)
     generateInsights({ clientId, uploadId, platform }).catch(err =>
       console.error('[ingestion] Insight generation failed (non-fatal):', err.message)
     );
