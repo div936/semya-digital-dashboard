@@ -472,9 +472,23 @@ router.post('/admin/clients', asyncHandler(async (req, res) => {
 router.get('/admin/clients', asyncHandler(async (req, res) => {
   const admin = await requireAdmin(req, res); if (!admin) return;
 
+  // Fetch core client data — deliberately excludes registered_brands here
+  // because that column may not exist yet if the migration hasn't been run.
+  // Failing to select it here would 500 the entire client list. It's fetched
+  // separately below in a fail-safe query identical to the rbac.js pattern
+  // for access_expires_at — any failure returns null rather than 500.
   const { data: clients, error } = await supabaseAdmin
-    .from('clients').select('id, slug, name, registered_brands').order('name');
+    .from('clients').select('id, slug, name').order('name');
   if (error) return res.status(500).json({ error: 'Failed to load clients.' });
+
+  // Fail-safe: fetch registered_brands separately — if the migration hasn't
+  // been applied yet, this fails silently and the list still loads.
+  let brandMap = {};
+  try {
+    const { data: brandRows } = await supabaseAdmin
+      .from('clients').select('id, registered_brands');
+    for (const r of brandRows || []) brandMap[r.id] = r.registered_brands || null;
+  } catch (_) { /* column may not exist yet — treat as no brands configured */ }
 
   const { data: users } = await supabaseAdmin
     .from('users').select('client_id').eq('is_active', true).not('client_id', 'is', null);
@@ -483,7 +497,11 @@ router.get('/admin/clients', asyncHandler(async (req, res) => {
   for (const u of users || []) counts[u.client_id] = (counts[u.client_id] || 0) + 1;
 
   return res.json({
-    clients: (clients || []).map(c => ({ ...c, employeeCount: counts[c.id] || 0 })),
+    clients: (clients || []).map(c => ({
+      ...c,
+      registered_brands: brandMap[c.id] || null,
+      employeeCount: counts[c.id] || 0,
+    })),
   });
 }));
 
@@ -614,5 +632,76 @@ router.delete('/admin/employee/:userId', asyncHandler(async (req, res) => {
   return res.json({ ok: true });
 }));
 
+
+
+// ── POST /auth/admin/client-link — generate a shareable client dashboard link
+// Two modes:
+//   1. No email supplied → returns a plain URL (dashboard.html?client=slug)
+//      The client must already have an account and sign in normally.
+//   2. Email supplied → generates a Supabase magic link for that email,
+//      scoped to the client. If the email doesn't have an account yet,
+//      one is created automatically as a 'client' role user.
+//      Returns { magicLink } — a one-click sign-in URL the admin can
+//      paste into an email/WhatsApp and send directly to the client.
+router.post('/admin/client-link', asyncHandler(async (req, res) => {
+  const admin = await requireAdmin(req, res); if (!admin) return;
+
+  const { clientSlug, email } = req.body || {};
+  if (!clientSlug) return res.status(400).json({ error: 'clientSlug is required.' });
+
+  // Look up the client
+  const { data: client, error: clientErr } = await supabaseAdmin
+    .from('clients').select('id, name, slug').eq('slug', clientSlug).single();
+  if (clientErr || !client) return res.status(404).json({ error: 'Client not found.' });
+
+  // Plain shareable URL — no email, no magic link
+  const dashboardLink = `${FRONTEND_URL}/dashboard.html?client=${encodeURIComponent(clientSlug)}`;
+
+  if (!email) {
+    return res.json({ dashboardLink, clientName: client.name });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  // Ensure the user exists in our DB as a client-role user for this client
+  const { data: existingUser } = await supabaseAdmin
+    .from('users').select('id, role, is_active').eq('email', cleanEmail).maybeSingle();
+
+  if (!existingUser) {
+    // Create the user row before generating the link
+    const { error: createErr } = await supabaseAdmin.from('users').insert({
+      email: cleanEmail,
+      role: 'client',
+      client_id: client.id,
+      is_active: true,
+    });
+    if (createErr && !createErr.message.includes('duplicate')) {
+      return res.status(500).json({ error: 'Failed to create user: ' + createErr.message });
+    }
+  } else if (!existingUser.is_active) {
+    await supabaseAdmin.from('users').update({ is_active: true }).eq('email', cleanEmail);
+  }
+
+  // Generate a one-click magic link that signs the client straight into the dashboard
+  const redirectTo = `${FRONTEND_URL}/dashboard.html?client=${encodeURIComponent(clientSlug)}`;
+  try {
+    const { data: linkData, error: linkErr } = await supabaseAuth.auth.admin.generateLink({
+      type: 'magiclink',
+      email: cleanEmail,
+      options: { redirectTo },
+    });
+    if (linkErr || !linkData?.properties?.action_link) {
+      throw new Error(linkErr?.message || 'generateLink returned no link');
+    }
+    return res.json({
+      magicLink: linkData.properties.action_link,
+      dashboardLink,
+      clientName: client.name,
+      email: cleanEmail,
+    });
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to generate link: ' + e.message });
+  }
+}));
 
 export default router;
