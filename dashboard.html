@@ -8673,6 +8673,446 @@ if (window.semyaUser) {
   });
   setTimeout(function() { if (!state.clientSlug) boot({}); }, 400);
 }
+
+// ── Functions moved from end-of-body script to main script block ──
+// ── Portal dropdown helpers — position menus using fixed coords from button's bounding rect ──
+function _positionDropdown(menuId, btnId) {
+  const menu = document.getElementById(menuId);
+  const btn  = document.getElementById(btnId);
+  if (!menu || !btn) return;
+  const r = btn.getBoundingClientRect();
+  menu.style.top  = (r.bottom + 6) + 'px';
+  menu.style.left = r.left + 'px';
+  // Prevent right-edge overflow
+  const menuW = menu.offsetWidth || parseInt(menu.style.minWidth) || 240;
+  if (r.left + menuW > window.innerWidth - 12) {
+    menu.style.left = Math.max(8, window.innerWidth - menuW - 12) + 'px';
+  }
+}
+
+function _closeAllPsMenus() {
+  ['psStatusFilterMenu','psFulfillFilterMenu','psProductFilterMenu'].forEach(id => {
+    const m = document.getElementById(id);
+    if (m) m.style.display = 'none';
+  });
+}
+
+function togglePsStatusMenu() {
+  const m = document.getElementById('psStatusFilterMenu');
+  if (!m) return;
+  const wasOpen = m.style.display !== 'none';
+  _closeAllPsMenus();
+  if (!wasOpen) { m.style.display = 'block'; _positionDropdown('psStatusFilterMenu', 'psStatusFilterBtn'); }
+}
+
+function togglePsFulfillMenu() {
+  const m = document.getElementById('psFulfillFilterMenu');
+  if (!m) return;
+  const wasOpen = m.style.display !== 'none';
+  _closeAllPsMenus();
+  if (!wasOpen) { m.style.display = 'block'; _positionDropdown('psFulfillFilterMenu', 'psFulfillFilterBtn'); }
+}
+
+function togglePsProductMenu() {
+  const m = document.getElementById('psProductFilterMenu');
+  if (!m) return;
+  const wasOpen = m.style.display !== 'none';
+  _closeAllPsMenus();
+  if (!wasOpen) { m.style.display = 'block'; _positionDropdown('psProductFilterMenu', 'psProductFilterBtn'); }
+}
+
+// Close on outside click
+document.addEventListener('click', function(e) {
+  const menuIds = ['psStatusFilterMenu','psFulfillFilterMenu','psProductFilterMenu'];
+  const btnIds  = ['psStatusFilterBtn','psFulfillFilterBtn','psProductFilterBtn'];
+  const clickedInsideAny = menuIds.some(id => {
+    const el = document.getElementById(id);
+    return el && el.contains(e.target);
+  }) || btnIds.some(id => {
+    const el = document.getElementById(id);
+    return el && el.contains(e.target);
+  });
+  if (!clickedInsideAny) _closeAllPsMenus();
+}, true);
+
+// Reposition on scroll/resize so menus track their buttons
+window.addEventListener('scroll', function() {
+  ['psStatusFilterMenu','psFulfillFilterMenu','psProductFilterMenu'].forEach((id, i) => {
+    const m = document.getElementById(id);
+    if (m && m.style.display !== 'none') {
+      _positionDropdown(id, ['psStatusFilterBtn','psFulfillFilterBtn','psProductFilterBtn'][i]);
+    }
+  });
+}, true);
+window.addEventListener('resize', function() {
+  ['psStatusFilterMenu','psFulfillFilterMenu','psProductFilterMenu'].forEach((id, i) => {
+    const m = document.getElementById(id);
+    if (m && m.style.display !== 'none') {
+      _positionDropdown(id, ['psStatusFilterBtn','psFulfillFilterBtn','psProductFilterBtn'][i]);
+    }
+  });
+});
+
+// ══════════════════════════════════════════════════════════════
+// ISSUE 8 — Shareable Client Dashboard Link
+// Generates a link to the dashboard pre-scoped to a specific client
+// ══════════════════════════════════════════════════════════════
+// ── Client Share Link modal ─────────────────────────────────────
+let _cslCurrentSlug = null;
+let _cslMagicLinkUrl = null;
+let _cslPlainUrl     = null;
+
+function copyClientShareLink(clientSlug, clientName) {
+  _cslCurrentSlug  = clientSlug;
+  _cslMagicLinkUrl = null;
+
+  // Build the plain URL
+  const base = window.location.origin + window.location.pathname;
+  _cslPlainUrl = base + '?client=' + encodeURIComponent(clientSlug);
+
+  // Populate modal
+  const label = document.getElementById('cslClientLabel');
+  if (label) label.textContent = clientName + ' · Client Dashboard';
+
+  const urlEl = document.getElementById('cslPlainUrl');
+  if (urlEl) urlEl.textContent = _cslPlainUrl;
+
+  // Reset state
+  const result = document.getElementById('cslMagicResult');
+  const errEl  = document.getElementById('cslError');
+  const emailInput = document.getElementById('cslEmailInput');
+  if (result) result.style.display = 'none';
+  if (errEl)  errEl.style.display  = 'none';
+  if (emailInput) emailInput.value = '';
+
+  // Show modal
+  const modal = document.getElementById('clientShareModal');
+  if (modal) { modal.style.display = 'flex'; modal.style.removeProperty('display'); modal.style.display = 'flex'; }
+}
+
+function closeShareModal() {
+  const modal = document.getElementById('clientShareModal');
+  if (modal) modal.style.display = 'none';
+}
+
+// Close on backdrop click
+document.addEventListener('click', function(e) {
+  const modal = document.getElementById('clientShareModal');
+  if (modal && e.target === modal) closeShareModal();
+});
+
+function _cslCopyText(text, btnId) {
+  const btn = document.getElementById(btnId);
+  const orig = btn?.textContent || 'Copy';
+  const done = () => {
+    if (btn) { btn.textContent = '✓ Copied!'; setTimeout(() => { btn.textContent = orig; }, 2500); }
+  };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(done).catch(() => { prompt('Copy this link:', text); done(); });
+  } else {
+    prompt('Copy this link:', text);
+    done();
+  }
+}
+
+function cslCopyPlain()  { if (_cslPlainUrl)     _cslCopyText(_cslPlainUrl,     'cslCopyPlainBtn'); }
+function cslCopyMagic()  { if (_cslMagicLinkUrl) _cslCopyText(_cslMagicLinkUrl, 'cslCopyMagicBtn'); }
+
+async function cslGenerateMagicLink() {
+  const email  = document.getElementById('cslEmailInput')?.value?.trim();
+  const errEl  = document.getElementById('cslError');
+  const result = document.getElementById('cslMagicResult');
+  const btn    = document.getElementById('cslMagicBtn');
+
+  if (!email) {
+    if (errEl) { errEl.textContent = 'Please enter the client's email address.'; errEl.style.display = 'block'; }
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (errEl) { errEl.textContent = 'Please enter a valid email address.'; errEl.style.display = 'block'; }
+    return;
+  }
+
+  if (errEl)  errEl.style.display  = 'none';
+  if (result) result.style.display = 'none';
+  if (btn)    { btn.textContent = 'Generating…'; btn.disabled = true; }
+
+  try {
+    const resp = await apiFetch('/auth/admin/client-link', {
+      method: 'POST',
+      body: JSON.stringify({ clientSlug: _cslCurrentSlug, email }),
+    });
+
+    if (resp?.magicLink) {
+      _cslMagicLinkUrl = resp.magicLink;
+      const urlEl = document.getElementById('cslMagicUrl');
+      if (urlEl) urlEl.textContent = resp.magicLink;
+      if (result) result.style.display = 'block';
+    } else {
+      throw new Error(resp?.error || 'No link returned');
+    }
+  } catch (e) {
+    if (errEl) { errEl.textContent = 'Failed to generate link: ' + (e.message || 'Server error'); errEl.style.display = 'block'; }
+  } finally {
+    if (btn) { btn.textContent = 'Generate'; btn.disabled = false; }
+  }
+}
+
+// On page load: honour ?client= param to auto-switch to a shared client link
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const sharedClient = params.get('client');
+  if (sharedClient) {
+    // Will be picked up after auth + client list loads
+    window._sharedClientSlug = sharedClient;
+  }
+})();
+
+// ══════════════════════════════════════════════════════════════
+// ISSUE 9 — Poll pending requests every 5 min for bell badge
+// ══════════════════════════════════════════════════════════════
+function _startNotifPolling() {
+  if (!state.isAdmin) return;
+  // Show bell immediately
+  const bellEl = document.getElementById('headerNotifBell');
+  if (bellEl) bellEl.style.display = 'block';
+  // Poll every 5 minutes
+  setInterval(() => {
+    if (state.isAdmin) loadPendingRequests();
+  }, 5 * 60 * 1000);
+}
+
+// ══════════════════════════════════════════════════════════════
+// ISSUE 10 — Access Control: client selector handler
+// ══════════════════════════════════════════════════════════════
+function _populateCaSelectors() {
+  // Populate both the Access Control and Appearance client selectors
+  // from the cached client list whenever it's loaded
+  const clients = _caClientsCache;
+  if (!clients || !clients.length) return;
+
+  const opts = '<option value="">— Choose a client —</option>' +
+    clients.map(cl => '<option value="' + cl.slug + '" data-id="' + cl.id + '" data-name="' + cl.name.replace(/"/g,'&quot;') + '">' + cl.name + '</option>').join('');
+
+  const accessSel = document.getElementById('caAccessClientSelect');
+  const appSel    = document.getElementById('caAppearanceClientSelect');
+  if (accessSel) accessSel.innerHTML = opts;
+  if (appSel)    appSel.innerHTML    = opts;
+
+  // Pre-select whichever client is currently active in caState
+  if (caState.clientSlug) {
+    if (accessSel) accessSel.value = caState.clientSlug;
+    if (appSel)    appSel.value    = caState.clientSlug;
+  }
+}
+
+function onCaAccessClientSelect(slug) {
+  if (!slug) return;
+  const sel = document.getElementById('caAccessClientSelect');
+  const opt = sel?.querySelector('option[value="' + slug + '"]');
+  const id   = opt?.dataset?.id   || null;
+  const name = opt?.dataset?.name || slug;
+  // Update caState so Access Control loads the right client
+  caState.clientSlug = slug; caState.clientId = id; caState.clientName = name;
+  updateCaAccessHeader();
+  const rows   = document.querySelector('#caPanel-access .acl-rows');
+  const notice = document.getElementById('caAccessNoClientNotice');
+  if (rows)   rows.style.display   = '';
+  if (notice) notice.style.display = 'none';
+  loadAccessControlForClient(slug);
+}
+
+// ══════════════════════════════════════════════════════════════
+// ISSUE 11 — Appearance: client selector handler
+// ══════════════════════════════════════════════════════════════
+function onCaAppearanceClientSelect(slug) {
+  if (!slug) return;
+  const sel  = document.getElementById('caAppearanceClientSelect');
+  const opt  = sel?.querySelector('option[value="' + slug + '"]');
+  const id   = opt?.dataset?.id   || null;
+  const name = opt?.dataset?.name || slug;
+  // Update caState so saveAppearance / loadAppearance targets the right client
+  caState.clientSlug = slug; caState.clientId = id; caState.clientName = name;
+  const hint = document.getElementById('caAppearanceScopeHint');
+  const lbl  = document.getElementById('caScopeClientName');
+  if (lbl)  lbl.textContent  = name + "'s";
+  if (hint) hint.style.display = '';
+  // Update "View as Client" toggle visibility
+  updateViewAsToggleUI();
+  // Pre-fill the brand name inputs with this client's current name
+  const brandInput = document.getElementById('brandNameInput');
+  if (brandInput) brandInput.value = name;
+  // Reload appearance for the newly selected client
+  if (typeof loadAppearanceForSlug === 'function') loadAppearanceForSlug(slug);
+}
+
+// ══════════════════════════════════════════════════════════════
+// ISSUE 7 — Semya cross-client comparison view
+// Admin can switch to "Semya" in the client switcher to see a
+// comparison dashboard of all clients side by side.
+// ══════════════════════════════════════════════════════════════
+async function loadCrossClientView() {
+  // Show the main area in cross-client mode
+  const main = document.querySelector('.main');
+  if (!main) return;
+
+  // Cache original HTML so we can restore it when switching back
+  if (!window._mainOriginalHTML) {
+    window._mainOriginalHTML = main.innerHTML;
+  }
+  main.dataset.mode = 'hq';
+
+  // Hide entire sidebar — irrelevant in multi-client comparison view
+  const aside = document.querySelector('aside.sidebar');
+  if (aside) { aside.dataset.hqHidden = 'true'; aside.style.display = 'none'; }
+
+  // Grey-out nav tabs so they don't fire fetchAndRender() while in HQ mode
+  document.querySelectorAll('.nav-tab').forEach(t => {
+    t.style.opacity = '0.4'; t.style.pointerEvents = 'none';
+  });
+
+  main.innerHTML = '<div style="padding:24px;">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">' +
+      '<div>' +
+        '<div style="font-size:18px;font-weight:800;color:#0f172a;">Semya Digital — All Clients</div>' +
+        '<div style="font-size:12px;color:#64748b;margin-top:2px;">YTD revenue comparison across all clients</div>' +
+      '</div>' +
+      '<span class="fetch-badge loading" id="crossClientBadge"><span class="fetch-dot"></span>Loading…</span>' +
+    '</div>' +
+    // Tab selector for HQ view
+    '<div style="display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap;">' +
+      ['Platform Sales','SKU Performance','Campaign Insights','Geographic Analysis'].map((label, i) => {
+        const active = i === 0;
+        return '<button onclick="switchHqTab(this,'' + label + '')" style="padding:6px 14px;border-radius:99px;border:1px solid ' + (active ? 'var(--theme-primary)' : 'var(--color-border)') + ';background:' + (active ? 'var(--theme-primary)' : 'var(--color-surface-2)') + ';color:' + (active ? '#fff' : 'var(--theme-muted)') + ';font-size:11px;font-weight:600;cursor:pointer;">' + label + '</button>';
+      }).join('') +
+    '</div>' +
+    '<div id="crossClientGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;"></div>' +
+  '</div>';
+
+  // Fetch all clients from admin list
+  let clients = [];
+  try {
+    const resp = await apiFetch('/auth/admin/clients');
+    clients = resp?.clients || [];
+  } catch (e) {
+    document.getElementById('crossClientGrid').innerHTML =
+      '<div style="color:#dc2626;font-size:13px;">Failed to load clients: ' + e.message + '</div>';
+    return;
+  }
+
+  const badge = document.getElementById('crossClientBadge');
+  if (badge) { badge.className = 'fetch-badge live'; badge.innerHTML = '<span class="fetch-dot"></span>Live'; }
+
+  const grid = document.getElementById('crossClientGrid');
+  if (!clients.length) {
+    grid.innerHTML = '<div style="color:#94a3b8;font-size:13px;">No clients found.</div>';
+    return;
+  }
+
+  // Fetch platform-sales summary for each client in parallel
+  const today = new Date().toISOString().slice(0, 10);
+  const yearStart = new Date().getFullYear() + '-01-01';
+
+  const results = await Promise.allSettled(
+    clients.map(cl => apiFetch('/clients/' + cl.slug + '/platform-sales?from=' + yearStart + '&to=' + today))
+  );
+
+  // Store data for tab switching
+  window._hqClientsData = clients.map((cl, i) => ({
+    cl,
+    data: results[i].status === 'fulfilled' ? results[i].value : null
+  }));
+
+  // Render using the unified grid renderer.
+  // Arrow wrapper defers reference lookup to fire time across script blocks.
+  setTimeout(() => { if (typeof renderHqGrid === 'function') renderHqGrid(window._hqClientsData, window._hqCurrentTab || 'Platform Sales'); }, 0);
+}
+
+function switchToClient(slug) {
+  // Exit HQ mode first, then switch to the chosen client's data
+  _exitHqMode();
+  const sw = document.getElementById('clientSwitcher');
+  if (sw) sw.value = slug;
+  switchClient(slug);
+}
+
+// Switch what metric the HQ comparison shows per tab
+window._hqCurrentTab = 'Platform Sales';
+function switchHqTab(btn, tabLabel) {
+  window._hqCurrentTab = tabLabel;
+  // Update button styles
+  btn.closest('div').querySelectorAll('button').forEach(b => {
+    b.style.background  = b === btn ? 'var(--theme-primary)' : 'var(--color-surface-2)';
+    b.style.color       = b === btn ? '#fff' : 'var(--theme-muted)';
+    b.style.borderColor = b === btn ? 'var(--theme-primary)' : 'var(--color-border)';
+  });
+  // Re-render the grid with the same client data but different metric
+  const grid = document.getElementById('crossClientGrid');
+  if (!grid || !window._hqClientsData) return;
+  renderHqGrid(window._hqClientsData, tabLabel);
+}
+
+function renderHqGrid(clientData, tabLabel) {
+  const grid = document.getElementById('crossClientGrid');
+  if (!grid) return;
+  grid.innerHTML = clientData.map(({ cl, data }) => {
+    // Pick the right metric depending on tab
+    let primaryValue = '—', subLabel = '', platformRows = '', hasData = false;
+    const d = data;
+
+    if (tabLabel === 'Platform Sales' || tabLabel === 'SKU Performance') {
+      const rev = d?.grandTotal || 0;
+      primaryValue = fmtRevenue(rev);
+      subLabel = 'YTD Net Revenue · ' + (d?.platforms?.length || 0) + ' platforms';
+      hasData = rev > 0;
+      const pctChange = d?.prevGrandTotal > 0 ? (((rev - d.prevGrandTotal) / d.prevGrandTotal) * 100).toFixed(1) : null;
+      const deltaHtml = pctChange != null
+        ? '<span style="font-size:11px;font-weight:600;color:' + (pctChange > 0 ? '#059669' : '#dc2626') + ';background:' + (pctChange > 0 ? 'rgba(5,150,105,.1)' : 'rgba(220,38,38,.08)') + ';padding:2px 8px;border-radius:99px;">' + (pctChange > 0 ? '▲' : '▼') + ' ' + Math.abs(pctChange) + '%</span>'
+        : '';
+      const plats = (d?.platforms || []).slice(0, 4);
+      platformRows = (plats.length ? plats : []).map(p => {
+        const pm = PLATFORM_META[p.platform] || { label: p.platform, pillClass: 'pill-amz' };
+        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:12px;">' +
+          '<span class="platform-pill ' + pm.pillClass + '" style="font-size:9px;padding:2px 7px;">' + pm.label + '</span>' +
+          '<span style="font-weight:600;color:#1e293b;">' + fmtRevenue(p.totalRevenue) + '</span>' +
+          '<span style="color:#94a3b8;">' + (rev > 0 ? (p.totalRevenue / rev * 100).toFixed(1) + '%' : '—') + '</span>' +
+        '</div>';
+      }).join('');
+      return '<div class="card" style="cursor:pointer;" onclick="switchToClient('' + cl.slug + '')">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
+          '<div style="font-size:14px;font-weight:700;color:#1e293b;">' + cl.name + '</div>' + deltaHtml +
+        '</div>' +
+        '<div style="font-size:26px;font-weight:800;color:#0f172a;letter-spacing:-0.02em;margin-bottom:4px;">' + primaryValue + '</div>' +
+        '<div style="font-size:11px;color:#94a3b8;margin-bottom:14px;">' + subLabel + '</div>' +
+        (hasData ? '<div>' + platformRows + '</div>' : '<div style="font-size:12px;color:#94a3b8;padding:8px 0;">No data yet — upload files to get started.</div>') +
+        '<div style="margin-top:12px;text-align:right;"><span style="font-size:11px;color:var(--theme-primary);font-weight:600;">View Dashboard →</span></div>' +
+      '</div>';
+    }
+
+    // Fallback for other tabs
+    return '<div class="card" style="cursor:pointer;" onclick="switchToClient('' + cl.slug + '')">' +
+      '<div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:12px;">' + cl.name + '</div>' +
+      '<div style="font-size:12px;color:#94a3b8;">Switch to this client to view ' + tabLabel + '</div>' +
+      '<div style="margin-top:12px;text-align:right;"><span style="font-size:11px;color:var(--theme-primary);font-weight:600;">View Dashboard →</span></div>' +
+    '</div>';
+  }).join('');
+}
+
+// (patchSwitcherForCrossClient merged into main change handler above)
+
+// ── Explicitly expose all new functions to window scope ───────────
+// Functions defined in later <script> blocks are in global scope but
+// some browsers and strict-mode contexts require explicit window assignment
+// when they're called from innerHTML onclick handlers.
+window.copyClientShareLink      = copyClientShareLink;
+window.closeShareModal          = closeShareModal;
+window.cslCopyPlain             = cslCopyPlain;
+window.cslCopyMagic             = cslCopyMagic;
+window.cslGenerateMagicLink     = cslGenerateMagicLink;
+window.switchToClient           = switchToClient;
+window.switchHqTab              = switchHqTab;
+window.onCaAccessClientSelect   = onCaAccessClientSelect;
+window.onCaAppearanceClientSelect = onCaAppearanceClientSelect;
 </script>
 
 <script>
@@ -10404,445 +10844,5 @@ async function clearAiSettingsDyn() {
   <div id="psProductOptionsList"></div>
 </div>
 
-<script>
-// ── Portal dropdown helpers — position menus using fixed coords from button's bounding rect ──
-function _positionDropdown(menuId, btnId) {
-  const menu = document.getElementById(menuId);
-  const btn  = document.getElementById(btnId);
-  if (!menu || !btn) return;
-  const r = btn.getBoundingClientRect();
-  menu.style.top  = (r.bottom + 6) + 'px';
-  menu.style.left = r.left + 'px';
-  // Prevent right-edge overflow
-  const menuW = menu.offsetWidth || parseInt(menu.style.minWidth) || 240;
-  if (r.left + menuW > window.innerWidth - 12) {
-    menu.style.left = Math.max(8, window.innerWidth - menuW - 12) + 'px';
-  }
-}
-
-function _closeAllPsMenus() {
-  ['psStatusFilterMenu','psFulfillFilterMenu','psProductFilterMenu'].forEach(id => {
-    const m = document.getElementById(id);
-    if (m) m.style.display = 'none';
-  });
-}
-
-function togglePsStatusMenu() {
-  const m = document.getElementById('psStatusFilterMenu');
-  if (!m) return;
-  const wasOpen = m.style.display !== 'none';
-  _closeAllPsMenus();
-  if (!wasOpen) { m.style.display = 'block'; _positionDropdown('psStatusFilterMenu', 'psStatusFilterBtn'); }
-}
-
-function togglePsFulfillMenu() {
-  const m = document.getElementById('psFulfillFilterMenu');
-  if (!m) return;
-  const wasOpen = m.style.display !== 'none';
-  _closeAllPsMenus();
-  if (!wasOpen) { m.style.display = 'block'; _positionDropdown('psFulfillFilterMenu', 'psFulfillFilterBtn'); }
-}
-
-function togglePsProductMenu() {
-  const m = document.getElementById('psProductFilterMenu');
-  if (!m) return;
-  const wasOpen = m.style.display !== 'none';
-  _closeAllPsMenus();
-  if (!wasOpen) { m.style.display = 'block'; _positionDropdown('psProductFilterMenu', 'psProductFilterBtn'); }
-}
-
-// Close on outside click
-document.addEventListener('click', function(e) {
-  const menuIds = ['psStatusFilterMenu','psFulfillFilterMenu','psProductFilterMenu'];
-  const btnIds  = ['psStatusFilterBtn','psFulfillFilterBtn','psProductFilterBtn'];
-  const clickedInsideAny = menuIds.some(id => {
-    const el = document.getElementById(id);
-    return el && el.contains(e.target);
-  }) || btnIds.some(id => {
-    const el = document.getElementById(id);
-    return el && el.contains(e.target);
-  });
-  if (!clickedInsideAny) _closeAllPsMenus();
-}, true);
-
-// Reposition on scroll/resize so menus track their buttons
-window.addEventListener('scroll', function() {
-  ['psStatusFilterMenu','psFulfillFilterMenu','psProductFilterMenu'].forEach((id, i) => {
-    const m = document.getElementById(id);
-    if (m && m.style.display !== 'none') {
-      _positionDropdown(id, ['psStatusFilterBtn','psFulfillFilterBtn','psProductFilterBtn'][i]);
-    }
-  });
-}, true);
-window.addEventListener('resize', function() {
-  ['psStatusFilterMenu','psFulfillFilterMenu','psProductFilterMenu'].forEach((id, i) => {
-    const m = document.getElementById(id);
-    if (m && m.style.display !== 'none') {
-      _positionDropdown(id, ['psStatusFilterBtn','psFulfillFilterBtn','psProductFilterBtn'][i]);
-    }
-  });
-});
-
-// ══════════════════════════════════════════════════════════════
-// ISSUE 8 — Shareable Client Dashboard Link
-// Generates a link to the dashboard pre-scoped to a specific client
-// ══════════════════════════════════════════════════════════════
-// ── Client Share Link modal ─────────────────────────────────────
-let _cslCurrentSlug = null;
-let _cslMagicLinkUrl = null;
-let _cslPlainUrl     = null;
-
-function copyClientShareLink(clientSlug, clientName) {
-  _cslCurrentSlug  = clientSlug;
-  _cslMagicLinkUrl = null;
-
-  // Build the plain URL
-  const base = window.location.origin + window.location.pathname;
-  _cslPlainUrl = base + '?client=' + encodeURIComponent(clientSlug);
-
-  // Populate modal
-  const label = document.getElementById('cslClientLabel');
-  if (label) label.textContent = clientName + ' · Client Dashboard';
-
-  const urlEl = document.getElementById('cslPlainUrl');
-  if (urlEl) urlEl.textContent = _cslPlainUrl;
-
-  // Reset state
-  const result = document.getElementById('cslMagicResult');
-  const errEl  = document.getElementById('cslError');
-  const emailInput = document.getElementById('cslEmailInput');
-  if (result) result.style.display = 'none';
-  if (errEl)  errEl.style.display  = 'none';
-  if (emailInput) emailInput.value = '';
-
-  // Show modal
-  const modal = document.getElementById('clientShareModal');
-  if (modal) { modal.style.display = 'flex'; modal.style.removeProperty('display'); modal.style.display = 'flex'; }
-}
-
-function closeShareModal() {
-  const modal = document.getElementById('clientShareModal');
-  if (modal) modal.style.display = 'none';
-}
-
-// Close on backdrop click
-document.addEventListener('click', function(e) {
-  const modal = document.getElementById('clientShareModal');
-  if (modal && e.target === modal) closeShareModal();
-});
-
-function _cslCopyText(text, btnId) {
-  const btn = document.getElementById(btnId);
-  const orig = btn?.textContent || 'Copy';
-  const done = () => {
-    if (btn) { btn.textContent = '✓ Copied!'; setTimeout(() => { btn.textContent = orig; }, 2500); }
-  };
-  if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(text).then(done).catch(() => { prompt('Copy this link:', text); done(); });
-  } else {
-    prompt('Copy this link:', text);
-    done();
-  }
-}
-
-function cslCopyPlain()  { if (_cslPlainUrl)     _cslCopyText(_cslPlainUrl,     'cslCopyPlainBtn'); }
-function cslCopyMagic()  { if (_cslMagicLinkUrl) _cslCopyText(_cslMagicLinkUrl, 'cslCopyMagicBtn'); }
-
-async function cslGenerateMagicLink() {
-  const email  = document.getElementById('cslEmailInput')?.value?.trim();
-  const errEl  = document.getElementById('cslError');
-  const result = document.getElementById('cslMagicResult');
-  const btn    = document.getElementById('cslMagicBtn');
-
-  if (!email) {
-    if (errEl) { errEl.textContent = 'Please enter the client's email address.'; errEl.style.display = 'block'; }
-    return;
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    if (errEl) { errEl.textContent = 'Please enter a valid email address.'; errEl.style.display = 'block'; }
-    return;
-  }
-
-  if (errEl)  errEl.style.display  = 'none';
-  if (result) result.style.display = 'none';
-  if (btn)    { btn.textContent = 'Generating…'; btn.disabled = true; }
-
-  try {
-    const resp = await apiFetch('/auth/admin/client-link', {
-      method: 'POST',
-      body: JSON.stringify({ clientSlug: _cslCurrentSlug, email }),
-    });
-
-    if (resp?.magicLink) {
-      _cslMagicLinkUrl = resp.magicLink;
-      const urlEl = document.getElementById('cslMagicUrl');
-      if (urlEl) urlEl.textContent = resp.magicLink;
-      if (result) result.style.display = 'block';
-    } else {
-      throw new Error(resp?.error || 'No link returned');
-    }
-  } catch (e) {
-    if (errEl) { errEl.textContent = 'Failed to generate link: ' + (e.message || 'Server error'); errEl.style.display = 'block'; }
-  } finally {
-    if (btn) { btn.textContent = 'Generate'; btn.disabled = false; }
-  }
-}
-
-// On page load: honour ?client= param to auto-switch to a shared client link
-(function() {
-  const params = new URLSearchParams(window.location.search);
-  const sharedClient = params.get('client');
-  if (sharedClient) {
-    // Will be picked up after auth + client list loads
-    window._sharedClientSlug = sharedClient;
-  }
-})();
-
-// ══════════════════════════════════════════════════════════════
-// ISSUE 9 — Poll pending requests every 5 min for bell badge
-// ══════════════════════════════════════════════════════════════
-function _startNotifPolling() {
-  if (!state.isAdmin) return;
-  // Show bell immediately
-  const bellEl = document.getElementById('headerNotifBell');
-  if (bellEl) bellEl.style.display = 'block';
-  // Poll every 5 minutes
-  setInterval(() => {
-    if (state.isAdmin) loadPendingRequests();
-  }, 5 * 60 * 1000);
-}
-
-// ══════════════════════════════════════════════════════════════
-// ISSUE 10 — Access Control: client selector handler
-// ══════════════════════════════════════════════════════════════
-function _populateCaSelectors() {
-  // Populate both the Access Control and Appearance client selectors
-  // from the cached client list whenever it's loaded
-  const clients = _caClientsCache;
-  if (!clients || !clients.length) return;
-
-  const opts = '<option value="">— Choose a client —</option>' +
-    clients.map(cl => '<option value="' + cl.slug + '" data-id="' + cl.id + '" data-name="' + cl.name.replace(/"/g,'&quot;') + '">' + cl.name + '</option>').join('');
-
-  const accessSel = document.getElementById('caAccessClientSelect');
-  const appSel    = document.getElementById('caAppearanceClientSelect');
-  if (accessSel) accessSel.innerHTML = opts;
-  if (appSel)    appSel.innerHTML    = opts;
-
-  // Pre-select whichever client is currently active in caState
-  if (caState.clientSlug) {
-    if (accessSel) accessSel.value = caState.clientSlug;
-    if (appSel)    appSel.value    = caState.clientSlug;
-  }
-}
-
-function onCaAccessClientSelect(slug) {
-  if (!slug) return;
-  const sel = document.getElementById('caAccessClientSelect');
-  const opt = sel?.querySelector('option[value="' + slug + '"]');
-  const id   = opt?.dataset?.id   || null;
-  const name = opt?.dataset?.name || slug;
-  // Update caState so Access Control loads the right client
-  caState.clientSlug = slug; caState.clientId = id; caState.clientName = name;
-  updateCaAccessHeader();
-  const rows   = document.querySelector('#caPanel-access .acl-rows');
-  const notice = document.getElementById('caAccessNoClientNotice');
-  if (rows)   rows.style.display   = '';
-  if (notice) notice.style.display = 'none';
-  loadAccessControlForClient(slug);
-}
-
-// ══════════════════════════════════════════════════════════════
-// ISSUE 11 — Appearance: client selector handler
-// ══════════════════════════════════════════════════════════════
-function onCaAppearanceClientSelect(slug) {
-  if (!slug) return;
-  const sel  = document.getElementById('caAppearanceClientSelect');
-  const opt  = sel?.querySelector('option[value="' + slug + '"]');
-  const id   = opt?.dataset?.id   || null;
-  const name = opt?.dataset?.name || slug;
-  // Update caState so saveAppearance / loadAppearance targets the right client
-  caState.clientSlug = slug; caState.clientId = id; caState.clientName = name;
-  const hint = document.getElementById('caAppearanceScopeHint');
-  const lbl  = document.getElementById('caScopeClientName');
-  if (lbl)  lbl.textContent  = name + "'s";
-  if (hint) hint.style.display = '';
-  // Update "View as Client" toggle visibility
-  updateViewAsToggleUI();
-  // Pre-fill the brand name inputs with this client's current name
-  const brandInput = document.getElementById('brandNameInput');
-  if (brandInput) brandInput.value = name;
-  // Reload appearance for the newly selected client
-  if (typeof loadAppearanceForSlug === 'function') loadAppearanceForSlug(slug);
-}
-
-// ══════════════════════════════════════════════════════════════
-// ISSUE 7 — Semya cross-client comparison view
-// Admin can switch to "Semya" in the client switcher to see a
-// comparison dashboard of all clients side by side.
-// ══════════════════════════════════════════════════════════════
-async function loadCrossClientView() {
-  // Show the main area in cross-client mode
-  const main = document.querySelector('.main');
-  if (!main) return;
-
-  // Cache original HTML so we can restore it when switching back
-  if (!window._mainOriginalHTML) {
-    window._mainOriginalHTML = main.innerHTML;
-  }
-  main.dataset.mode = 'hq';
-
-  // Hide entire sidebar — irrelevant in multi-client comparison view
-  const aside = document.querySelector('aside.sidebar');
-  if (aside) { aside.dataset.hqHidden = 'true'; aside.style.display = 'none'; }
-
-  // Grey-out nav tabs so they don't fire fetchAndRender() while in HQ mode
-  document.querySelectorAll('.nav-tab').forEach(t => {
-    t.style.opacity = '0.4'; t.style.pointerEvents = 'none';
-  });
-
-  main.innerHTML = '<div style="padding:24px;">' +
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">' +
-      '<div>' +
-        '<div style="font-size:18px;font-weight:800;color:#0f172a;">Semya Digital — All Clients</div>' +
-        '<div style="font-size:12px;color:#64748b;margin-top:2px;">YTD revenue comparison across all clients</div>' +
-      '</div>' +
-      '<span class="fetch-badge loading" id="crossClientBadge"><span class="fetch-dot"></span>Loading…</span>' +
-    '</div>' +
-    // Tab selector for HQ view
-    '<div style="display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap;">' +
-      ['Platform Sales','SKU Performance','Campaign Insights','Geographic Analysis'].map((label, i) => {
-        const active = i === 0;
-        return '<button onclick="switchHqTab(this,'' + label + '')" style="padding:6px 14px;border-radius:99px;border:1px solid ' + (active ? 'var(--theme-primary)' : 'var(--color-border)') + ';background:' + (active ? 'var(--theme-primary)' : 'var(--color-surface-2)') + ';color:' + (active ? '#fff' : 'var(--theme-muted)') + ';font-size:11px;font-weight:600;cursor:pointer;">' + label + '</button>';
-      }).join('') +
-    '</div>' +
-    '<div id="crossClientGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;"></div>' +
-  '</div>';
-
-  // Fetch all clients from admin list
-  let clients = [];
-  try {
-    const resp = await apiFetch('/auth/admin/clients');
-    clients = resp?.clients || [];
-  } catch (e) {
-    document.getElementById('crossClientGrid').innerHTML =
-      '<div style="color:#dc2626;font-size:13px;">Failed to load clients: ' + e.message + '</div>';
-    return;
-  }
-
-  const badge = document.getElementById('crossClientBadge');
-  if (badge) { badge.className = 'fetch-badge live'; badge.innerHTML = '<span class="fetch-dot"></span>Live'; }
-
-  const grid = document.getElementById('crossClientGrid');
-  if (!clients.length) {
-    grid.innerHTML = '<div style="color:#94a3b8;font-size:13px;">No clients found.</div>';
-    return;
-  }
-
-  // Fetch platform-sales summary for each client in parallel
-  const today = new Date().toISOString().slice(0, 10);
-  const yearStart = new Date().getFullYear() + '-01-01';
-
-  const results = await Promise.allSettled(
-    clients.map(cl => apiFetch('/clients/' + cl.slug + '/platform-sales?from=' + yearStart + '&to=' + today))
-  );
-
-  // Store data for tab switching
-  window._hqClientsData = clients.map((cl, i) => ({
-    cl,
-    data: results[i].status === 'fulfilled' ? results[i].value : null
-  }));
-
-  // Render using the unified grid renderer.
-  // Arrow wrapper defers reference lookup to fire time across script blocks.
-  setTimeout(() => { if (typeof renderHqGrid === 'function') renderHqGrid(window._hqClientsData, window._hqCurrentTab || 'Platform Sales'); }, 0);
-}
-
-function switchToClient(slug) {
-  // Exit HQ mode first, then switch to the chosen client's data
-  _exitHqMode();
-  const sw = document.getElementById('clientSwitcher');
-  if (sw) sw.value = slug;
-  switchClient(slug);
-}
-
-// Switch what metric the HQ comparison shows per tab
-window._hqCurrentTab = 'Platform Sales';
-function switchHqTab(btn, tabLabel) {
-  window._hqCurrentTab = tabLabel;
-  // Update button styles
-  btn.closest('div').querySelectorAll('button').forEach(b => {
-    b.style.background  = b === btn ? 'var(--theme-primary)' : 'var(--color-surface-2)';
-    b.style.color       = b === btn ? '#fff' : 'var(--theme-muted)';
-    b.style.borderColor = b === btn ? 'var(--theme-primary)' : 'var(--color-border)';
-  });
-  // Re-render the grid with the same client data but different metric
-  const grid = document.getElementById('crossClientGrid');
-  if (!grid || !window._hqClientsData) return;
-  renderHqGrid(window._hqClientsData, tabLabel);
-}
-
-function renderHqGrid(clientData, tabLabel) {
-  const grid = document.getElementById('crossClientGrid');
-  if (!grid) return;
-  grid.innerHTML = clientData.map(({ cl, data }) => {
-    // Pick the right metric depending on tab
-    let primaryValue = '—', subLabel = '', platformRows = '', hasData = false;
-    const d = data;
-
-    if (tabLabel === 'Platform Sales' || tabLabel === 'SKU Performance') {
-      const rev = d?.grandTotal || 0;
-      primaryValue = fmtRevenue(rev);
-      subLabel = 'YTD Net Revenue · ' + (d?.platforms?.length || 0) + ' platforms';
-      hasData = rev > 0;
-      const pctChange = d?.prevGrandTotal > 0 ? (((rev - d.prevGrandTotal) / d.prevGrandTotal) * 100).toFixed(1) : null;
-      const deltaHtml = pctChange != null
-        ? '<span style="font-size:11px;font-weight:600;color:' + (pctChange > 0 ? '#059669' : '#dc2626') + ';background:' + (pctChange > 0 ? 'rgba(5,150,105,.1)' : 'rgba(220,38,38,.08)') + ';padding:2px 8px;border-radius:99px;">' + (pctChange > 0 ? '▲' : '▼') + ' ' + Math.abs(pctChange) + '%</span>'
-        : '';
-      const plats = (d?.platforms || []).slice(0, 4);
-      platformRows = (plats.length ? plats : []).map(p => {
-        const pm = PLATFORM_META[p.platform] || { label: p.platform, pillClass: 'pill-amz' };
-        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:12px;">' +
-          '<span class="platform-pill ' + pm.pillClass + '" style="font-size:9px;padding:2px 7px;">' + pm.label + '</span>' +
-          '<span style="font-weight:600;color:#1e293b;">' + fmtRevenue(p.totalRevenue) + '</span>' +
-          '<span style="color:#94a3b8;">' + (rev > 0 ? (p.totalRevenue / rev * 100).toFixed(1) + '%' : '—') + '</span>' +
-        '</div>';
-      }).join('');
-      return '<div class="card" style="cursor:pointer;" onclick="switchToClient('' + cl.slug + '')">' +
-        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
-          '<div style="font-size:14px;font-weight:700;color:#1e293b;">' + cl.name + '</div>' + deltaHtml +
-        '</div>' +
-        '<div style="font-size:26px;font-weight:800;color:#0f172a;letter-spacing:-0.02em;margin-bottom:4px;">' + primaryValue + '</div>' +
-        '<div style="font-size:11px;color:#94a3b8;margin-bottom:14px;">' + subLabel + '</div>' +
-        (hasData ? '<div>' + platformRows + '</div>' : '<div style="font-size:12px;color:#94a3b8;padding:8px 0;">No data yet — upload files to get started.</div>') +
-        '<div style="margin-top:12px;text-align:right;"><span style="font-size:11px;color:var(--theme-primary);font-weight:600;">View Dashboard →</span></div>' +
-      '</div>';
-    }
-
-    // Fallback for other tabs
-    return '<div class="card" style="cursor:pointer;" onclick="switchToClient('' + cl.slug + '')">' +
-      '<div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:12px;">' + cl.name + '</div>' +
-      '<div style="font-size:12px;color:#94a3b8;">Switch to this client to view ' + tabLabel + '</div>' +
-      '<div style="margin-top:12px;text-align:right;"><span style="font-size:11px;color:var(--theme-primary);font-weight:600;">View Dashboard →</span></div>' +
-    '</div>';
-  }).join('');
-}
-
-// (patchSwitcherForCrossClient merged into main change handler above)
-
-// ── Explicitly expose all new functions to window scope ───────────
-// Functions defined in later <script> blocks are in global scope but
-// some browsers and strict-mode contexts require explicit window assignment
-// when they're called from innerHTML onclick handlers.
-window.copyClientShareLink      = copyClientShareLink;
-window.closeShareModal          = closeShareModal;
-window.cslCopyPlain             = cslCopyPlain;
-window.cslCopyMagic             = cslCopyMagic;
-window.cslGenerateMagicLink     = cslGenerateMagicLink;
-window.switchToClient           = switchToClient;
-window.switchHqTab              = switchHqTab;
-window.onCaAccessClientSelect   = onCaAccessClientSelect;
-window.onCaAppearanceClientSelect = onCaAppearanceClientSelect;
-</script>
 </body>
 </html>
