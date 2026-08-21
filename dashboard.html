@@ -6614,8 +6614,10 @@ async function loadCaClients() {
           '</div>'
         )).join('');
     list.innerHTML = semyaCard + clientsHtml;
-    // Populate the Access Control and Appearance client selectors
-    setTimeout(_populateCaSelectors, 0);
+    // Populate the Access Control and Appearance client selectors.
+    // Arrow wrapper defers the reference lookup to fire time — by then
+    // all <script> blocks have executed and _populateCaSelectors is defined.
+    setTimeout(() => { if (typeof _populateCaSelectors === 'function') _populateCaSelectors(); }, 0);
   } catch (e) {
     console.error('[loadCaClients] Error:', e.message, e);
     list.innerHTML = semyaCard + '<div style="text-align:center;padding:16px 0;color:#94a3b8;font-size:12px;">Failed to load clients. (' + (e.message || 'unknown error') + ')</div>';
@@ -10751,8 +10753,9 @@ async function loadCrossClientView() {
     data: results[i].status === 'fulfilled' ? results[i].value : null
   }));
 
-  // Render using the unified grid renderer
-  renderHqGrid(window._hqClientsData, window._hqCurrentTab || 'Platform Sales');
+  // Render using the unified grid renderer.
+  // Arrow wrapper defers reference lookup to fire time across script blocks.
+  setTimeout(() => { if (typeof renderHqGrid === 'function') renderHqGrid(window._hqClientsData, window._hqCurrentTab || 'Platform Sales'); }, 0);
 }
 
 function switchToClient(slug) {
