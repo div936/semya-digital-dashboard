@@ -18,24 +18,19 @@
   const clientSlug = urlMatch ? urlMatch[1] : null;
   if (clientSlug) localStorage.setItem('semya_last_slug', clientSlug);
 
-  // BUG FIX (production outage): this used to only clear OUR OWN
-  // token (semya_token), not the underlying Supabase session itself.
-  // index.html has its own "already have a valid session → skip
-  // login, go straight to dashboard" check — so when the backend
-  // auth check below failed for ANY reason (the specific trigger was
-  // a missing database column from a deployment-order mistake, but
-  // this loop would happen for any backend failure), this page would
-  // redirect to login, and login would immediately bounce right back
-  // here because Supabase's own session was still valid, forever.
-  // Signing out of Supabase here too means a failed auth check always
-  // lands cleanly on a real login form, no matter what caused it.
+  // One-shot guard: prevents redirectToLogin from firing more than once
+  // per page load — specifically stops the SIGNED_OUT event loop where
+  // semyaLogout() calls signOut() → fires SIGNED_OUT → redirectToLogin()
+  // calls signOut() again → fires SIGNED_OUT again → infinite loop.
+  let _redirecting = false;
+
   function redirectToLogin() {
+    if (_redirecting) return;   // ← breaks the loop
+    _redirecting = true;
     localStorage.removeItem(TOKEN_KEY);
-    if (window._supabaseClient) {
-      window._supabaseClient.auth.signOut().finally(() => window.location.replace(LOGIN_PAGE));
-    } else {
-      window.location.replace(LOGIN_PAGE);
-    }
+    // Don't call signOut() here — the caller already did, or we don't
+    // need to. Calling it again is what caused the infinite loop.
+    window.location.replace(LOGIN_PAGE);
   }
 
   async function checkAuth() {
@@ -79,9 +74,11 @@
       document.dispatchEvent(new CustomEvent('semya:auth-ready', { detail: window.semyaUser }));
     }
 
-    // 5. Listen for session expiry
+    // 5. Listen for session expiry events — but NOT for our own logout
+    // (semyaLogout sets _redirecting=true before calling signOut so this
+    // handler sees the flag and does nothing, avoiding the infinite loop).
     client.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT') redirectToLogin();
+      if (event === 'SIGNED_OUT' && !_redirecting) redirectToLogin();
     });
   }
 
@@ -94,8 +91,13 @@
   }
 
   window.semyaLogout = async function () {
-    if (window._supabaseClient) await window._supabaseClient.auth.signOut();
+    // Set guard FIRST so the SIGNED_OUT event handler doesn't
+    // trigger a second redirectToLogin() while we're signing out.
+    _redirecting = true;
     localStorage.removeItem(TOKEN_KEY);
+    if (window._supabaseClient) {
+      try { await window._supabaseClient.auth.signOut(); } catch (_) {}
+    }
     window.location.replace(LOGIN_PAGE);
   };
 
