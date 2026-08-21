@@ -4721,11 +4721,16 @@ async function loadTabPermissions() {
   try {
     const cfg = await apiFetch('/clients/' + clientSlug + '/dashboard-config');
     state.tabPermissions = cfg?.tabs || null;
-    // Start polling for pending requests notification bell
+    // Start polling for pending requests notification bell.
+    // Uses setTimeout(0) to ensure all <script> tags have been parsed —
+    // _startNotifPolling is defined in a later script block and function
+    // declarations don't hoist across separate <script> tags.
     if (state.isAdmin && !window._notifPollingStarted) {
       window._notifPollingStarted = true;
-      _startNotifPolling();
-      loadPendingRequests(); // fetch immediately on load
+      setTimeout(() => {
+        if (typeof _startNotifPolling === 'function') _startNotifPolling();
+        loadPendingRequests();
+      }, 0);
     }
     _lastDashboardConfig = cfg;
     applyLockBadgesToNav();
@@ -6592,6 +6597,7 @@ async function loadCaClients() {
 
   try {
     const resp = await apiFetch('/auth/admin/clients');
+    if (!resp) throw new Error('No response from server — check authentication');
     const clients = resp?.clients || [];
     _caClientsCache = clients; // so selectCaClient can look up registered_brands without another fetch
     const clientsHtml = !clients.length
@@ -6611,7 +6617,8 @@ async function loadCaClients() {
     // Populate the Access Control and Appearance client selectors
     setTimeout(_populateCaSelectors, 0);
   } catch (e) {
-    list.innerHTML = semyaCard + '<div style="text-align:center;padding:16px 0;color:#94a3b8;font-size:12px;">Failed to load clients.</div>';
+    console.error('[loadCaClients] Error:', e.message, e);
+    list.innerHTML = semyaCard + '<div style="text-align:center;padding:16px 0;color:#94a3b8;font-size:12px;">Failed to load clients. (' + (e.message || 'unknown error') + ')</div>';
   }
 }
 
