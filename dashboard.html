@@ -4629,14 +4629,19 @@ async function fetchAndRender() {
   state._revenueAgg = revenueData;
 
   // ── Render all widgets ──
-  renderKPIs(revenueData, campaignRows, { totalRevenue: revenueData.prevRevenue, totalUnits: revenueData.prevUnits });
-  renderCities(revenueData.cities);
-  renderDoughnut(revenueData.byPlatform);
-  renderLineChartForPeriod(state._trendPeriod || 'week', revenueData);
-  renderCampaigns(campaignRows, productCategory, campaignsMatchedToProduct, sku);
-  renderPlatformHealth(revenueData.byPlatform, campaignRows);
-
-  document.getElementById('cityBadge').textContent = currentSku;
+  // Wrapped in try/catch so a crash in any render function doesn't
+  // leave the badge stuck on "Loading..." indefinitely.
+  try {
+    renderKPIs(revenueData, campaignRows, { totalRevenue: revenueData.prevRevenue || 0, totalUnits: revenueData.prevUnits || 0 });
+    renderCities(revenueData.cities);
+    renderDoughnut(revenueData.byPlatform);
+    renderLineChartForPeriod(state._trendPeriod || 'week', revenueData);
+    renderCampaigns(campaignRows, productCategory, campaignsMatchedToProduct, sku);
+    renderPlatformHealth(revenueData.byPlatform, campaignRows);
+    document.getElementById('cityBadge').textContent = currentSku;
+  } catch (renderErr) {
+    console.error('[SKU render]', renderErr);
+  }
 
   state.isLive = isLive;
   setBadge(isLive ? 'live' : 'empty');
