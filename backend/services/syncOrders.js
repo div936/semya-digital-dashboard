@@ -4,6 +4,7 @@
 // Matches Shopify Admin "All Orders" exactly by using status=any.
 // ─────────────────────────────────────────────────────────────────
 import { shopifyPaginate } from './shopifyClient.js';
+import { upsertProductCatalogue } from '../lib/productCatalogue.js';
 import { supabaseAdmin }   from '../lib/supabase.js';
 
 const CLIENT_ID = process.env.SHOPIFY_CLIENT_ID; // UUID of the client row in Supabase
@@ -80,10 +81,13 @@ function mapOrder(order) {
   const netRevenue = Math.max(0, parseFloat(order.total_price || 0) - totalRefunded);
 
   // Map financial_status → standard_status (same logic as fileIngestion.js)
+  // FIX: 'cancelled' financial_status was falling through to 'Pending' — now
+  // correctly maps to 'Cancelled' so it's excluded from revenue totals and
+  // included in cancellation pattern detection.
   let standard_status;
-  if (finStatus === 'voided' || finStatus === 'refunded') standard_status = 'Cancelled';
+  if (['voided', 'refunded', 'cancelled'].includes(finStatus)) standard_status = 'Cancelled';
   else if (finStatus === 'paid' && order.fulfillment_status === 'fulfilled') standard_status = 'Delivered';
-  else if (finStatus === 'paid') standard_status = 'Delivered';  // Paid = fulfilled (matches Shopify logic)
+  else if (finStatus === 'paid') standard_status = 'Delivered';
   else standard_status = 'Pending';
 
   // Risk level — Shopify API returns it as order.risk_level (string) on some versions
@@ -110,7 +114,23 @@ function mapOrder(order) {
     // row_hash — reuse order_id+sku tier (same as fileIngestion.js tier 2)
     row_hash:           `order_id_sku:${order.name}|${primarySku || ''}`,
     dedup_method:       'order_id_sku',
-    raw_extras:         {},  // API sync rows have no raw_extras
+    // Populate raw_extras with buyer identity fields using the SAME key names
+    // that extractIdentity() looks for (IDENTITY_KEYS in columnMapper.js).
+    // This makes API-synced orders work with Cancellation Pattern Watch,
+    // which was previously blind to all Shopify API data because raw_extras
+    // was always an empty object {} for API-pulled orders.
+    raw_extras: {
+      'Shipping Phone':  order.shipping_address?.phone || order.phone || null,
+      'Billing Phone':   order.billing_address?.phone  || order.phone || null,
+      'Shipping Name':   order.shipping_address?.name  || null,
+      'Billing Name':    order.billing_address?.name   || null,
+      'Shipping Zip':    order.shipping_address?.zip   || null,
+      'Billing Zip':     order.billing_address?.zip    || null,
+      'Shipping Street': order.shipping_address?.address1 || null,
+      'Email':           order.email || null,
+      'Cancelled at':    order.cancelled_at || null,
+      'Cancel Reason':   order.cancel_reason || null,
+    },
   };
 }
 
@@ -123,6 +143,7 @@ export async function syncShopifyOrders(updatedAtMin = null) {
       'id','name','created_at','financial_status','fulfillment_status',
       'total_price','refunds','line_items','note_attributes','tags',
       'risk_level','shipping_address','billing_address','test','fulfillments',
+      'phone','email','cancelled_at','cancel_reason',
     ].join(','),
   };
   if (updatedAtMin) params.updated_at_min = updatedAtMin;
@@ -142,8 +163,21 @@ export async function syncShopifyOrders(updatedAtMin = null) {
       .from('revenue_data')
       .upsert(rows, { onConflict: 'client_id,row_hash' });
 
-    if (error) console.error('[sync-orders] upsert error:', error.message);
-    else synced += rows.length;
+    if (error) {
+      console.error('[sync-orders] upsert error:', error.message);
+    } else {
+      synced += rows.length;
+      // Update product catalogue with SKUs from this batch (fire-and-forget)
+      upsertProductCatalogue(rows.map(r => ({
+        client_id:            r.client_id,
+        platform:             r.platform,
+        standard_sku:         r.standard_sku,
+        standard_product_name: r.standard_product_name,
+        order_date:           r.order_date,
+      })), CLIENT_ID).catch(err =>
+        console.warn('[sync-orders] product catalogue update failed (non-fatal):', err.message)
+      );
+    }
   }
 
   console.log(`[sync-orders] done: ${synced} synced, ${skipped} test orders skipped`);
