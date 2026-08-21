@@ -8818,6 +8818,54 @@ function _cslCopyText(text, btnId) {
 function cslCopyPlain()  { if (_cslPlainUrl)     _cslCopyText(_cslPlainUrl,     'cslCopyPlainBtn'); }
 function cslCopyMagic()  { if (_cslMagicLinkUrl) _cslCopyText(_cslMagicLinkUrl, 'cslCopyMagicBtn'); }
 
+async function cslSetPassword() {
+  const email  = document.getElementById('cslPwEmailInput')?.value?.trim();
+  const pw     = document.getElementById('cslPwInput')?.value;
+  const result = document.getElementById('cslPwResult');
+  const btn    = document.getElementById('cslSetPwBtn');
+
+  if (!email || !pw) {
+    if (result) { result.textContent = 'Please enter both email and password.'; result.style.background = '#fef2f2'; result.style.color = '#dc2626'; result.style.display = 'block'; }
+    return;
+  }
+  if (pw.length < 8) {
+    if (result) { result.textContent = 'Password must be at least 8 characters.'; result.style.background = '#fef2f2'; result.style.color = '#dc2626'; result.style.display = 'block'; }
+    return;
+  }
+
+  if (btn) { btn.textContent = 'Setting…'; btn.disabled = true; }
+  if (result) result.style.display = 'none';
+
+  try {
+    const resp = await apiFetch('/auth/admin/set-client-password', {
+      method: 'POST',
+      body: JSON.stringify({ email, password: pw, clientSlug: _cslCurrentSlug }),
+    });
+    if (resp?.ok) {
+      if (result) {
+        result.textContent = '✓ ' + resp.message;
+        result.style.background = '#f0fdf4';
+        result.style.color = '#166534';
+        result.style.display = 'block';
+      }
+      // Clear password field for security
+      const pwInput = document.getElementById('cslPwInput');
+      if (pwInput) pwInput.value = '';
+    } else {
+      throw new Error(resp?.error || 'Unknown error');
+    }
+  } catch (e) {
+    if (result) {
+      result.textContent = 'Failed: ' + (e.message || 'Server error');
+      result.style.background = '#fef2f2';
+      result.style.color = '#dc2626';
+      result.style.display = 'block';
+    }
+  } finally {
+    if (btn) { btn.textContent = 'Set Password'; btn.disabled = false; }
+  }
+}
+
 async function cslGenerateMagicLink() {
   const email  = document.getElementById('cslEmailInput')?.value?.trim();
   const errEl  = document.getElementById('cslError');
@@ -8843,13 +8891,32 @@ async function cslGenerateMagicLink() {
       body: JSON.stringify({ clientSlug: _cslCurrentSlug, email }),
     });
 
-    if (resp?.magicLink) {
+    if (resp?.isNewUser) {
+      // Invite email was auto-sent by Supabase — show confirmation
+      _cslMagicLinkUrl = null;
+      const urlEl = document.getElementById('cslMagicUrl');
+      if (urlEl) {
+        urlEl.style.background = '#eff6ff';
+        urlEl.style.borderColor = '#bfdbfe';
+        urlEl.style.color = '#1d4ed8';
+        urlEl.textContent = '✓ Invite email sent to ' + email + ' — they will receive a link to set their password and access the ' + (resp.clientName || '') + ' dashboard.';
+        urlEl.style.whiteSpace = 'normal';
+        urlEl.style.height = 'auto';
+        urlEl.style.padding = '10px 12px';
+      }
+      // Hide the Copy button since there's nothing to copy
+      const copyBtn = document.getElementById('cslCopyMagicBtn');
+      if (copyBtn) copyBtn.style.display = 'none';
+      if (result) result.style.display = 'block';
+    } else if (resp?.magicLink) {
       _cslMagicLinkUrl = resp.magicLink;
       const urlEl = document.getElementById('cslMagicUrl');
-      if (urlEl) urlEl.textContent = resp.magicLink;
+      if (urlEl) { urlEl.textContent = resp.magicLink; urlEl.style.whiteSpace = 'nowrap'; }
+      const copyBtn = document.getElementById('cslCopyMagicBtn');
+      if (copyBtn) copyBtn.style.display = '';
       if (result) result.style.display = 'block';
     } else {
-      throw new Error(resp?.error || 'No link returned');
+      throw new Error(resp?.error || resp?.message || 'Could not generate link');
     }
   } catch (e) {
     if (errEl) { errEl.textContent = 'Failed to generate link: ' + (e.message || 'Server error'); errEl.style.display = 'block'; }
@@ -10784,7 +10851,7 @@ async function clearAiSettingsDyn() {
 
         <!-- Magic link result — hidden until generated -->
         <div id="cslMagicResult" style="display:none;">
-          <div style="font-size:11px;font-weight:600;color:#059669;margin-bottom:6px;">&#10003; Magic link ready — valid for 24 hours</div>
+          <div id="cslResultHeader" style="font-size:11px;font-weight:600;color:#059669;margin-bottom:6px;">&#10003; Ready to share</div>
           <div style="display:flex;gap:8px;">
             <div id="cslMagicUrl" style="flex:1;padding:9px 12px;background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:8px;font-size:11px;font-family:monospace;color:#166534;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
             <button onclick="cslCopyMagic()" id="cslCopyMagicBtn"
@@ -10797,6 +10864,35 @@ async function clearAiSettingsDyn() {
 
         <!-- Error message -->
         <div id="cslError" style="display:none;font-size:12px;color:#dc2626;padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;margin-top:8px;"></div>
+      </div>
+
+      <!-- Divider -->
+      <div style="display:flex;align-items:center;gap:12px;margin:20px 0;">
+        <div style="flex:1;height:1px;background:#f1f5f9;"></div>
+        <span style="font-size:11px;color:#94a3b8;font-weight:600;">OR</span>
+        <div style="flex:1;height:1px;background:#f1f5f9;"></div>
+      </div>
+
+      <!-- Section 3: Set password directly -->
+      <div>
+        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Set Login Password Directly</div>
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:10px;">Create or update a password for this client so they can log in immediately with email + password. No invite email needed.</div>
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+          <input id="cslPwEmailInput" type="email" placeholder="client@example.com"
+            style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;color:#1e293b;outline:none;"
+            onfocus="this.style.borderColor='var(--theme-primary)'" onblur="this.style.borderColor='#e2e8f0'" />
+        </div>
+        <div style="display:flex;gap:8px;">
+          <input id="cslPwInput" type="password" placeholder="Password (min 8 characters)"
+            style="flex:1;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;color:#1e293b;outline:none;"
+            onfocus="this.style.borderColor='var(--theme-primary)'" onblur="this.style.borderColor='#e2e8f0'"
+            onkeydown="if(event.key==='Enter') cslSetPassword()" />
+          <button onclick="cslSetPassword()" id="cslSetPwBtn"
+            style="padding:9px 16px;background:#7c3aed;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">
+            Set Password
+          </button>
+        </div>
+        <div id="cslPwResult" style="display:none;font-size:12px;padding:8px 12px;border-radius:8px;margin-top:8px;"></div>
       </div>
     </div>
   </div>
