@@ -3390,9 +3390,19 @@ function handleSessionExpiry() {
   }
   // Small delay so any in-flight UI updates complete
   setTimeout(() => {
-    // Use absolute path that works on both GitHub Pages and custom domain
-    const loginPath = window.location.pathname.replace(/\/[^/]+$/, '/index.html');
-    window.location.href = loginPath || '/index.html';
+    // Always redirect to index.html in the same directory as dashboard.html.
+    // Using pathname manipulation was producing wrong paths like
+    // /clients/neat-everyday/index.html. Use a fixed relative path instead.
+    const base = window.location.pathname.replace(/\/[^/]*$/, '');
+    const root = base.replace(/\/[^/]*$/, ''); // go up one more if in a subdirectory
+    // Find the repo root by looking for the known path segment
+    const pathParts = window.location.pathname.split('/');
+    // Find 'semya-digital-dashboard' segment or fall back to origin
+    const repoIdx = pathParts.findIndex(p => p === 'semya-digital-dashboard');
+    const loginPath = repoIdx >= 0
+      ? '/' + pathParts.slice(1, repoIdx + 1).join('/') + '/index.html'
+      : '/index.html';
+    window.location.href = loginPath;
   }, 300);
 }
 
