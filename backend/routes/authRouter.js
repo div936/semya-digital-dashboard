@@ -682,26 +682,116 @@ router.post('/admin/client-link', asyncHandler(async (req, res) => {
     await supabaseAdmin.from('users').update({ is_active: true }).eq('email', cleanEmail);
   }
 
-  // Generate a one-click magic link that signs the client straight into the dashboard
-  const redirectTo = `${FRONTEND_URL}/dashboard.html?client=${encodeURIComponent(clientSlug)}`;
+  // Generate a sign-in link for the client.
+  // For new users: inviteUserByEmail → set-password.html → they choose a password.
+  //                After that they can log in with email + password directly.
+  // For existing users: falls back to a magic link (they already have a password set).
+  const setPasswordRedirect = `${FRONTEND_URL}/set-password.html?client=${encodeURIComponent(clientSlug)}`;
+  const dashboardRedirect   = `${FRONTEND_URL}/dashboard.html?client=${encodeURIComponent(clientSlug)}`;
+
   try {
-    const { data: linkData, error: linkErr } = await supabaseAuth.auth.admin.generateLink({
-      type: 'magiclink',
-      email: cleanEmail,
-      options: { redirectTo },
-    });
-    if (linkErr || !linkData?.properties?.action_link) {
-      throw new Error(linkErr?.message || 'generateLink returned no link');
+    let actionLink = null;
+    let isNewUser  = false;
+
+    // Step 1: Try to invite as a new user (creates Supabase Auth account + set-password flow)
+    const { data: invited, error: inviteErr } = await supabaseAuth.auth.admin.inviteUserByEmail(
+      cleanEmail, { redirectTo: setPasswordRedirect }
+    );
+    if (!inviteErr && invited?.user) {
+      actionLink = null; // Supabase sends the invite email automatically
+      isNewUser  = true;
+    } else {
+      // Step 2: Existing user — generate a direct magic link to the dashboard
+      const { data: linkData, error: linkErr } = await supabaseAuth.auth.admin.generateLink({
+        type: 'magiclink',
+        email: cleanEmail,
+        options: { redirectTo: dashboardRedirect },
+      });
+      if (!linkErr && linkData?.properties?.action_link) {
+        actionLink = linkData.properties.action_link;
+      }
+      // Step 3: Last resort — signup link (also creates auth account if missing)
+      if (!actionLink) {
+        const { data: signupData } = await supabaseAuth.auth.admin.generateLink({
+          type: 'signup',
+          email: cleanEmail,
+          options: { redirectTo: setPasswordRedirect },
+        });
+        actionLink = signupData?.properties?.action_link || null;
+      }
     }
+
     return res.json({
-      magicLink: linkData.properties.action_link,
+      magicLink:   actionLink,     // null if invite email was auto-sent
       dashboardLink,
-      clientName: client.name,
-      email: cleanEmail,
+      clientName:  client.name,
+      email:       cleanEmail,
+      isNewUser,                   // true = invite email was sent; false = link returned
+      message: isNewUser
+        ? `Invite email sent to ${cleanEmail}. They will receive a link to set their password and access the ${client.name} dashboard.`
+        : (actionLink ? `One-click sign-in link generated for ${cleanEmail}.` : `Could not generate link — check Supabase Auth settings.`),
     });
   } catch (e) {
     return res.status(500).json({ error: 'Failed to generate link: ' + e.message });
   }
+}));
+
+// ── POST /auth/admin/set-client-password ─────────────────────────
+// Admin sets a password for a client user directly.
+// Creates the user in Supabase Auth + our DB if they don't exist yet.
+// Body: { email, password, clientSlug }
+router.post('/admin/set-client-password', asyncHandler(async (req, res) => {
+  const admin = await requireAdmin(req, res); if (!admin) return;
+
+  const { email, password, clientSlug } = req.body || {};
+  if (!email || !password || !clientSlug) {
+    return res.status(400).json({ error: 'email, password, and clientSlug are required.' });
+  }
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  // Look up client
+  const { data: client, error: clientErr } = await supabaseAdmin
+    .from('clients').select('id, name, slug').eq('slug', clientSlug).single();
+  if (clientErr || !client) return res.status(404).json({ error: 'Client not found.' });
+
+  // Check if user already exists in Supabase Auth
+  const { data: { users: authUsers } } = await supabaseAuth.auth.admin.listUsers();
+  const existingAuth = authUsers.find(u => u.email === cleanEmail);
+
+  let authUserId;
+  if (existingAuth) {
+    // Update password for existing auth user
+    authUserId = existingAuth.id;
+    const { error: pwErr } = await supabaseAuth.auth.admin.updateUserById(authUserId, { password });
+    if (pwErr) return res.status(500).json({ error: 'Failed to set password: ' + pwErr.message });
+  } else {
+    // Create new auth user with password
+    const { data: created, error: createErr } = await supabaseAuth.auth.admin.createUser({
+      email: cleanEmail, password, email_confirm: true,
+    });
+    if (createErr) return res.status(500).json({ error: 'Failed to create user: ' + createErr.message });
+    authUserId = created?.user?.id;
+  }
+
+  // Upsert our users DB row
+  const { error: upsertErr } = await supabaseAdmin.from('users').upsert({
+    id: authUserId, email: cleanEmail,
+    role: 'client', client_id: client.id,
+    is_active: true, is_lead: false, hashed_pw: 'PASSWORD_AUTH',
+  }, { onConflict: 'email' });
+  if (upsertErr) return res.status(500).json({ error: 'Failed to save user record: ' + upsertErr.message });
+
+  return res.json({
+    ok: true,
+    email: cleanEmail,
+    clientName: client.name,
+    loginUrl: `${FRONTEND_URL}/index.html`,
+    message: `${cleanEmail} can now log in to the ${client.name} dashboard at ${FRONTEND_URL}/index.html`,
+  });
 }));
 
 export default router;
