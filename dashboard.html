@@ -10829,6 +10829,20 @@ function renderHqGrid(clientData, tabLabel) {
 }
 
 // (patchSwitcherForCrossClient merged into main change handler above)
+
+// ── Explicitly expose all new functions to window scope ───────────
+// Functions defined in later <script> blocks are in global scope but
+// some browsers and strict-mode contexts require explicit window assignment
+// when they're called from innerHTML onclick handlers.
+window.copyClientShareLink      = copyClientShareLink;
+window.closeShareModal          = closeShareModal;
+window.cslCopyPlain             = cslCopyPlain;
+window.cslCopyMagic             = cslCopyMagic;
+window.cslGenerateMagicLink     = cslGenerateMagicLink;
+window.switchToClient           = switchToClient;
+window.switchHqTab              = switchHqTab;
+window.onCaAccessClientSelect   = onCaAccessClientSelect;
+window.onCaAppearanceClientSelect = onCaAppearanceClientSelect;
 </script>
 </body>
 </html>
