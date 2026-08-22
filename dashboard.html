@@ -3791,8 +3791,8 @@ function renderKPIs(rev, campaigns, prevRev) {
   document.getElementById('kpiUnitsSub').innerHTML = `Ad spend: ${fmtRevenue(totalSpend)} &nbsp;·&nbsp; Campaign rev: ${fmtRevenue(campaignRev)}`;
 
   document.getElementById('kpiRoas').innerHTML = roas > 0 ? fmtRoas(roas) : '—';
-  // No hardcoded baseline — delta only shown if prev period ROAS is available
-  const prevRoas = payload?.prevRoas || null;
+  // Delta only shown if prev period ROAS is available via prevRev parameter
+  const prevRoas = prevRev?.prevRoas || null;
   document.getElementById('kpiRoasDelta').innerHTML = (roas > 0 && prevRoas > 0)
     ? deltaHtml(((roas - prevRoas) / prevRoas * 100).toFixed(1))
     : '';
