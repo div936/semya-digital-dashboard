@@ -23,6 +23,8 @@ import shopifySyncRouter      from './routes/shopifySyncRouter.js';
 import shopifyAuthRouter      from './routes/shopifyAuthRouter.js';
 import aiSettingsRouter       from './routes/aiSettingsRouter.js';
 import { startScheduler }     from './services/syncScheduler.js';
+import flipkartSyncRouter        from './routes/flipkartSyncRouter.js';
+import { startFlipkartScheduler } from './services/flipkartScheduler.js';
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -100,8 +102,11 @@ app.use('/clients', projectionsRouter);
 app.use('/shopify', shopifySyncRouter);
 app.use('/shopify', shopifyAuthRouter);
 
-// ─── Start Shopify auto-sync (runs every 6 hours, also on boot) ───
+app.use('/flipkart', flipkartSyncRouter);
+
+// ─── Start auto-sync schedulers (run every 6 hours, also on boot) ─
 startScheduler();
+startFlipkartScheduler();
 
 // ─── Health check ─────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ ok: true, version: 'V40-ai-settings' }));
