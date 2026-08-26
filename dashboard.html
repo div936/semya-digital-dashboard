@@ -3232,7 +3232,7 @@
 // ═══════════════════════════════════════════════════════════════════
 
 // ─── CONFIG ──────────────────────────────────────────────────────
-const API_BASE  = 'https://semya-digital-dashboard.onrender.com';
+const API_BASE  = 'https://semya-api.onrender.com';
 const TOKEN_KEY = 'semya_token';
 
 // ── IST-aware date helper ───────────────────────────────────────
@@ -10737,7 +10737,7 @@ async function loadCurrentAiSettingsDyn() {
   try {
     const slug  = window.SEMYA_CLIENT_SLUG || document.querySelector('[data-client-slug]')?.dataset?.clientSlug || 'neat-everyday';
     const token = localStorage.getItem('semya_token') || localStorage.getItem('token');
-    const res   = await fetch(`https://semya-digital-dashboard.onrender.com/clients/${slug}/ai-settings`, {
+    const res   = await fetch(`https://semya-api.onrender.com/clients/${slug}/ai-settings`, {
       headers: { 'Authorization': 'Bearer ' + token }
     });
     const data = await res.json();
@@ -10771,7 +10771,7 @@ async function saveAiSettingsDyn() {
   try {
     const slug  = window.SEMYA_CLIENT_SLUG || 'neat-everyday';
     const token = localStorage.getItem('semya_token') || localStorage.getItem('token');
-    const res = await fetch(`https://semya-digital-dashboard.onrender.com/clients/${slug}/ai-settings`, {
+    const res = await fetch(`https://semya-api.onrender.com/clients/${slug}/ai-settings`, {
       method:  'POST',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       body: JSON.stringify({ ai_provider: provider, ai_model: model, ai_api_key: apiKey || undefined }),
@@ -10792,7 +10792,7 @@ async function clearAiSettingsDyn() {
   if (!confirm('Remove AI key? AI Insights will be disabled.')) return;
   const slug  = window.SEMYA_CLIENT_SLUG || 'neat-everyday';
   const token = localStorage.getItem('semya_token') || localStorage.getItem('token');
-  await fetch(`https://semya-digital-dashboard.onrender.com/clients/${slug}/ai-settings`, {
+  await fetch(`https://semya-api.onrender.com/clients/${slug}/ai-settings`, {
     method: 'POST',
     headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
     body: JSON.stringify({ ai_api_key: '' }),
@@ -10915,6 +10915,7 @@ async function clearAiSettingsDyn() {
 <div id="psStatusFilterMenu" style="display:none;position:fixed;z-index:9999;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:10px 12px;min-width:230px;">
   <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">Uncheck a status to exclude it from every number below. Everything is included by default.</div>
   <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-status-cb" value="Cancelled" onchange="onPsStatusChange()"> Cancelled</label>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-status-cb" value="Returned" onchange="onPsStatusChange()"> Returned</label>
   <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-status-cb" value="Pending" checked onchange="onPsStatusChange()"> Pending</label>
   <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-status-cb" value="Unshipped" checked onchange="onPsStatusChange()"> Unshipped</label>
   <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-status-cb" value="Shipped - Returned to Seller" checked onchange="onPsStatusChange()"> Returned to Seller</label>
