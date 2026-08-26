@@ -3232,7 +3232,7 @@
 // ═══════════════════════════════════════════════════════════════════
 
 // ─── CONFIG ──────────────────────────────────────────────────────
-const API_BASE  = 'https://semya-api.onrender.com';
+const API_BASE  = 'https://semya-digital-dashboard.onrender.com';
 const TOKEN_KEY = 'semya_token';
 
 // ── IST-aware date helper ───────────────────────────────────────
@@ -3791,8 +3791,8 @@ function renderKPIs(rev, campaigns, prevRev) {
   document.getElementById('kpiUnitsSub').innerHTML = `Ad spend: ${fmtRevenue(totalSpend)} &nbsp;·&nbsp; Campaign rev: ${fmtRevenue(campaignRev)}`;
 
   document.getElementById('kpiRoas').innerHTML = roas > 0 ? fmtRoas(roas) : '—';
-  // Delta only shown if prev period ROAS is available via prevRev parameter
-  const prevRoas = prevRev?.prevRoas || null;
+  // No hardcoded baseline — delta only shown if prev period ROAS is available
+  const prevRoas = payload?.prevRoas || null;
   document.getElementById('kpiRoasDelta').innerHTML = (roas > 0 && prevRoas > 0)
     ? deltaHtml(((roas - prevRoas) / prevRoas * 100).toFixed(1))
     : '';
@@ -10737,7 +10737,7 @@ async function loadCurrentAiSettingsDyn() {
   try {
     const slug  = window.SEMYA_CLIENT_SLUG || document.querySelector('[data-client-slug]')?.dataset?.clientSlug || 'neat-everyday';
     const token = localStorage.getItem('semya_token') || localStorage.getItem('token');
-    const res   = await fetch(`https://semya-api.onrender.com/clients/${slug}/ai-settings`, {
+    const res   = await fetch(`https://semya-digital-dashboard.onrender.com/clients/${slug}/ai-settings`, {
       headers: { 'Authorization': 'Bearer ' + token }
     });
     const data = await res.json();
@@ -10771,7 +10771,7 @@ async function saveAiSettingsDyn() {
   try {
     const slug  = window.SEMYA_CLIENT_SLUG || 'neat-everyday';
     const token = localStorage.getItem('semya_token') || localStorage.getItem('token');
-    const res = await fetch(`https://semya-api.onrender.com/clients/${slug}/ai-settings`, {
+    const res = await fetch(`https://semya-digital-dashboard.onrender.com/clients/${slug}/ai-settings`, {
       method:  'POST',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       body: JSON.stringify({ ai_provider: provider, ai_model: model, ai_api_key: apiKey || undefined }),
@@ -10792,7 +10792,7 @@ async function clearAiSettingsDyn() {
   if (!confirm('Remove AI key? AI Insights will be disabled.')) return;
   const slug  = window.SEMYA_CLIENT_SLUG || 'neat-everyday';
   const token = localStorage.getItem('semya_token') || localStorage.getItem('token');
-  await fetch(`https://semya-api.onrender.com/clients/${slug}/ai-settings`, {
+  await fetch(`https://semya-digital-dashboard.onrender.com/clients/${slug}/ai-settings`, {
     method: 'POST',
     headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
     body: JSON.stringify({ ai_api_key: '' }),
