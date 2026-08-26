@@ -82,7 +82,12 @@ export function startScheduler() {
   }
 
   console.log(`[scheduler] ✅ Shopify sync enabled for ${shop} — runs every 6 hours`);
-  runOrderSync().then(() => runRefundSync());
+  // Delay boot sync by 3 minutes so server is fully ready to serve
+  // dashboard requests before Supabase connections are consumed by the
+  // bulk sync (15k+ orders floods the connection pool and causes 503s
+  // on /health itself if fired immediately on startup).
+  console.log('[scheduler] boot sync delayed 3 min — server accepting requests now');
+  setTimeout(() => runOrderSync().then(() => runRefundSync()), 3 * 60 * 1000);
 
   const SIX_HOURS = 6 * 60 * 60 * 1000;
   setInterval(runOrderSync,  SIX_HOURS);
