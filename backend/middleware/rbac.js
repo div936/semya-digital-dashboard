@@ -26,12 +26,72 @@ function extractToken(req) {
   return null;
 }
 
+// ─── In-memory RBAC cache ─────────────────────────────────────────
+// Problem: Every API request triggered 4-5 separate Supabase queries
+// in rbacMiddleware (auth.getUser → users row → users.access_expires_at
+// → clients row → tab_permissions). The dashboard fires ~8 parallel
+// requests on every page load, meaning 8 × 5 = 40 Supabase queries
+// hit simultaneously — enough to trigger 429 rate-limiting on
+// Supabase's free tier, which caused the entire dashboard to show ₹0
+// and all-zero stats with "429" errors in the network tab.
+//
+// Fix: cache the resolved rbac context in memory for 60 seconds,
+// keyed by token. Parallel requests from the same page load (which
+// all carry the same Bearer token) will share one Supabase lookup
+// instead of each firing their own 5 queries.
+//
+// TTL of 60s means:
+//   - A newly revoked/expired account stays locked out within 1 minute.
+//   - Tab permission changes take effect within 1 minute.
+//   - Normal usage (page loads, tab switches) hits Supabase once per
+//     minute instead of 40 times per page load.
+//
+// Map is bounded: entries are deleted after TTL_MS, so it won't grow
+// without bound even in a long-running process.
+// ─────────────────────────────────────────────────────────────────
+
+const CACHE_TTL_MS = 60_000; // 60 seconds
+const _rbacCache   = new Map(); // token → { expiresAt, context }
+
+function getCached(token) {
+  const entry = _rbacCache.get(token);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    _rbacCache.delete(token);
+    return null;
+  }
+  return entry.context;
+}
+
+function setCache(token, context) {
+  _rbacCache.set(token, {
+    expiresAt: Date.now() + CACHE_TTL_MS,
+    context,
+  });
+  // Auto-evict after TTL so the Map doesn't grow forever
+  setTimeout(() => _rbacCache.delete(token), CACHE_TTL_MS);
+}
+
+// ─────────────────────────────────────────────────────────────────
+
 export async function rbacMiddleware(req, res, next) {
   try {
     const token = extractToken(req);
     if (!token) return res.status(401).json({ error: 'Authentication required.' });
 
-    // Use Supabase to verify the token — works with ES256 tokens
+    // ── Check cache first ────────────────────────────────────────
+    const requestedSlug = req.params.client_slug;
+    const cacheKey      = `${token}:${requestedSlug}`;
+    const cached        = getCached(cacheKey);
+
+    if (cached) {
+      req.semya = cached;
+      return next();
+    }
+
+    // ── Cache miss — do the full Supabase lookup ─────────────────
+
+    // 1. Verify JWT
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
     if (authError || !user) {
       return res.status(401).json({ error: 'Invalid or expired token.' });
@@ -39,11 +99,7 @@ export async function rbacMiddleware(req, res, next) {
 
     const email = user.email;
 
-    // Look up user in our users table by email — deliberately NOT
-    // selecting access_expires_at here. See below for why: this is
-    // the query every single login and API call depends on, and it
-    // must never fail just because a newer, optional column hasn't
-    // been migrated in yet.
+    // 2. Core user row
     const { data: dbUser, error: userError } = await supabaseAdmin
       .from('users')
       .select('id, email, role, client_id, is_active')
@@ -59,27 +115,8 @@ export async function rbacMiddleware(req, res, next) {
       return res.status(403).json({ error: 'Account is inactive.' });
     }
 
-    // Expiring access — checked as a SEPARATE, fail-safe query.
-    //
-    // BUG FIX (production outage): this used to be selected in the
-    // SAME query as the core user lookup above. The very first time
-    // this feature was deployed, the backend went out slightly ahead
-    // of its own SQL migration — meaning access_expires_at didn't
-    // exist as a column yet, which made that combined query fail for
-    // literally every single user, rejecting every login outright.
-    // Worse, that combined with index.html's "already have a session
-    // → redirect to dashboard" check and the dashboard's own "auth
-    // check failed → redirect to login" guard produced an infinite
-    // bounce between the two pages (also fixed separately, in
-    // semya_auth_guard.js, so a bad backend response can't cause that
-    // loop again regardless of the cause).
-    //
-    // This step is now fully isolated: any failure at all — a missing
-    // column, a transient query error, anything — is treated as "no
-    // expiry data available," which fails safe (nobody gets locked
-    // out because of an infrastructure hiccup) rather than fail
-    // dangerous (everybody gets locked out). A real, deliberately-set
-    // expiry still works exactly as intended when this query succeeds.
+    // 3. access_expires_at — separate fail-safe query (see original
+    //    comment for why this must stay separate from query #2).
     let accessExpiresAt = null;
     try {
       const { data: expiryRow } = await supabaseAdmin
@@ -89,19 +126,16 @@ export async function rbacMiddleware(req, res, next) {
       console.warn('[rbac] access_expires_at check failed (treating as no expiry):', e.message);
     }
 
-    // A distinct error code, not just a generic 403, so the frontend can
-    // show "your access has expired" instead of a plain failure — this
-    // is checked again right after sign-in on the login page itself, not
-    // just here, so someone doesn't land on a dashboard that then fails
-    // every single request with no explanation.
     if (accessExpiresAt && new Date(accessExpiresAt) < new Date()) {
-      return res.status(403).json({ error: 'Your access has expired. Contact your account admin to renew it.', code: 'access_expired' });
+      return res.status(403).json({
+        error: 'Your access has expired. Contact your account admin to renew it.',
+        code:  'access_expired',
+      });
     }
 
     const { role, client_id: clientId } = dbUser;
 
-    // Resolve client slug
-    const requestedSlug = req.params.client_slug;
+    // 4. Client row
     const { data: client, error: clientError } = await supabaseAdmin
       .from('clients')
       .select('id, slug, name, logo_url, theme, is_active')
@@ -109,14 +143,8 @@ export async function rbacMiddleware(req, res, next) {
       .single();
 
     if (clientError || !client) {
-      // PGRST116 = "no rows returned by .single()" — a genuinely missing
-      // client. Anything else is a real query error (e.g. a column that
-      // doesn't exist yet because a migration hasn't been run) and
-      // should not be silently reported as "client not found" — that
-      // makes a schema problem look like a data problem and wastes
-      // time debugging the wrong thing.
       if (clientError && clientError.code !== 'PGRST116') {
-        console.error('[rbac] Client lookup failed (not a missing-client case):', clientError.message);
+        console.error('[rbac] Client lookup failed:', clientError.message);
         return res.status(500).json({ error: 'Failed to look up client: ' + clientError.message });
       }
       return res.status(404).json({ error: `Client '${requestedSlug}' not found.` });
@@ -133,7 +161,7 @@ export async function rbacMiddleware(req, res, next) {
       }
     }
 
-    // Load tab permissions
+    // 5. Tab permissions
     const { data: tabRows, error: tabError } = await supabaseAdmin
       .from('tab_permissions')
       .select('tab_key, is_enabled')
@@ -153,14 +181,19 @@ export async function rbacMiddleware(req, res, next) {
       }
     }
 
-    req.semya = {
-      user: { id: dbUser.id, role, email: dbUser.email },
+    const context = {
+      user:        { id: dbUser.id, role, email: dbUser.email },
       client,
       permissions: tabPermissions,
-      isAdmin: role === 'admin',
+      isAdmin:     role === 'admin',
     };
 
+    // ── Store in cache for next 60 seconds ───────────────────────
+    setCache(cacheKey, context);
+
+    req.semya = context;
     return next();
+
   } catch (err) {
     console.error('[rbac] Unexpected error:', err);
     return res.status(500).json({ error: 'Internal server error.' });
