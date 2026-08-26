@@ -200,10 +200,17 @@ router.get(
 
     const [{ data: clicks }, { data: convs }, { data: skuRows }] = await Promise.all([
       clickQ, convQ,
-      supabaseAdmin.from('revenue_data').select('standard_sku').eq('client_id', client.id).not('standard_sku', 'is', null).limit(2000),
+      supabaseAdmin.from('revenue_data').select('standard_sku, standard_product_name').eq('client_id', client.id).not('standard_sku', 'is', null).limit(2000),
     ]);
 
     const knownSkus = [...new Set((skuRows || []).map(r => r.standard_sku).filter(Boolean))];
+    // Build a map of SKU → product name for richer keyword matching
+    const skuToProduct = {};
+    for (const r of skuRows || []) {
+      if (r.standard_sku && r.standard_product_name) {
+        skuToProduct[r.standard_sku] = r.standard_product_name;
+      }
+    }
 
     const byCampaign = {};
     for (const c of clicks || []) {
@@ -220,24 +227,34 @@ router.get(
 
     const results = Object.values(byCampaign).map(row => ({
       ...row,
-      product: guessProductFromCampaignName(row.campaign, knownSkus),
+      product: guessProductFromCampaignName(row.campaign, knownSkus, skuToProduct),
     })).sort((a, b) => b.clicks - a.clicks);
 
     return res.json(results);
   }
 );
 
-// Splits a campaign name into tokens and looks for the token sequence
-// that best overlaps with a known SKU's own tokens. Best-effort only.
-function guessProductFromCampaignName(campaignName, knownSkus) {
+// Splits a campaign name into tokens and matches against product names
+// (not SKU codes) for much better inference. e.g. "garlic_oil_capsule"
+// matches "Garlic Oil Capsule 500mg" even if the SKU is "FSO-B-30".
+function guessProductFromCampaignName(campaignName, knownSkus, skuToProduct = {}) {
   if (!campaignName || !knownSkus.length) return null;
   const tokens = campaignName.toLowerCase().split(/[_\-\s]+/).filter(t => t.length > 2);
 
   let best = null, bestScore = 0;
   for (const sku of knownSkus) {
+    // First try matching against product name words (plain English)
+    const productName = skuToProduct[sku] || '';
+    const productTokens = productName.toLowerCase().split(/[_\-\s,]+/).filter(t => t.length > 2);
+    // Also try SKU tokens as fallback
     const skuTokens = sku.toLowerCase().split(/[_\-\s]+/).filter(t => t.length > 2);
-    const overlap = skuTokens.filter(t => tokens.includes(t)).length;
-    if (overlap > bestScore) { bestScore = overlap; best = sku; }
+    const allTokens = [...new Set([...productTokens, ...skuTokens])];
+    const overlap = allTokens.filter(t => tokens.includes(t)).length;
+    if (overlap > bestScore) {
+      bestScore = overlap;
+      // Return product name if available, otherwise SKU
+      best = productName || sku;
+    }
   }
   return bestScore > 0 ? best : null;
 }
