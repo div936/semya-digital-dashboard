@@ -320,7 +320,7 @@ router.get(
         prevFrom2 += prevPageSize;
       }
       // Revenue: exclude cancelled. Orders: count all (including cancelled).
-      const prevNonCancel = (prevRows || []).filter(r => r.standard_status !== 'Cancelled' && Number(r.standard_revenue) > 0);
+      const prevNonCancel = (prevRows || []).filter(r => r.standard_status !== 'Cancelled' && r.standard_status !== 'Returned' && Number(r.standard_revenue) > 0);
       const prevAllMain   = (prevRows || []).filter(r => Number(r.standard_revenue) > 0);
       summary.prevGrandTotal = prevNonCancel.reduce((s, r) => s + Number(r.standard_revenue), 0);
       summary.prevUnits      = prevNonCancel.reduce((s, r) => s + Number(r.standard_units  || 0), 0);
@@ -1024,7 +1024,7 @@ async function aggregatePlatformSales(rows, excludeStatuses = new Set(), exclude
     // is in the period regardless of order_date — those are collected
     // in the separate cancelledInPeriod set built in the second pass below.
 
-    const isCancelled = row.standard_status === 'Cancelled';
+    const isCancelled = row.standard_status === 'Cancelled' || row.standard_status === 'Returned';
     const isMainRow   = Number(row.standard_revenue ?? 0) > 0;
 
     const p   = row.platform;
