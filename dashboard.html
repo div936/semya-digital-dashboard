@@ -8038,6 +8038,9 @@ async function switchClient(newSlug) {
   state.clientSlug = newSlug;
   tabCache = {}; // every tab's data belongs to the previous client — drop it all
   _sidebarCache = {};
+  // Reset all per-tab state so stale data can never bleed into the new client
+  psState._lastData = null;
+  if (typeof ciState !== 'undefined') ciState._lastData = null;
   // Clear Platform Health immediately so stale data from the previous
   // client isn't visible while the new client's data loads
   const phList = document.getElementById('platformHealthList');
