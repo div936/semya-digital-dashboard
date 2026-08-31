@@ -8,23 +8,49 @@
 //   1. Pull a data summary from revenue_data + campaign_data
 //      for this client (last 30 days, or since the upload's date)
 //   2. Collect raw_extras samples (unmapped columns) from the upload
-//   3. Build a structured prompt and call claude-sonnet-4-6
+//   3. Build a structured prompt and call Gemini
 //   4. Parse the JSON response into typed insight objects
 //   5. Soft-delete previous active insights, insert new batch
 //
 // Called from fileIngestion.js (fire-and-forget after upload success)
 // and from insightsRouter.js (on-demand regenerate endpoint).
 // ─────────────────────────────────────────────────────────────────
-import Anthropic       from '@anthropic-ai/sdk';
 import { supabaseAdmin } from './supabase.js';
 import { toISTDateString } from './dateUtils.js';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+// Uses Gemini REST API — no SDK needed, same approach as insightsRouter.js.
+// Reads GEMINI_API_KEY from the environment (set this in Render → Environment).
+const GEMINI_MODEL = 'gemini-1.5-flash';
 
-const MODEL      = 'claude-sonnet-4-6';
-const MAX_TOKENS = 1500;
+async function callGemini(prompt, maxTokens = 1500) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('GEMINI_API_KEY is not set in environment variables.');
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+    {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: maxTokens },
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Gemini API error ${res.status}: ${err}`);
+  }
+
+  const json = await res.json();
+  const text = json?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  // Gemini doesn't return token counts in the same shape as Claude,
+  // but usageMetadata is available when present.
+  const tokensUsed = (json?.usageMetadata?.promptTokenCount || 0) +
+                     (json?.usageMetadata?.candidatesTokenCount || 0);
+  return { text, tokensUsed };
+}
 
 
 // ═══════════════════════════════════════════════════════════════════
@@ -53,18 +79,15 @@ export async function generateInsights({ clientId, uploadId = null, platform = n
   // 2. Build prompt
   const prompt = buildPrompt(summary);
 
-  // 3. Call Claude
+  // 3. Call Gemini
   let rawResponse;
+  let tokensUsed = 0;
   try {
-    const message = await anthropic.messages.create({
-      model:      MODEL,
-      max_tokens: MAX_TOKENS,
-      messages:   [{ role: 'user', content: prompt }],
-    });
-    rawResponse = message.content[0]?.text || '';
-    var tokensUsed = message.usage.input_tokens + message.usage.output_tokens;
+    const result = await callGemini(prompt, 1500);
+    rawResponse = result.text;
+    tokensUsed  = result.tokensUsed;
   } catch (err) {
-    console.error('[insights] Anthropic API error:', err.message);
+    console.error('[insights] Gemini API error:', err.message);
     throw new Error('AI generation failed: ' + err.message);
   }
 
@@ -92,7 +115,7 @@ export async function generateInsights({ clientId, uploadId = null, platform = n
     confidence:   ins.confidence,
     platform:     ins.platform || null,
     sku:          ins.sku || null,
-    model:        MODEL,
+    model:        GEMINI_MODEL,
     is_active:    true,
   }));
 
@@ -155,7 +178,7 @@ export async function generateNarrativeSummaries({ clientId }) {
     );
   }
 
-  // Only ask Claude about scopes that actually have data — no point
+  // Only ask Gemini about scopes that actually have data — no point
   // spending tokens (or making up a paragraph) for a platform that's
   // never been uploaded.
   const scopesWithData = scopes.filter(s => scopeSummaries[s].hasData);
@@ -164,15 +187,10 @@ export async function generateNarrativeSummaries({ clientId }) {
   if (scopesWithData.length) {
     const prompt = buildNarrativePrompt(scopesWithData, scopeSummaries);
     try {
-      const message = await anthropic.messages.create({
-        model:      MODEL,
-        max_tokens: 2200,
-        messages:   [{ role: 'user', content: prompt }],
-      });
-      const raw = message.content[0]?.text || '';
+      const { text: raw } = await callGemini(prompt, 2200);
       parsed = parseNarrativeResponse(raw);
     } catch (err) {
-      console.error('[narrative] Anthropic API error:', err.message);
+      console.error('[narrative] Gemini API error:', err.message);
       // Don't throw — fall through and write "not enough data" rows for
       // everything rather than leaving the sidebar stuck on skeletons.
     }
@@ -188,7 +206,7 @@ export async function generateNarrativeSummaries({ clientId }) {
         pointers:   Array.isArray(s.pointers) ? s.pointers.slice(0, 5) : [],
         confidence: typeof s.confidence === 'number' ? Math.min(100, Math.max(0, s.confidence)) : null,
         has_data:   true,
-        model:      MODEL,
+        model:      GEMINI_MODEL,
       };
     }
     return {
@@ -200,7 +218,7 @@ export async function generateNarrativeSummaries({ clientId }) {
       pointers:  [],
       confidence: null,
       has_data:  scopeSummaries[scope].hasData,
-      model:     MODEL,
+      model:     GEMINI_MODEL,
     };
   });
 
