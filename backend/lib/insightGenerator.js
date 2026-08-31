@@ -27,7 +27,7 @@ async function callGemini(prompt, maxTokens = 1500) {
   if (!apiKey) throw new Error('GEMINI_API_KEY is not set in environment variables.');
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
     {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
