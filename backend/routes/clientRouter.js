@@ -367,6 +367,8 @@ router.get(
 
     const revenueOnSpendDatesByPlatform = {};
     for (const row of dataForSummary) {
+      // Exclude cancelled/returned orders — same logic as aggregatePlatformSales
+      if (row.standard_status === 'Cancelled' || row.standard_status === 'Returned') continue;
       const p = row.platform;
       const spendDates = spendDatesByPlatform[p];
       if (spendDates && row.order_date && spendDates.has(row.order_date)) {
@@ -652,6 +654,11 @@ function aggregateCampaignInsights(campaignRows, revenueRows) {
   for (const row of revenueRows) {
     const p = row.platform;
     if (!byPlatform[p]) byPlatform[p] = { platform: p, spend: 0, campaignRevenue: 0 };
+    // Exclude cancelled/returned orders from ROAS revenue — same logic as
+    // aggregatePlatformSales. Including them inflates the revenue side of
+    // the ratio, making ROAS look better than it actually is.
+    const isCancelled = row.standard_status === 'Cancelled' || row.standard_status === 'Returned';
+    if (isCancelled) continue;
     const coveredDates = campaignDatesByPlatform[p];
     const inCoverage = !coveredDates || coveredDates.size === 0 || coveredDates.has(row.order_date);
     if (inCoverage) {
@@ -748,9 +755,10 @@ function aggregateCampaignInsights(campaignRows, revenueRows) {
     byWeekSpend[wk] = (byWeekSpend[wk] || 0) + (Number(row.standard_spend) || 0);
   }
 
-  // Map actual order revenue to the same week buckets
+  // Map actual order revenue to the same week buckets (cancelled/returned excluded)
   for (const row of revenueRows) {
     if (!row.order_date) continue;
+    if (row.standard_status === 'Cancelled' || row.standard_status === 'Returned') continue;
     const p            = row.platform;
     const coveredDates = campaignDatesByPlatform[p];
     // Only count revenue on dates where we have campaign spend data
