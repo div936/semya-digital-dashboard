@@ -47,6 +47,7 @@ export const REVENUE_MAP = {
   // inferCategory() below) — a short SKU code alone rarely contains
   // enough signal to guess a product category from.
   'product name':               'standard_product_name',
+  'product-name':               'standard_product_name',   // Amazon order export (hyphenated)
   'product title':               'standard_product_name',
   'lineitem name':              'standard_product_name',   // Shopify order export (Meta/Instagram Shop) — was missing entirely, root cause of Meta rows showing no product name
 
@@ -166,6 +167,10 @@ export const REVENUE_MAP = {
   // fileIngestion.js) can use it as its most-reliable tier, matching
   // the old dashboard's 3-tier dedup design.
   'order item id':              'standard_order_item_id',
+  'order-item-id':              'standard_order_item_id',   // Amazon report export (hyphenated)
+  'order_item_id':              'standard_order_item_id',   // underscore variant
+  'line item id':               'standard_order_item_id',
+  'lineitem id':                'standard_order_item_id',
   'financial status':           'financial_status',   // Shopify order export — paid/pending/refunded/voided
   'item status':                'standard_status',
   'fulfillment status':         'fulfillment_status',
