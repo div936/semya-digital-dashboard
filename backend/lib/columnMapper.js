@@ -255,6 +255,10 @@ export const SKU_CATEGORY_KEYWORDS = [
 
 export function inferCategory(productName, sku) {
   const nameLower = (productName || '').toLowerCase();
+  // Try client-specific keyword lists first (currently Neat Everyday product lines).
+  // If no match, fall back to the product name itself as the category —
+  // this makes it work for any client (e.g. Daluci) whose products don't
+  // appear in these lists, without needing per-client keyword configuration.
   for (const [category, keywords] of CATEGORY_KEYWORDS) {
     if (keywords.some(kw => nameLower.includes(kw))) return category;
   }
@@ -262,6 +266,12 @@ export function inferCategory(productName, sku) {
   for (const [category, keywords] of SKU_CATEGORY_KEYWORDS) {
     if (keywords.some(kw => skuLower.includes(kw))) return category;
   }
+  // For any client whose products aren't in the keyword lists above:
+  // use the product name directly as the category label (e.g. Amazon's
+  // "Portfolio name" maps to standard_product_name and becomes the category).
+  // Cap at 60 chars to avoid using a long product title as a category label.
+  const name = (productName || '').trim();
+  if (name.length > 0 && name.length <= 60) return name;
   return 'Uncategorized';
 }
 
@@ -273,6 +283,39 @@ export const CAMPAIGN_MAP = {
 
   // ── Campaign name ─────────────────────────────────────────────
   'campaign name':              'campaign_name',
+
+  // ── Product / Portfolio name ───────────────────────────────────
+  // Amazon Ads exports include a "Portfolio name" column that contains
+  // the product category/line name (e.g. "Paper Air Fryer Liner").
+  // Capturing it as standard_product_name means product breakdowns work
+  // for Amazon without any hardcoded keywords or guessing.
+  'portfolio name':             'standard_product_name',
+  'portfolio':                  'standard_product_name',
+  'product group':              'standard_product_name',
+  'product category':           'standard_product_name',
+
+  // ── Amazon campaign extra metrics ─────────────────────────────
+  // These were dropping into raw_extras unused. Mapping them makes
+  // ACOS, CPC, and CTR available for campaign analysis.
+  'total advertising cost of sales (acos)': 'standard_acos',
+  'acos':                       'standard_acos',
+  'click-through rate (ctr)':   'standard_ctr',
+  'ctr':                        'standard_ctr',
+  'cost per click (cpc)':       'standard_cpc',
+  'cpc':                        'standard_cpc',
+  'average cpc':                'standard_cpc',
+  'avg. cpc':                   'standard_cpc',
+
+  // ── Meta campaign extra metrics ────────────────────────────────
+  // High-value columns sitting unused in raw_extras.
+  'adds to cart':               'standard_adds_to_cart',
+  'checkouts initiated':        'standard_checkouts_initiated',
+  'cost per purchase (inr)':    'standard_cost_per_purchase',
+  'cost per purchase':          'standard_cost_per_purchase',
+  'purchases':                  'standard_orders',       // Meta's purchase count = orders
+  'results':                    'standard_orders',       // fallback for Meta results column
+  'cpc (cost per link click) (inr)': 'standard_cpc',
+  'cpc (all) (inr)':            'standard_cpc',
   'campaign':                   'campaign_name',
   'ad campaign name':           'campaign_name',
   'campaign title':             'campaign_name',
@@ -804,7 +847,63 @@ export function detectFallbackMapping(rawRows, dictionaryMap) {
   return extra;
 }
 
-export function normaliseBatch(rawRows, map, { clientId, platform, uploadId, defaultDate } = {}) {
+// ── extractProductFromCampaignName ────────────────────────────────
+// Uses a client-configured naming pattern to extract a product name
+// from a campaign name string. Called during normalisation for campaign
+// rows that have no Portfolio name / product column.
+//
+// pattern shape (stored per-client in DB as campaign_naming_patterns):
+// [
+//   {
+//     "platform": "flipkart",
+//     "delimiter": "_",
+//     "product_segment_index": 5,   // 0-based, from the end use negative
+//     "product_segment_end": -1,    // optional: slice end (exclusive, negative = from end)
+//     "strip_suffix": ["_SP","_CPC"] // optional: remove these from extracted value
+//   },
+//   {
+//     "platform": "meta",
+//     "delimiter": "_",
+//     "product_segment_index": 4
+//   }
+// ]
+export function extractProductFromCampaignName(campaignName, platform, patterns) {
+  if (!campaignName || !patterns || !patterns.length) return null;
+  const pattern = patterns.find(p => p.platform === platform);
+  if (!pattern) return null;
+
+  try {
+    const delim   = pattern.delimiter || '_';
+    const parts   = campaignName.split(delim);
+    const idx     = pattern.product_segment_index ?? null;
+    const endIdx  = pattern.product_segment_end   ?? null;
+
+    if (idx === null) return null;
+
+    // Support negative indices (from end)
+    const resolveIdx = (i, len) => i < 0 ? len + i : i;
+    const start = resolveIdx(idx, parts.length);
+    const end   = endIdx != null ? resolveIdx(endIdx, parts.length) : start + 1;
+
+    let product = parts.slice(start, end).join(delim).trim();
+    if (!product) return null;
+
+    // Strip known suffixes (e.g. "_SP", "_CPC")
+    for (const suffix of (pattern.strip_suffix || [])) {
+      if (product.endsWith(suffix)) product = product.slice(0, -suffix.length).trim();
+    }
+
+    // Skip junk/placeholder values
+    const junkValues = ['not use pause stop', 'pause', 'stop', 'test', 'do not use', ''];
+    if (junkValues.includes(product.toLowerCase())) return null;
+
+    return product || null;
+  } catch {
+    return null;
+  }
+}
+
+export function normaliseBatch(rawRows, map, { clientId, platform, uploadId, defaultDate, campaignNamingPatterns } = {}) {
   const rows = [];
   let skipped = 0;
   const dateField = map === REVENUE_MAP ? 'order_date' : 'campaign_date';
@@ -816,6 +915,19 @@ export function normaliseBatch(rawRows, map, { clientId, platform, uploadId, def
     // file rather than a per-row date column — fall back to it here.
     if (!standardFields[dateField] && defaultDate) {
       standardFields[dateField] = defaultDate;
+    }
+
+    // For campaign rows with no product name column (e.g. Meta, Google,
+    // Flipkart), try to extract one from the campaign name using the
+    // client's configured naming pattern. Only runs when:
+    //   1. This is a campaign batch (not revenue)
+    //   2. No product name was already captured (e.g. Amazon Portfolio name)
+    //   3. A naming pattern is configured for this client+platform
+    if (map !== REVENUE_MAP && !standardFields.standard_product_name && campaignNamingPatterns) {
+      const extracted = extractProductFromCampaignName(
+        standardFields.campaign_name, platform, campaignNamingPatterns
+      );
+      if (extracted) standardFields.standard_product_name = extracted;
     }
 
     // Skip rows with no identifiable revenue or SKU at all (i.e. the
