@@ -44,9 +44,15 @@ async function callGemini(prompt, maxTokens = 1500) {
   }
 
   const json = await res.json();
-  const text = json?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  // Gemini doesn't return token counts in the same shape as Claude,
-  // but usageMetadata is available when present.
+  const candidate = json?.candidates?.[0];
+  const text = candidate?.content?.parts?.[0]?.text || '';
+
+  // Warn if Gemini stopped early due to token limit — this causes truncated JSON
+  const finishReason = candidate?.finishReason;
+  if (finishReason && finishReason !== 'STOP') {
+    console.warn(`[gemini] Response stopped with reason: ${finishReason} — output may be truncated`);
+  }
+
   const tokensUsed = (json?.usageMetadata?.promptTokenCount || 0) +
                      (json?.usageMetadata?.candidatesTokenCount || 0);
   return { text, tokensUsed };
@@ -83,7 +89,7 @@ export async function generateInsights({ clientId, uploadId = null, platform = n
   let rawResponse;
   let tokensUsed = 0;
   try {
-    const result = await callGemini(prompt, 1500);
+    const result = await callGemini(prompt, 3000);
     rawResponse = result.text;
     tokensUsed  = result.tokensUsed;
   } catch (err) {
@@ -187,7 +193,7 @@ export async function generateNarrativeSummaries({ clientId }) {
   if (scopesWithData.length) {
     const prompt = buildNarrativePrompt(scopesWithData, scopeSummaries);
     try {
-      const { text: raw } = await callGemini(prompt, 2200);
+      const { text: raw } = await callGemini(prompt, 4000);
       parsed = parseNarrativeResponse(raw);
     } catch (err) {
       console.error('[narrative] Gemini API error:', err.message);
@@ -301,7 +307,7 @@ ${blocks}
 
 INSTRUCTIONS:
 For each scope listed above, respond with:
-- "narrative": a 2-3 sentence passage summarising overall performance in plain language — call out what's working, what's not, and one concrete forward-looking suggestion (e.g. which product to push harder, where to shift ad spend). If campaign data exists for that scope, comment on ad performance (RoAS/CTR) specifically, not just revenue.
+- "narrative": MAX 2 short sentences summarising performance and one concrete suggestion. Keep under 250 characters total.
 - "pointers": 3-4 short bullet-point strings (each under 15 words) — the key numbers/facts a reader would want to scan quickly.
 - "confidence": 0-100, how confident you are in this read given the data volume available.
 
@@ -549,7 +555,7 @@ Respond ONLY with a valid JSON array. No preamble, no markdown, no backticks.
 Each object must have exactly these fields:
 - "type": one of "warn", "positive", or "neutral"
 - "tag": a short emoji + label string, max 40 chars (e.g. "⚠ Inventory Burn Rate")
-- "body": 2-3 sentence actionable insight. Include specific numbers from the data. Use HTML <strong> tags for key figures only.
+- "body": MAX 2 short sentences. Include 1-2 specific numbers. Use HTML <strong> tags for key figures only. Keep under 200 characters total.
 - "confidence": a number 0-100 representing your confidence in this insight
 - "platform": the most relevant platform string, or null if cross-platform
 - "sku": the most relevant SKU, or null if cross-SKU
