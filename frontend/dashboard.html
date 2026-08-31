@@ -4030,10 +4030,14 @@ function _gatherTabData(tabKey) {
 
 // ── Build a cache key that changes whenever date/platform/tab changes ─
 function _sidebarCacheKey(tabKey) {
-  const df = (tabKey==='platform_sales'?psState.dateFrom : tabKey==='campaign_insights'?ciState.dateFrom : psState.dateFrom) || '';
-  const dt = (tabKey==='platform_sales'?psState.dateTo   : tabKey==='campaign_insights'?ciState.dateTo   : psState.dateTo)   || '';
-  const pl = (tabKey==='platform_sales'?psState.platform : tabKey==='campaign_insights'?ciState.platform : '') || 'all';
-  return tabKey + '|' + df + '|' + dt + '|' + pl;
+  const df     = (tabKey==='platform_sales'?psState.dateFrom : tabKey==='campaign_insights'?ciState.dateFrom : psState.dateFrom) || '';
+  const dt     = (tabKey==='platform_sales'?psState.dateTo   : tabKey==='campaign_insights'?ciState.dateTo   : psState.dateTo)   || '';
+  const pl     = (tabKey==='platform_sales'?psState.platform : tabKey==='campaign_insights'?ciState.platform : '') || 'all';
+  // Include clientSlug so switching clients always invalidates the cache —
+  // without this, Neat's sidebar HTML was returned for Daluci when the
+  // same tab/date/platform was active for both clients.
+  const client = state.clientSlug || '';
+  return tabKey + '|' + client + '|' + df + '|' + dt + '|' + pl;
 }
 
 // ── Format helpers for the prompt ────────────────────────────────────
@@ -8034,6 +8038,19 @@ async function switchClient(newSlug) {
   state.clientSlug = newSlug;
   tabCache = {}; // every tab's data belongs to the previous client — drop it all
   _sidebarCache = {};
+  // Reset all per-tab state so stale data can never bleed into the new client
+  psState._lastData = null;
+  if (typeof ciState !== 'undefined') ciState._lastData = null;
+  // Clear Platform Health immediately so stale data from the previous
+  // client isn't visible while the new client's data loads
+  const phList = document.getElementById('platformHealthList');
+  if (phList) phList.innerHTML = '<div class="skel skel-insight" style="height:32px;margin-bottom:6px;"></div><div class="skel skel-insight" style="height:32px;margin-bottom:6px;"></div><div class="skel skel-insight" style="height:32px;"></div>';
+  // Clear AI sidebar too
+  const aiList = document.getElementById('aiInsightsList');
+  if (aiList) aiList.innerHTML = '<div class="skel skel-insight"></div><div class="skel skel-insight"></div>';
+  // Reset SKU dropdown — it's per-client
+  _skuOptions = [];
+  populateSkuDropdown([]);
   try {
     const cfg = await apiFetch('/clients/' + newSlug + '/dashboard-config');
     _lastDashboardConfig = cfg;
