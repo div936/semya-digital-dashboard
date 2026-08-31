@@ -1028,6 +1028,9 @@
     .progress-vals   { display: flex; align-items: center; gap: 8px; font-size: 11px; }
     .progress-achieved { font-family: var(--font-mono); font-weight: 700; color: var(--theme-primary); }
     .progress-target   { font-family: var(--font-mono); color: #94a3b8; }
+    .toggle-btn { font-size:11px;font-weight:600;padding:3px 10px;border-radius:6px;border:1px solid #e2e8f0;background:#f8fafc;color:#64748b;cursor:pointer;transition:all .15s; }
+    .toggle-btn:hover { background:#f1f5f9;color:#334155; }
+    .toggle-btn.active-toggle { background:var(--theme-primary,#0f172a);color:#fff;border-color:var(--theme-primary,#0f172a); }
     .progress-pct      { font-size: 11px; font-weight: 800; padding: 2px 7px; border-radius: 99px; }
     .progress-pct.over   { background: #f0fdf4; color: #059669; }
     .progress-pct.on     { background: #eff6ff; color: #0284c7; }
@@ -1679,7 +1682,11 @@
         <div class="card">
           <div class="card-header">
             <span class="card-title">RoAS Trend</span>
-            <span class="card-badge">Weekly</span>
+            <div style="display:flex;gap:4px;">
+              <button id="ciRoasToggleWeek"  onclick="setCiRoasPeriod('week')"  class="toggle-btn active-toggle">Weekly</button>
+              <button id="ciRoasToggleMonth" onclick="setCiRoasPeriod('month')" class="toggle-btn">Monthly</button>
+              <button id="ciRoasToggleYear"  onclick="setCiRoasPeriod('year')"  class="toggle-btn">Yearly</button>
+            </div>
           </div>
           <div class="chart-wrap" style="height:220px;">
             <canvas id="ciRoasChart"></canvas>
@@ -5379,6 +5386,28 @@ function _updateCISortIndicators() {
   });
 }
 
+function setCiRoasPeriod(period) {
+  const data = window._ciRoasPayload;
+  if (!data) return;
+  const rows = data[period] || data.week;
+  const labels = rows.map(w => w.label);
+  const vals   = rows.map(w => w.roas != null ? +w.roas.toFixed(2) : null);
+  const targets = rows.map(() => 4);
+  renderOrUpdateChart('ciRoasChart', '_ciRoasChart', {
+    type: 'line',
+    data: { labels, datasets: [
+      { label: 'Blended RoAS', data: vals,    borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.06)', pointBackgroundColor: '#7c3aed', pointRadius: 5, pointHoverRadius: 7, tension: 0.4, fill: true, borderWidth: 2 },
+      { label: 'Target (4x)',  data: targets, borderColor: '#d97706', backgroundColor: 'transparent', pointRadius: 0, borderDash: [6,4], borderWidth: 1.5 }
+    ]},
+    options: lineChartOptions('', 'x', 1),
+  });
+  // Update active toggle button state
+  ['week','month','year'].forEach(p => {
+    const btn = document.getElementById('ciRoasToggle' + p.charAt(0).toUpperCase() + p.slice(1));
+    if (btn) btn.classList.toggle('active-toggle', p === period);
+  });
+}
+
 function renderCI(payload) {
   const campaigns = payload.campaigns || [];
   const totalSpend  = payload.totalSpend  != null ? payload.totalSpend  : campaigns.reduce((s, c) => s + (c.standard_spend || 0), 0);
@@ -5419,23 +5448,14 @@ function renderCI(payload) {
   document.getElementById('ciKpiClicksDelta').innerHTML = '';
   document.getElementById('ciKpiClicksSub').innerHTML   = 'Avg CTR: ' + avgCTR.toFixed(2) + '% · ' + fmtUnits(totalImpr) + ' impressions';
 
-  // Use real weekly ROAS data from backend (weeklyRoas array) instead of
-  // hardcoded placeholder values. Falls back to a single current-value
-  // point if the backend doesn't return trend data.
-  const weeklyRoasData = payload.weeklyRoas && payload.weeklyRoas.length
-    ? payload.weeklyRoas
-    : [{ label: 'Current', roas: blendedRoas }];
-  const ciWeeks    = weeklyRoasData.map(w => w.label);
-  const ciRoasVals = weeklyRoasData.map(w => w.roas != null ? +w.roas.toFixed(2) : null);
-  const ciTargets  = weeklyRoasData.map(() => 4);
-  renderOrUpdateChart('ciRoasChart', '_ciRoasChart', {
-    type: 'line',
-    data: { labels: ciWeeks, datasets: [
-      { label: 'Blended RoAS', data: ciRoasVals, borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.06)', pointBackgroundColor: '#7c3aed', pointRadius: 5, pointHoverRadius: 7, tension: 0.4, fill: true, borderWidth: 2 },
-      { label: 'Target (4x)',  data: ciTargets,  borderColor: '#d97706', backgroundColor: 'transparent', pointRadius: 0, borderDash: [6,4], borderWidth: 1.5 }
-    ]},
-    options: lineChartOptions('', 'x', 1),
-  });
+  // Store all three granularities so the toggle can switch without re-fetching
+  window._ciRoasPayload = {
+    week:  payload.weeklyRoas  && payload.weeklyRoas.length  ? payload.weeklyRoas  : [{ label: 'Current', roas: blendedRoas }],
+    month: payload.monthlyRoas && payload.monthlyRoas.length ? payload.monthlyRoas : null,
+    year:  payload.yearlyRoas  && payload.yearlyRoas.length  ? payload.yearlyRoas  : null,
+  };
+  // Reset toggle to Weekly on new data load
+  setCiRoasPeriod('week');
 
   const byPlatform = {};
   campaigns.forEach(c => { byPlatform[c.platform] = (byPlatform[c.platform]||0) + (c.standard_spend||0); });
