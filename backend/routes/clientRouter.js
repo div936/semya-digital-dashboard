@@ -735,45 +735,71 @@ function aggregateCampaignInsights(campaignRows, revenueRows) {
   // This ensures the chart matches the KPI blendedRoas number.
   const byWeekSpend  = {};
   const byWeekActRev = {};
+  const byMonthSpend  = {};
+  const byMonthActRev = {};
+  const byYearSpend   = {};
+  const byYearActRev  = {};
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
   // Build campaign date coverage per platform (same as platformSummary above)
   for (const row of campaignRows) {
     if (!row.campaign_date) continue;
     const d      = new Date(row.campaign_date);
-    const jan1   = new Date(d.getFullYear(), 0, 1);
+    const yr     = d.getFullYear();
+    const jan1   = new Date(yr, 0, 1);
     const wkNum  = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
-    const wk     = d.getFullYear() + '-W' + String(wkNum).padStart(2, '0');
-    byWeekSpend[wk] = (byWeekSpend[wk] || 0) + (Number(row.standard_spend) || 0);
+    const wk     = yr + '-W' + String(wkNum).padStart(2, '0');
+    const mo     = yr + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    const ye     = String(yr);
+    byWeekSpend[wk]   = (byWeekSpend[wk]   || 0) + (Number(row.standard_spend) || 0);
+    byMonthSpend[mo]  = (byMonthSpend[mo]  || 0) + (Number(row.standard_spend) || 0);
+    byYearSpend[ye]   = (byYearSpend[ye]   || 0) + (Number(row.standard_spend) || 0);
   }
 
-  // Map actual order revenue to the same week buckets (cancelled/returned excluded)
+  // Map actual order revenue to week/month/year buckets (cancelled/returned excluded)
   for (const row of revenueRows) {
     if (!row.order_date) continue;
     if (row.standard_status === 'Cancelled' || row.standard_status === 'Returned') continue;
     const p            = row.platform;
     const coveredDates = campaignDatesByPlatform[p];
-    // Only count revenue on dates where we have campaign spend data
     const inCoverage   = !coveredDates || coveredDates.size === 0 ||
                          coveredDates.has(row.order_date);
     if (!inCoverage) continue;
     const d      = new Date(row.order_date);
-    const jan1   = new Date(d.getFullYear(), 0, 1);
+    const yr     = d.getFullYear();
+    const jan1   = new Date(yr, 0, 1);
     const wkNum  = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
-    const wk     = d.getFullYear() + '-W' + String(wkNum).padStart(2, '0');
-    byWeekActRev[wk] = (byWeekActRev[wk] || 0) + (Number(row.standard_revenue) || 0);
+    const wk     = yr + '-W' + String(wkNum).padStart(2, '0');
+    const mo     = yr + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    const ye     = String(yr);
+    byWeekActRev[wk]  = (byWeekActRev[wk]  || 0) + (Number(row.standard_revenue) || 0);
+    byMonthActRev[mo] = (byMonthActRev[mo] || 0) + (Number(row.standard_revenue) || 0);
+    byYearActRev[ye]  = (byYearActRev[ye]  || 0) + (Number(row.standard_revenue) || 0);
   }
 
-  const weeklyRoas = Object.keys(byWeekSpend)
-    .sort()
-    .map(wk => {
-      const spend = byWeekSpend[wk]  || 0;
-      const rev   = byWeekActRev[wk] || 0; // actual order revenue, not campaign self-reported
-      const [yr, wStr] = wk.split('-W');
-      const wn = parseInt(wStr, 10);
-      const weekStart = new Date(parseInt(yr, 10), 0, 1 + (wn - 1) * 7);
-      const label = 'W' + wn + ' ' + weekStart.toLocaleDateString('en-IN', { month: 'short' });
-      return { week: wk, label, spend, rev, roas: spend > 0 ? +(rev / spend).toFixed(2) : null };
-    });
+  const weeklyRoas = Object.keys(byWeekSpend).sort().map(wk => {
+    const spend = byWeekSpend[wk] || 0;
+    const rev   = byWeekActRev[wk] || 0;
+    const [yr, wStr] = wk.split('-W');
+    const wn = parseInt(wStr, 10);
+    const weekStart = new Date(parseInt(yr, 10), 0, 1 + (wn - 1) * 7);
+    const label = 'W' + wn + ' ' + weekStart.toLocaleDateString('en-IN', { month: 'short' });
+    return { key: wk, label, spend, rev, roas: spend > 0 ? +(rev / spend).toFixed(2) : null };
+  });
+
+  const monthlyRoas = Object.keys(byMonthSpend).sort().map(mo => {
+    const spend = byMonthSpend[mo] || 0;
+    const rev   = byMonthActRev[mo] || 0;
+    const [yr, mn] = mo.split('-');
+    const label = MONTHS[parseInt(mn, 10) - 1] + ' \'' + yr.slice(2);
+    return { key: mo, label, spend, rev, roas: spend > 0 ? +(rev / spend).toFixed(2) : null };
+  });
+
+  const yearlyRoas = Object.keys(byYearSpend).sort().map(ye => {
+    const spend = byYearSpend[ye] || 0;
+    const rev   = byYearActRev[ye] || 0;
+    return { key: ye, label: ye, spend, rev, roas: spend > 0 ? +(rev / spend).toFixed(2) : null };
+  });
 
   return {
     platformSummary,
@@ -781,7 +807,9 @@ function aggregateCampaignInsights(campaignRows, revenueRows) {
     totalRevenue,
     totalFullPeriodRevenue,
     overallRoas:  totalSpend > 0 ? +(totalRevenue / totalSpend).toFixed(2) : null,
-    weeklyRoas,   // real weekly ROAS trend — used by the frontend chart
+    weeklyRoas,
+    monthlyRoas,
+    yearlyRoas,
     fulfillmentBreakdown,
     topProducts,
   };
