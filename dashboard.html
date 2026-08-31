@@ -1129,159 +1129,6 @@
       font-size: 10px; font-weight: 800; margin-left: 6px;
     }
     @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-
-    /* ═══════════════════════════════════════════════════════════════
-       RESPONSIVE SYSTEM — covers 13" (1280px), 15" (1440px), wide
-       Breakpoints:
-         ≤1366px  → "compact"  (13" laptop)
-         ≤1199px  → "narrow"   (small window / low-res)
-    ═══════════════════════════════════════════════════════════════ */
-
-    /* ── 15" and larger: already designed for, just fine-tune ── */
-    @media (max-width: 1440px) {
-      .kpi-value.revenue-kpi { font-size: 28px; }
-      .kpi-value              { font-size: 26px; }
-    }
-
-    /* ── 13" laptop compact mode (≤1366px) ── */
-    @media (max-width: 1366px) {
-
-      /* Shrink sidebar to reclaim main-area width */
-      .layout {
-        grid-template-columns: 1fr 272px;
-      }
-      .sidebar {
-        padding: 16px 16px 16px 4px;
-        gap: 12px;
-      }
-
-      /* Tighten main padding */
-      .main {
-        padding: 14px 14px 14px 18px;
-        gap: 12px;
-      }
-
-      /* Reduce header height slightly */
-      .header {
-        padding: 0 18px;
-      }
-      .nav-tab {
-        padding: 0 13px;
-        font-size: 11.5px;
-        height: 40px;
-      }
-
-      /* KPI values scale down */
-      .kpi-value              { font-size: 24px; }
-      .kpi-value.revenue-kpi  { font-size: 26px; }
-      .kpi-card               { padding: 16px; }
-      .kpi-label              { margin-bottom: 7px; }
-
-      /* 4-col KPI: on 13" with 272px sidebar each card is ~198px — still OK */
-      /* kpi-grid-4 stays 4-col at 1366 */
-
-      /* Campaign cards 3→2 */
-      .campaign-cards { grid-template-columns: repeat(2, 1fr); }
-
-      /* Mid/bot grids get slightly less gap */
-      .mid-grid { gap: 12px; }
-      .bot-grid { gap: 12px; }
-
-      /* Toolbar — prevent multi-row wrapping by condensing elements */
-      .tab-toolbar {
-        gap: 7px;
-        flex-wrap: nowrap;          /* prefer single row */
-        overflow-x: auto;           /* scroll if truly too wide */
-        scrollbar-width: none;      /* hide scrollbar (Firefox) */
-        -ms-overflow-style: none;
-      }
-      .tab-toolbar::-webkit-scrollbar { display: none; }
-
-      /* Date inputs shrink */
-      .date-input {
-        font-size: 11px;
-        padding: 0 7px;
-        height: 30px;
-        max-width: 108px;
-      }
-      .date-sep { display: none; }    /* hide the "—" separator, inputs already imply range */
-
-      /* Platform pills shrink */
-      .sku-pill {
-        font-size: 10px;
-        padding: 3px 9px;
-      }
-
-      /* Tab title hide on small toolbars */
-      .tab-toolbar .tab-title {
-        display: none;
-      }
-
-      /* Card padding */
-      .card    { padding: 16px; }
-      .card-sm { padding: 12px 16px; }
-
-      /* AI panel */
-      .ai-panel { padding: 16px; }
-
-      /* Smaller fetch badge */
-      .fetch-badge { font-size: 9px; padding: 2px 6px; }
-    }
-
-    /* ── Narrow / small window (≤1199px) ── */
-    @media (max-width: 1199px) {
-
-      /* Stack sidebar below main */
-      .layout {
-        grid-template-columns: 1fr;
-        grid-template-rows: 64px auto 1fr auto;
-        grid-template-areas:
-          "header"
-          "nav"
-          "main"
-          "sidebar";
-        height: auto;
-        min-height: 100vh;
-      }
-      .main    { padding: 14px 16px; }
-      .sidebar {
-        padding: 0 16px 20px;
-        gap: 12px;
-        border-top: 1px solid var(--color-border);
-      }
-
-      /* 4-col KPI → 2×2 */
-      .kpi-grid-4 { grid-template-columns: repeat(2, 1fr); }
-
-      /* Mid/bot grids → single column */
-      .mid-grid { grid-template-columns: 1fr; }
-      .bot-grid { grid-template-columns: 1fr; }
-
-      /* Campaign cards → 2-col */
-      .campaign-cards { grid-template-columns: repeat(2, 1fr); }
-
-      /* AI stats row → 3-col still fine since sidebar is now full width */
-
-      /* Toolbar allow wrap but with tight gap */
-      .tab-toolbar {
-        flex-wrap: wrap;
-        gap: 8px;
-        overflow-x: visible;
-      }
-      .tab-toolbar .tab-title { display: block; width: 100%; }
-
-      /* Date inputs restore */
-      .date-input { max-width: unset; height: 32px; font-size: 12px; padding: 0 9px; }
-      .date-sep   { display: inline; }
-    }
-
-    /* ── Toolbar always-visible scrollbar hint on 13" ── */
-    @media (max-width: 1366px) and (min-width: 1200px) {
-      .tab-toolbar::after {
-        content: '';
-        flex: 0 0 1px; /* spacer so last item isn't flush against edge */
-      }
-    }
   </style>
 </head>
 <body>
@@ -1319,12 +1166,6 @@
 
       <span class="tag-admin" id="headerAdminBadge" style="display:none;">Admin</span>
 
-      <!-- Notification Bell — Pending Access Requests (admin only) -->
-      <div id="headerNotifBell" style="display:none;position:relative;cursor:pointer;" onclick="openClientAdminModal(); setTimeout(()=>setCaTab('client'),100);" title="Pending access requests">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#64748b;display:block;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-        <span id="headerNotifCount" style="display:none;position:absolute;top:-5px;right:-6px;background:#dc2626;color:#fff;font-size:9px;font-weight:800;min-width:16px;height:16px;border-radius:99px;display:flex;align-items:center;justify-content:center;padding:0 3px;border:2px solid #fff;line-height:1;">0</span>
-      </div>
-
       <!-- Client Switcher -->
       <select class="select-styled" id="clientSwitcher" title="Switch client">
         <option value="neat-everyday" selected>Neat Everyday</option>
@@ -1359,10 +1200,6 @@
             <button class="avatar-dropdown-item" style="padding-left:28px;font-size:11px;" data-role="admin" onclick="closeAvatarMenu(); openUtmToolsModal();">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
               UTM Campaign Tools
-            </button>
-            <button class="avatar-dropdown-item" style="padding-left:28px;font-size:11px;" onclick="closeAvatarMenu(); openAiSettingsModal();">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-              AI Settings
             </button>
             <button class="avatar-dropdown-item" style="padding-left:28px;font-size:11px;" data-role="admin" onclick="closeAvatarMenu(); openFinancialSettingsModal();">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
@@ -1421,61 +1258,115 @@
     <div class="tab-panel active" id="tab-platform_sales">
 
       <!-- Toolbar -->
-      <div class="card card-sm" style="overflow:visible;">
-        <div class="tab-toolbar" style="flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;">
-          <!-- Date range — flex-shrink:0 so it never collapses -->
-          <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5" style="flex-shrink:0;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            <input type="date" class="date-input" id="psDateFrom" style="max-width:118px;" />
-            <span class="date-sep" style="flex-shrink:0;">→</span>
-            <input type="date" class="date-input" id="psDateTo" style="max-width:118px;" />
+      <div class="card card-sm">
+        <div class="tab-toolbar">
+          <span class="tab-title">Platform Sales Overview</span>
+          <div class="date-range-wrap" style="margin-left:0;">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <input type="date" class="date-input" id="psDateFrom" />
+            <span class="date-sep">→</span>
+            <input type="date" class="date-input" id="psDateTo" />
           </div>
-
-          <!-- Divider -->
-          <div style="width:1px;height:20px;background:var(--color-border);flex-shrink:0;"></div>
-
-          <!-- Platform pills -->
-          <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
+          <div class="sku-pills" style="margin-left:0;">
             <div class="sku-pill active" data-ps-platform="">All</div>
             <div class="sku-pill" data-ps-platform="amazon">Amazon</div>
             <div class="sku-pill" data-ps-platform="flipkart">Flipkart</div>
             <div class="sku-pill" data-ps-platform="blinkit">Blinkit</div>
             <div class="sku-pill" data-ps-platform="website">Website</div>
           </div>
-
-          <!-- Divider -->
-          <div style="width:1px;height:20px;background:var(--color-border);flex-shrink:0;"></div>
-
-          <!-- Filter dropdowns -->
-          <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
-            <div class="status-filter-wrap">
-              <button type="button" class="sku-pill" id="psStatusFilterBtn" onclick="togglePsStatusMenu()" style="cursor:pointer;appearance:none;-webkit-appearance:none;outline:none;font-family:inherit;line-height:normal;white-space:nowrap;">Status <span id="psStatusFilterCount"></span> ▾</button>
+          <div class="status-filter-wrap" style="position:relative;">
+            <button type="button" class="sku-pill" id="psStatusFilterBtn" onclick="togglePsStatusMenu()" style="cursor:pointer;appearance:none;-webkit-appearance:none;outline:none;font-family:inherit;line-height:normal;">Order status <span id="psStatusFilterCount"></span> ▾</button>
+            <div id="psStatusFilterMenu" style="display:none;position:absolute;top:110%;left:0;z-index:1000;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:10px 12px;min-width:230px;">
+              <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">Uncheck a status to exclude it from every number below. Everything is included by default.</div>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-status-cb" value="Cancelled" onchange="onPsStatusChange()"> Cancelled
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-status-cb" value="Pending" checked onchange="onPsStatusChange()"> Pending
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-status-cb" value="Unshipped" checked onchange="onPsStatusChange()"> Unshipped
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-status-cb" value="Shipped - Returned to Seller" checked onchange="onPsStatusChange()"> Returned to Seller
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-status-cb" value="Shipped - Returning to Seller" checked onchange="onPsStatusChange()"> Returning to Seller
+              </label>
             </div>
-            <div class="status-filter-wrap">
-              <button type="button" class="sku-pill" id="psFulfillFilterBtn" onclick="togglePsFulfillMenu()" style="cursor:pointer;appearance:none;-webkit-appearance:none;outline:none;font-family:inherit;line-height:normal;white-space:nowrap;">Fulfillment ▾</button>
-            </div>
-            <div class="status-filter-wrap">
-              <button type="button" class="sku-pill" id="psProductFilterBtn" onclick="togglePsProductMenu()" style="cursor:pointer;appearance:none;-webkit-appearance:none;outline:none;font-family:inherit;line-height:normal;white-space:nowrap;">
-                <span id="psProductFilterLabel">Product: All</span> ▾
-              </button>
+          </div>
+          <!-- Fulfillment Status filter dropdown -->
+          <div class="status-filter-wrap" style="position:relative;">
+            <button type="button" class="sku-pill" id="psFulfillFilterBtn" onclick="togglePsFulfillMenu()" style="cursor:pointer;appearance:none;-webkit-appearance:none;outline:none;font-family:inherit;line-height:normal;">Fulfillment <span id="psFulfillFilterCount"></span> ▾</button>
+            <div id="psFulfillFilterMenu" style="display:none;position:absolute;top:110%;left:0;z-index:1000;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:10px 12px;min-width:250px;">
+              <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">Filter by fulfillment status. All included by default.</div>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Shipped" checked onchange="onPsFulfillChange()"> Shipped
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Shipped - Delivered to Buyer" checked onchange="onPsFulfillChange()"> Delivered to Buyer
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Delivered" checked onchange="onPsFulfillChange()"> Delivered
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Shipped - Picked Up" checked onchange="onPsFulfillChange()"> Picked Up
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Shipped - Out for Delivery" checked onchange="onPsFulfillChange()"> Out for Delivery
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Pending" checked onchange="onPsFulfillChange()"> Pending
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Pending - Waiting for Pick Up" checked onchange="onPsFulfillChange()"> Waiting for Pick Up
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Approved" checked onchange="onPsFulfillChange()"> Approved
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Shipping" checked onchange="onPsFulfillChange()"> Shipping
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Shipped - Returned to Seller" checked onchange="onPsFulfillChange()"> Returned to Seller
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Shipped - Returning to Seller" checked onchange="onPsFulfillChange()"> Returning to Seller
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;">
+                <input type="checkbox" class="ps-fulfill-cb" value="Return Requested" checked onchange="onPsFulfillChange()"> Return Requested
+              </label>
+              <div style="border-top:1px solid #f1f5f9;margin-top:8px;padding-top:8px;display:flex;gap:8px;">
+                <button onclick="psFulfillSelectAll()" style="font-size:11px;color:#0284c7;background:none;border:none;cursor:pointer;padding:0;">Select all</button>
+                <button onclick="psFulfillClearAll()" style="font-size:11px;color:#64748b;background:none;border:none;cursor:pointer;padding:0;">Clear all</button>
+              </div>
             </div>
           </div>
 
-          <!-- Discount toggle + status badge pushed to far right -->
-          <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-shrink:0;">
-            <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:#64748b;white-space:nowrap;cursor:pointer;">
-              <input type="checkbox" id="psApplyDiscountsToggle" onchange="onPsDiscountToggle()" style="cursor:pointer;accent-color:var(--theme-primary);">
-              Apply discounts
-            </label>
-            <span class="fetch-badge loading" id="psFetchBadge">
-              <span class="fetch-dot"></span><span id="psFetchText">Loading</span>
-            </span>
+          <div class="status-filter-wrap" style="position:relative;">
+            <button type="button" class="sku-pill" id="psProductFilterBtn" onclick="togglePsProductMenu()" style="cursor:pointer;appearance:none;-webkit-appearance:none;outline:none;font-family:inherit;line-height:normal;">
+              <span id="psProductFilterLabel">Product: All</span> ▾
+            </button>
+            <div id="psProductFilterMenu" style="display:none;position:absolute;top:110%;left:0;z-index:1000;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:8px;min-width:240px;max-height:320px;overflow-y:auto;">
+              <input type="text" id="psProductSearch" placeholder="Search product…" oninput="filterPsProductOptions(this.value)"
+                     style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--color-border);border-radius:6px;margin-bottom:6px;box-sizing:border-box;" />
+              <div id="psProductOptionsList"></div>
+            </div>
           </div>
+          <!-- Discount toggle — gross vs net revenue -->
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-text-secondary);white-space:nowrap;cursor:pointer;padding:0 4px;">
+            <input type="checkbox" id="psApplyDiscountsToggle" onchange="onPsDiscountToggle()" style="cursor:pointer;">
+            Apply discounts
+          </label>
+
+          <span class="fetch-badge loading" id="psFetchBadge" style="margin-left:auto;">
+            <span class="fetch-dot"></span><span id="psFetchText">Loading</span>
+          </span>
         </div>
       </div>
 
       <!-- KPI Row -->
-      <div class="kpi-grid-4">
+      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
         <div class="kpi-card">
           <div class="kpi-icon">&#8377;</div>
           <div class="kpi-label">Total Net Revenue</div>
@@ -1583,46 +1474,39 @@
     <div class="tab-panel" id="tab-sku_performance">
 
     <!-- SKU Selector -->
-    <div class="card card-sm" style="overflow:visible;">
-      <div class="tab-toolbar" style="flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;">
-        <!-- SKU dropdown -->
-        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;min-width:0;">
-          <span class="sku-label" style="white-space:nowrap;">Product Name</span>
-          <div class="sku-custom-wrap" id="skuCustomWrap" style="min-width:180px;max-width:260px;flex:1;">
-            <div class="sku-custom-trigger" id="skuCustomTrigger" onclick="toggleSkuDropdown(event)">
-              <span id="skuCustomLabel">Loading SKUs…</span>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-            </div>
+    <div class="card card-sm">
+      <div class="sku-selector-bar">
+        <span class="sku-label">Product Name</span>
+        <div class="sku-custom-wrap" id="skuCustomWrap">
+          <div class="sku-custom-trigger" id="skuCustomTrigger" onclick="toggleSkuDropdown(event)">
+            <span id="skuCustomLabel">Loading SKUs…</span>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
-          <input type="hidden" id="skuSelect" value="" />
+          <div class="sku-custom-panel" id="skuCustomPanel">
+            <input type="text" class="sku-custom-search" id="skuCustomSearch" placeholder="Search SKU…" oninput="filterSkuOptions(this.value)" />
+            <div class="sku-custom-list" id="skuCustomList"></div>
+            <div class="sku-custom-empty" id="skuCustomEmpty">No matching SKUs</div>
+          </div>
         </div>
-
-        <!-- Divider -->
-        <div style="width:1px;height:20px;background:var(--color-border);flex-shrink:0;"></div>
-
-        <!-- Platform pills -->
-        <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
+        <!-- Hidden input to carry the value like the old select -->
+        <input type="hidden" id="skuSelect" value="" />
+        <div class="sku-pills">
           <div class="sku-pill active" data-platform="">All</div>
           <div class="sku-pill" data-platform="amazon">Amazon</div>
           <div class="sku-pill" data-platform="flipkart">Flipkart</div>
           <div class="sku-pill" data-platform="blinkit">Blinkit</div>
           <div class="sku-pill" data-platform="website">Website</div>
         </div>
-
-        <!-- Divider -->
-        <div style="width:1px;height:20px;background:var(--color-border);flex-shrink:0;"></div>
-
-        <!-- Date range + badge -->
-        <div style="display:flex;align-items:center;gap:6px;margin-left:auto;flex-shrink:0;">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5" style="flex-shrink:0;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          <input type="date" class="date-input" id="dateFrom" style="max-width:118px;" />
+        <div class="date-range-wrap">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <input type="date" class="date-input" id="dateFrom" />
           <span class="date-sep">→</span>
-          <input type="date" class="date-input" id="dateTo" style="max-width:118px;" />
-          <span class="fetch-badge loading" id="fetchBadge">
-            <span class="fetch-dot"></span>
-            <span id="fetchBadgeText">Loading</span>
-          </span>
+          <input type="date" class="date-input" id="dateTo" />
         </div>
+        <span class="fetch-badge loading" id="fetchBadge">
+          <span class="fetch-dot"></span>
+          <span id="fetchBadgeText">Loading</span>
+        </span>
       </div>
     </div>
 
@@ -1737,22 +1621,22 @@
 
       <!-- Toolbar -->
       <div class="card card-sm">
-        <div class="tab-toolbar" style="flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;">
-          <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5" style="flex-shrink:0;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            <input type="date" class="date-input" id="ciDateFrom" style="max-width:118px;" />
+        <div class="tab-toolbar">
+          <span class="tab-title">Campaign Insights</span>
+          <div class="date-range-wrap" style="margin-left:0;">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <input type="date" class="date-input" id="ciDateFrom" />
             <span class="date-sep">→</span>
-            <input type="date" class="date-input" id="ciDateTo" style="max-width:118px;" />
+            <input type="date" class="date-input" id="ciDateTo" />
           </div>
-          <div style="width:1px;height:20px;background:var(--color-border);flex-shrink:0;"></div>
-          <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
+          <div class="sku-pills" style="margin-left:0;">
             <div class="sku-pill active" data-ci-platform="">All</div>
             <div class="sku-pill" data-ci-platform="amazon">Amazon</div>
             <div class="sku-pill" data-ci-platform="flipkart">Flipkart</div>
             <div class="sku-pill" data-ci-platform="blinkit">Blinkit</div>
             <div class="sku-pill" data-ci-platform="website">Website</div>
           </div>
-          <span class="fetch-badge loading" id="ciFetchBadge" style="margin-left:auto;flex-shrink:0;">
+          <span class="fetch-badge loading" id="ciFetchBadge" style="margin-left:auto;">
             <span class="fetch-dot"></span><span id="ciFetchText">Loading</span>
           </span>
         </div>
@@ -1894,22 +1778,22 @@
 
       <!-- Toolbar -->
       <div class="card card-sm">
-        <div class="tab-toolbar" style="flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;">
-          <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5" style="flex-shrink:0;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            <input type="date" class="date-input" id="geoDateFrom" style="max-width:118px;" />
-            <span class="date-sep">→</span>
-            <input type="date" class="date-input" id="geoDateTo" style="max-width:118px;" />
+        <div class="tab-toolbar">
+          <span class="tab-title">Geographic Analysis</span>
+          <div class="date-range-wrap" style="margin-left:0;">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <input type="date" class="date-input" id="geoDateFrom" />
+            <span class="date-sep">&rarr;</span>
+            <input type="date" class="date-input" id="geoDateTo" />
           </div>
-          <div style="width:1px;height:20px;background:var(--color-border);flex-shrink:0;"></div>
-          <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
+          <div class="sku-pills" style="margin-left:0;">
             <div class="sku-pill active" data-geo-platform="">All</div>
             <div class="sku-pill" data-geo-platform="amazon">Amazon</div>
             <div class="sku-pill" data-geo-platform="flipkart">Flipkart</div>
             <div class="sku-pill" data-geo-platform="blinkit">Blinkit</div>
             <div class="sku-pill" data-geo-platform="website">Website</div>
           </div>
-          <span class="fetch-badge loading" id="geoFetchBadge" style="margin-left:auto;flex-shrink:0;">
+          <span class="fetch-badge loading" id="geoFetchBadge" style="margin-left:auto;">
             <span class="fetch-dot"></span><span id="geoFetchText">Loading</span>
           </span>
         </div>
@@ -1998,12 +1882,13 @@
 
       <!-- Toolbar -->
       <div class="card card-sm">
-        <div class="tab-toolbar" style="flex-wrap:nowrap;">
-          <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5" style="flex-shrink:0;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            <input type="date" class="date-input" id="dtDate" style="max-width:140px;" />
+        <div class="tab-toolbar">
+          <span class="tab-title">Daily Targets</span>
+          <div class="date-range-wrap" style="margin-left:0;">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <input type="date" class="date-input" id="dtDate" />
           </div>
-          <span class="fetch-badge loading" id="dtFetchBadge" style="margin-left:auto;flex-shrink:0;">
+          <span class="fetch-badge loading" id="dtFetchBadge" style="margin-left:auto;">
             <span class="fetch-dot"></span><span id="dtFetchText">Loading</span>
           </span>
         </div>
@@ -2102,7 +1987,7 @@
            contain", not a historical rollup. -->
       <div class="card" style="margin-top:18px;">
         <div class="card-header">
-          <span class="card-title">Campaign Performance — Net Revenue &amp; Orders</span>
+          <span class="card-title">Campaign Performance — Highest to Lowest Gross Sales</span>
           <span class="card-badge" id="dtCampaignRankingBadge">Selected date</span>
         </div>
         <div id="dtCampaignRanking" style="display:flex;flex-direction:column;gap:0;">
@@ -2387,7 +2272,7 @@
 
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px;">
         <div class="card">
-          <div class="card-header"><span class="card-title" id="projKpiProfitLabel">Net Profit</span></div>
+          <div class="card-header"><span class="card-title">Net Profit</span></div>
           <div style="font-size:24px;font-weight:800;margin-top:6px;" id="projKpiProfit">—</div>
           <div style="font-size:11px;color:#94a3b8;margin-top:4px;" id="projKpiProfitSub">for selected period</div>
         </div>
@@ -2578,15 +2463,6 @@
         </button>
       </div>
 
-      <!-- Client selector for Appearance tab -->
-      <div style="margin-bottom:14px;">
-        <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:6px;">Edit Appearance For</label>
-        <select id="caAppearanceClientSelect" onchange="onCaAppearanceClientSelect(this.value)"
-          style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;font-family:var(--font-display);color:#1e293b;background:var(--color-surface);cursor:pointer;">
-          <option value="">— Choose a client —</option>
-        </select>
-      </div>
-
       <div style="display:flex;gap:0;background:#f1f5f9;border-radius:var(--radius-sm);padding:3px;margin-bottom:20px;width:fit-content;">
         <button type="button" class="ca-appearance-scope-btn active" id="caScopeBtn-client" onclick="setCaAppearanceScope('client')"
           style="padding:7px 16px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;background:#fff;color:#1e293b;box-shadow:0 1px 2px rgba(0,0,0,.06);">
@@ -2666,15 +2542,6 @@
 
     <!-- ═══ ACCESS CONTROL ═══ -->
     <div id="caPanel-access" class="dm-panel" style="display:none;">
-      <!-- Client selector — pick which client's permissions to manage -->
-      <div style="margin-bottom:14px;">
-        <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:6px;">Select Client</label>
-        <select id="caAccessClientSelect" onchange="onCaAccessClientSelect(this.value)"
-          style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;font-family:var(--font-display);color:#1e293b;background:var(--color-surface);cursor:pointer;">
-          <option value="">— Choose a client —</option>
-        </select>
-      </div>
-
       <div style="margin-bottom:6px;padding:10px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:var(--radius-sm);display:flex;align-items:center;gap:8px;">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         <span style="font-size:11px;color:#0284c7;">Managing access for: <strong id="caAccessClientName">—</strong></span>
@@ -2682,8 +2549,8 @@
 
       <div style="height:14px;"></div>
 
-      <div id="caAccessNoClientNotice" style="display:block;text-align:center;padding:32px 16px;color:#94a3b8;font-size:12px;">
-        Select a client above to manage their dashboard tab permissions.
+      <div id="caAccessNoClientNotice" style="display:none;text-align:center;padding:32px 16px;color:#94a3b8;font-size:12px;">
+        Access Control doesn't apply to Semya Admins — they always have full access to every client by design. Select a specific client in Client Section to manage its tab permissions.
       </div>
 
       <div class="acl-section-label">Dashboard Tabs</div>
@@ -3232,7 +3099,7 @@
 // ═══════════════════════════════════════════════════════════════════
 
 // ─── CONFIG ──────────────────────────────────────────────────────
-const API_BASE  = 'https://semya-digital-dashboard.onrender.com';
+const API_BASE  = 'https://semya-api.onrender.com';
 const TOKEN_KEY = 'semya_token';
 
 // ── IST-aware date helper ───────────────────────────────────────
@@ -3380,21 +3247,15 @@ function isTokenExpired(token) {
 }
 
 // Handle session expiry — clear state and redirect to login
-let _sessionExpiryFired = false; // guard against parallel apiFetch calls all triggering this
 function handleSessionExpiry() {
-  if (_sessionExpiryFired) return;
-  _sessionExpiryFired = true;
-  // Delegate to semya_auth_guard.js semyaLogout which has its own
-  // _redirecting guard and handles signOut + redirect cleanly.
-  // This prevents the redirect storm where both this function AND
-  // the auth guard fire window.location simultaneously.
-  if (typeof window.semyaLogout === 'function') {
-    window.semyaLogout();
-    return;
-  }
-  // Fallback: auth guard not loaded yet — do minimal cleanup and redirect
   localStorage.removeItem(TOKEN_KEY);
-  window.location.replace('/semya-digital-dashboard/index.html');
+  if (window._supabaseClient) {
+    window._supabaseClient.auth.signOut().catch(() => {});
+  }
+  // Small delay so any in-flight UI updates complete
+  setTimeout(() => {
+    window.location.href = '/index.html';
+  }, 300);
 }
 
 // Safely embeds a JS value into a double-quoted HTML event-handler
@@ -3614,14 +3475,12 @@ async function apiFetch(path, opts, _retryCount = 0) {
 
     if (res.status === 401) {
       const freshToken = await getFreshToken();
-      if (!freshToken) return null; // getFreshToken already calls handleSessionExpiry if needed
+      if (!freshToken) return null;
       res = await fetchWithTimeout(url, {
         ...opts,
         headers: { 'Authorization': 'Bearer ' + freshToken, 'Content-Type': 'application/json', ...(opts?.headers || {}) },
         credentials: 'include',
       }, 15000);
-      // Retry also 401 — session is gone; getFreshToken guard handles the redirect
-      if (res.status === 401) { handleSessionExpiry(); return null; }
     }
 
     if (!res.ok) throw new Error('API ' + res.status + ': ' + path);
@@ -3791,11 +3650,7 @@ function renderKPIs(rev, campaigns, prevRev) {
   document.getElementById('kpiUnitsSub').innerHTML = `Ad spend: ${fmtRevenue(totalSpend)} &nbsp;·&nbsp; Campaign rev: ${fmtRevenue(campaignRev)}`;
 
   document.getElementById('kpiRoas').innerHTML = roas > 0 ? fmtRoas(roas) : '—';
-  // No hardcoded baseline — delta only shown if prev period ROAS is available
-  const prevRoas = payload?.prevRoas || null;
-  document.getElementById('kpiRoasDelta').innerHTML = (roas > 0 && prevRoas > 0)
-    ? deltaHtml(((roas - prevRoas) / prevRoas * 100).toFixed(1))
-    : '';
+  document.getElementById('kpiRoasDelta').innerHTML = roas > 0 ? deltaHtml(((roas - 5.1) / 5.1 * 100).toFixed(1)) : '';
   document.getElementById('kpiRoasSub').innerHTML = `Ad spend: ${fmtRevenue(totalSpend)} &nbsp;·&nbsp; Campaign rev: ${fmtRevenue(campaignRev)}`;
 }
 
@@ -4196,13 +4051,11 @@ async function _streamClaudeInsight(prompt, list, confEl) {
         if (raw === '[DONE]') break;
         try {
           const evt = JSON.parse(raw);
-          // Backend now sends a unified SSE format for both Claude and Gemini:
-          //   data: {"text": "..."} 
-          // This replaces the old Claude-only content_block_delta parsing.
+          // Handle both Gemini's normalised {text:"..."} chunks (from insightsRouter streamGemini)
+          // and Claude's native {type:"content_block_delta", delta:{text:"..."}} format.
           if (evt.text) {
             fullText += evt.text;
           } else if (evt.type === 'content_block_delta' && evt.delta?.text) {
-            // Fallback: handle legacy Claude SSE format if backend hasn't updated yet
             fullText += evt.delta.text;
           }
         } catch {}
@@ -4223,8 +4076,15 @@ async function _streamClaudeInsight(prompt, list, confEl) {
 function _renderParsedInsight(raw, list, confEl) {
   let parsed = null;
   try {
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (match) parsed = JSON.parse(match[0]);
+    // First try: strip markdown fences and parse directly (Gemini often wraps in ```json)
+    let cleaned = raw.trim();
+    const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fenceMatch) cleaned = fenceMatch[1].trim();
+    // Second try: find first { to last } to extract JSON object even with preamble text
+    const start = cleaned.indexOf('{');
+    const end   = cleaned.lastIndexOf('}');
+    if (start !== -1 && end !== -1 && end > start) cleaned = cleaned.slice(start, end + 1);
+    parsed = JSON.parse(cleaned);
   } catch {}
 
   if (!parsed) {
@@ -4477,9 +4337,6 @@ function renderPlatformHealth(byPlatform, campaigns) {
 }
 
 // ─── AGGREGATE RAW REVENUE ROWS → summary shape ───────────────────
-// Revenue logic mirrors aggregatePlatformSales on the backend:
-//   - Cancelled orders contribute ZERO to revenue and units
-//   - This keeps SKU Performance totals consistent with Platform Sales
 function aggregateRevenue(rows) {
   if (!rows || !rows.length) return null;
   const byCity     = {};
@@ -4490,15 +4347,10 @@ function aggregateRevenue(rows) {
   let totalRevenue = 0, totalUnits = 0;
 
   for (const r of rows) {
-    // Skip cancelled orders for revenue — matches Platform Sales backend
-    const isCancelled = (r.standard_status || '').toLowerCase() === 'cancelled';
-    const rev   = isCancelled ? 0 : (Number(r.standard_revenue) || 0);
-    const units = isCancelled ? 0 : (Number(r.standard_units)   || 0);
+    const rev   = Number(r.standard_revenue) || 0;
+    const units = Number(r.standard_units)   || 0;
     totalRevenue += rev;
     totalUnits   += units;
-
-    // Only accumulate non-zero revenue into breakdowns
-    if (rev <= 0) continue;
 
     const city = r.standard_city || 'Unknown';
     byCity[city] = (byCity[city] || 0) + rev;
@@ -4534,7 +4386,6 @@ function aggregateRevenue(rows) {
 
   const cities = Object.entries(byCity)
     .map(([city, revenue]) => ({ city, revenue }))
-    .filter(d => d.city && d.city.toLowerCase() !== 'unknown') // hide unresolvable unknowns
     .sort((a, b) => b.revenue - a.revenue);
 
   const byPlatformArr = Object.entries(byPlatform)
@@ -4629,19 +4480,14 @@ async function fetchAndRender() {
   state._revenueAgg = revenueData;
 
   // ── Render all widgets ──
-  // Wrapped in try/catch so a crash in any render function doesn't
-  // leave the badge stuck on "Loading..." indefinitely.
-  try {
-    renderKPIs(revenueData, campaignRows, { totalRevenue: revenueData.prevRevenue || 0, totalUnits: revenueData.prevUnits || 0 });
-    renderCities(revenueData.cities);
-    renderDoughnut(revenueData.byPlatform);
-    renderLineChartForPeriod(state._trendPeriod || 'week', revenueData);
-    renderCampaigns(campaignRows, productCategory, campaignsMatchedToProduct, sku);
-    renderPlatformHealth(revenueData.byPlatform, campaignRows);
-    document.getElementById('cityBadge').textContent = currentSku;
-  } catch (renderErr) {
-    console.error('[SKU render]', renderErr);
-  }
+  renderKPIs(revenueData, campaignRows, { totalRevenue: revenueData.prevRevenue, totalUnits: revenueData.prevUnits });
+  renderCities(revenueData.cities);
+  renderDoughnut(revenueData.byPlatform);
+  renderLineChartForPeriod(state._trendPeriod || 'week', revenueData);
+  renderCampaigns(campaignRows, productCategory, campaignsMatchedToProduct, sku);
+  renderPlatformHealth(revenueData.byPlatform, campaignRows);
+
+  document.getElementById('cityBadge').textContent = currentSku;
 
   state.isLive = isLive;
   setBadge(isLive ? 'live' : 'empty');
@@ -4727,17 +4573,6 @@ async function loadTabPermissions() {
   try {
     const cfg = await apiFetch('/clients/' + clientSlug + '/dashboard-config');
     state.tabPermissions = cfg?.tabs || null;
-    // Start polling for pending requests notification bell.
-    // Uses setTimeout(0) to ensure all <script> tags have been parsed —
-    // _startNotifPolling is defined in a later script block and function
-    // declarations don't hoist across separate <script> tags.
-    if (state.isAdmin && !window._notifPollingStarted) {
-      window._notifPollingStarted = true;
-      setTimeout(() => {
-        if (typeof _startNotifPolling === 'function') _startNotifPolling();
-        loadPendingRequests();
-      }, 0);
-    }
     _lastDashboardConfig = cfg;
     applyLockBadgesToNav();
     applyBranding(cfg);
@@ -4783,9 +4618,7 @@ function setViewAsClient(on) {
 }
 
 async function applyBranding(cfg) {
-  // isAdmin comes from the server-rendered config. Fall back to
-  // window.semyaUser.role if cfg hasn't loaded yet (race condition).
-  const isAdmin = !!(cfg?.user?.isAdmin || window.semyaUser?.role === 'admin');
+  const isAdmin = !!cfg?.user?.isAdmin;
   state.isAdmin = isAdmin;
   updateViewAsToggleUI();
 
@@ -4796,16 +4629,7 @@ async function applyBranding(cfg) {
   // when it wasn't checking anything at all). Now genuinely reflects
   // cfg.user.isAdmin from this request.
   const adminBadgeEl = document.getElementById('headerAdminBadge');
-  if (adminBadgeEl) {
-    adminBadgeEl.style.display = isAdmin ? 'inline-block' : 'none';
-    // Clicking the ADMIN badge forces a full branding reset (recovery action)
-    adminBadgeEl.title = 'Admin mode — click to reset branding if stuck';
-    adminBadgeEl.style.cursor = 'pointer';
-    adminBadgeEl.onclick = function() {
-      try { localStorage.removeItem('semya_view_as_client'); } catch(e) {}
-      if (_lastDashboardConfig) applyBranding(_lastDashboardConfig);
-    };
-  }
+  if (adminBadgeEl) adminBadgeEl.style.display = isAdmin ? 'inline-block' : 'none';
 
   const viewingAsClient = isAdmin && getViewAsClient();
   const badgeEl = document.getElementById('headerViewAsClientBadge');
@@ -4820,12 +4644,11 @@ async function applyBranding(cfg) {
     try {
       const settings = await apiFetch('/platform-settings');
       console.log('[branding] /platform-settings response:', settings);
-      // Always show Semya Digital in admin view — never show client name
       setHeaderBranding(
-        settings?.brandName   || 'Semya Digital',
-        settings?.brandTagline || 'Analytics Platform',
-        settings?.logoUrl     || null,
-        settings?.theme       || null
+        settings.brandName || 'Semya Digital',
+        settings.brandTagline || 'Analytics Platform',
+        settings.logoUrl,
+        settings.theme
       );
     } catch (e) {
       console.warn('[branding] failed to load admin/platform branding — header will keep showing whatever it last had (likely the static "Neat Everyday" fallback baked into the page):', e.message);
@@ -4998,8 +4821,27 @@ const MOCK_PS = {
   ],
 };
 
-// togglePsStatusMenu, togglePsProductMenu, togglePsFulfillMenu and outside-click handler
-// are defined in the portal-dropdown script block at end of body.
+function togglePsStatusMenu() {
+  const m = document.getElementById('psStatusFilterMenu');
+  if (m) m.style.display = m.style.display === 'none' ? 'block' : 'none';
+  const pm = document.getElementById('psProductFilterMenu');
+  if (pm) pm.style.display = 'none';
+}
+function togglePsProductMenu() {
+  const m = document.getElementById('psProductFilterMenu');
+  if (m) m.style.display = m.style.display === 'none' ? 'block' : 'none';
+  const sm = document.getElementById('psStatusFilterMenu');
+  if (sm) sm.style.display = 'none';
+}
+document.addEventListener('click', function(e) {
+  // Fixed: was querySelector (singular) — only closed whichever
+  // .status-filter-wrap happened to be found first, leaving the other
+  // dropdown (status vs product) stuck open when clicking outside it.
+  document.querySelectorAll('.status-filter-wrap').forEach(wrap => {
+    const menu = wrap.querySelector('div[id$="FilterMenu"]');
+    if (menu && !wrap.contains(e.target)) menu.style.display = 'none';
+  });
+});
 function onPsStatusChange() {
   // Unchecked box = excluded status. Checked (default) = included, same
   // sense as the old dashboard's "all checked by default" filter.
@@ -5020,7 +4862,15 @@ function onPsDiscountToggle() {
 }
 
 // ── Fulfillment Status filter ────────────────────────────────────
-// togglePsFulfillMenu is defined in the portal-dropdown script block at end of body.
+function togglePsFulfillMenu() {
+  const m  = document.getElementById('psFulfillFilterMenu');
+  if (m) m.style.display = m.style.display === 'none' ? 'block' : 'none';
+  // Close other menus
+  const sm = document.getElementById('psStatusFilterMenu');
+  if (sm) sm.style.display = 'none';
+  const pm = document.getElementById('psProductFilterMenu');
+  if (pm) pm.style.display = 'none';
+}
 
 function onPsFulfillChange() {
   const unchecked = Array.from(document.querySelectorAll('.ps-fulfill-cb'))
@@ -5126,10 +4976,8 @@ async function fetchAndRenderPS() {
         const globalOrderIds = new Set();
         let globalRowsWithoutOrderId = 0;
         skuR.revenue.forEach(r => {
-          // Exclude cancelled orders from revenue — matches backend aggregatePlatformSales
-          const isCancelled = (r.standard_status || '').toLowerCase() === 'cancelled';
-          const rev   = isCancelled ? 0 : (Number(r.standard_revenue) || 0);
-          const units = isCancelled ? 0 : (Number(r.standard_units)   || 0);
+          const rev = Number(r.standard_revenue) || 0;
+          const units = Number(r.standard_units) || 0;
           const plat = r.platform || 'unknown';
           if (!byPlat[plat]) byPlat[plat] = { platform: plat, totalRevenue: 0, totalUnits: 0, orderCount: 0, _orderIds: new Set(), _rowsWithoutOrderId: 0 };
           byPlat[plat].totalRevenue += rev;
@@ -5535,8 +5383,6 @@ function renderCI(payload) {
   const totalClicks = campaigns.reduce((s, c) => s + (c.standard_clicks || 0), 0);
   const totalImpr   = campaigns.reduce((s, c) => s + (c.standard_impressions || 0), 0);
   const blendedRoas = payload.overallRoas != null ? payload.overallRoas : (totalSpend > 0 ? totalRev / totalSpend : 0);
-  // weeklyRoas is passed through from the backend — used for the ROAS trend chart.
-  // No fallback needed: renderOrUpdateChart handles empty arrays gracefully.
   const avgCTR      = totalImpr  > 0 ? (totalClicks / totalImpr * 100) : 0;
 
   document.getElementById('ciKpiSpend').innerHTML    = fmtRevenue(totalSpend);
@@ -5568,33 +5414,16 @@ function renderCI(payload) {
   document.getElementById('ciKpiClicksDelta').innerHTML = '';
   document.getElementById('ciKpiClicksSub').innerHTML   = 'Avg CTR: ' + avgCTR.toFixed(2) + '% · ' + fmtUnits(totalImpr) + ' impressions';
 
-  // Use real weekly ROAS from backend — payload.weeklyRoas is an array of
-  // { week, label, spend, rev, roas } sorted chronologically.
-  // Fall back to a single-point chart (just the overall blended ROAS) if 
-  // no weekly breakdown is available.
-  const weeklyRoasData  = (payload.weeklyRoas && payload.weeklyRoas.length > 0)
-    ? payload.weeklyRoas
-    : (blendedRoas > 0 ? [{ label: 'Overall', roas: blendedRoas }] : []);
-
-  const ciWeeks    = weeklyRoasData.map(w => w.label);
-  const ciRoasVals = weeklyRoasData.map(w => w.roas != null ? +Number(w.roas).toFixed(2) : null);
-
-  // Target line — use actual blended ROAS as reference if it's above 1x
-  // (meaning real campaigns ran). Do NOT hardcode 4x as a target.
-  // Show 4x only as a common industry benchmark annotation, not as the axis.
-  const targetVal  = 4; // industry benchmark — kept as dotted reference line
-  const targetData = ciWeeks.map(() => targetVal);
-
-  if (weeklyRoasData.length > 0) {
-    renderOrUpdateChart('ciRoasChart', '_ciRoasChart', {
-      type: 'line',
-      data: { labels: ciWeeks, datasets: [
-        { label: 'Blended RoAS', data: ciRoasVals, borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.06)', pointBackgroundColor: '#7c3aed', pointRadius: ciWeeks.length <= 8 ? 5 : 3, pointHoverRadius: 7, tension: 0.3, fill: true, borderWidth: 2, spanGaps: true },
-        { label: 'Target (4x)',  data: targetData,  borderColor: '#d97706', backgroundColor: 'transparent', pointRadius: 0, borderDash: [6,4], borderWidth: 1.5 }
-      ]},
-      options: lineChartOptions('', 'x', 1),
-    });
-  }
+  const ciWeeks = ['W1 Jul','W2 Jul','W3 Jul','W4 Jul'];
+  const ciRoasVals = [3.8, 4.2, 4.7, blendedRoas > 0 ? +blendedRoas.toFixed(1) : 4.4];
+  renderOrUpdateChart('ciRoasChart', '_ciRoasChart', {
+    type: 'line',
+    data: { labels: ciWeeks, datasets: [
+      { label: 'Blended RoAS', data: ciRoasVals, borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.06)', pointBackgroundColor: '#7c3aed', pointRadius: 5, pointHoverRadius: 7, tension: 0.4, fill: true, borderWidth: 2 },
+      { label: 'Target (4x)',  data: [4,4,4,4],  borderColor: '#d97706', backgroundColor: 'transparent', pointRadius: 0, borderDash: [6,4], borderWidth: 1.5 }
+    ]},
+    options: lineChartOptions('', 'x', 1),
+  });
 
   const byPlatform = {};
   campaigns.forEach(c => { byPlatform[c.platform] = (byPlatform[c.platform]||0) + (c.standard_spend||0); });
@@ -6109,21 +5938,13 @@ async function loadDTCampaignRanking(date, myToken) {
 
   const row = (c, rank) => {
     const m = PLATFORM_META[c.platform] || { label: (c.platform || '').toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
-    // Use actual order-side revenue (standard_spend = ad cost, standard_revenue = 
-    // campaign-reported attributed rev which can be ₹1 noise). The /campaign-insights
-    // endpoint also returns actualRevenue per platform — but for per-campaign ranking
-    // we use standard_revenue as a proxy, annotated clearly.
-    const rev    = c.standard_revenue || 0;
-    const spend  = c.standard_spend   || 0;
-    const orders = c.standard_orders  || null;
-    const roas   = spend > 0 && rev > 0 ? (rev / spend).toFixed(1) + 'x' : null;
+    const rev = c.standard_revenue || 0;
     const rankColor = rev > 0 ? '#059669' : '#94a3b8';
-    return '<div class="dt-campaign-row" data-name="' + (c.campaign_name || '').toLowerCase().replace(/"/g, '&quot;') + '" data-platform="' + (c.platform || '') + '" style="display:grid;grid-template-columns:26px auto 1fr auto auto;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f1f5f9;">' +
-      '<span style="font-size:11px;font-weight:700;color:' + rankColor + ';">' + rank + '</span>' +
-      '<span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span>' +
-      '<span style="font-size:12px;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (c.campaign_name || '').replace(/"/g, '&quot;') + '">' + (c.campaign_name || 'Unnamed campaign') + '</span>' +
-      '<span style="font-size:11px;color:#64748b;text-align:right;white-space:nowrap;">' + (orders != null ? orders + ' orders' : (spend > 0 ? 'Spend: ' + fmtRevenue(spend) : '')) + (roas ? ' · ' + roas + ' ROAS' : '') + '</span>' +
-      '<span style="font-size:12px;font-weight:700;color:' + (rev > 0 ? '#059669' : '#cbd5e1') + ';min-width:80px;text-align:right;">' + fmtRevenue(rev) + '</span>' +
+    return '<div class="dt-campaign-row" data-name="' + (c.campaign_name || '').toLowerCase().replace(/"/g, '&quot;') + '" data-platform="' + (c.platform || '') + '" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9;">' +
+      '<span style="width:26px;font-size:11px;font-weight:700;color:' + rankColor + ';flex-shrink:0;">' + rank + '</span>' +
+      '<span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;flex-shrink:0;">' + m.label + '</span>' +
+      '<span style="flex:1;font-size:12px;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (c.campaign_name || '').replace(/"/g, '&quot;') + '">' + (c.campaign_name || 'Unnamed campaign') + '</span>' +
+      '<span style="font-size:12px;font-weight:700;color:' + (rev > 0 ? '#1e293b' : '#cbd5e1') + ';width:90px;text-align:right;flex-shrink:0;">' + fmtRevenue(rev) + '</span>' +
     '</div>';
   };
 
@@ -6603,7 +6424,6 @@ async function loadCaClients() {
 
   try {
     const resp = await apiFetch('/auth/admin/clients');
-    if (!resp) throw new Error('No response from server — check authentication');
     const clients = resp?.clients || [];
     _caClientsCache = clients; // so selectCaClient can look up registered_brands without another fetch
     const clientsHtml = !clients.length
@@ -6614,19 +6434,13 @@ async function loadCaClients() {
             '<div style="font-size:11px;color:#94a3b8;">' + c.employeeCount + ' employee' + (c.employeeCount !== 1 ? 's' : '') + '</div></div>' +
             '<div style="display:flex;gap:6px;">' +
               '<button class="btn btn-ghost" style="font-size:11px;padding:6px 12px;" onclick="selectCaClient(' + jsAttr(c.id) + ',' + jsAttr(c.slug) + ',' + jsAttr(c.name) + ')">' + (c.id === caState.clientId ? 'Selected' : 'Manage') + '</button>' +
-              '<button class="btn btn-ghost" style="font-size:11px;padding:6px 12px;" onclick="copyClientShareLink(' + jsAttr(c.slug) + ',' + jsAttr(c.name) + ')" title="Copy shareable dashboard link for this client">&#128279; Link</button>' +
               '<button class="btn btn-ghost" style="font-size:11px;padding:6px 12px;color:#dc2626;" onclick="deleteCaClient(' + jsAttr(c.id) + ',' + jsAttr(c.name) + ')" title="Permanently delete this client and all its data">Delete</button>' +
             '</div>' +
           '</div>'
         )).join('');
     list.innerHTML = semyaCard + clientsHtml;
-    // Populate the Access Control and Appearance client selectors.
-    // Arrow wrapper defers the reference lookup to fire time — by then
-    // all <script> blocks have executed and _populateCaSelectors is defined.
-    setTimeout(() => { if (typeof _populateCaSelectors === 'function') _populateCaSelectors(); }, 0);
   } catch (e) {
-    console.error('[loadCaClients] Error:', e.message, e);
-    list.innerHTML = semyaCard + '<div style="text-align:center;padding:16px 0;color:#94a3b8;font-size:12px;">Failed to load clients. (' + (e.message || 'unknown error') + ')</div>';
+    list.innerHTML = semyaCard + '<div style="text-align:center;padding:16px 0;color:#94a3b8;font-size:12px;">Failed to load clients.</div>';
   }
 }
 
@@ -6911,10 +6725,8 @@ async function loadClients() {
 
 // Load pending access requests from backend
 async function loadPendingRequests() {
-  const list    = document.getElementById('pendingRequestsList');
-  const badge   = document.getElementById('pendingCount');
-  const bellEl  = document.getElementById('headerNotifBell');
-  const bellCnt = document.getElementById('headerNotifCount');
+  const list  = document.getElementById('pendingRequestsList');
+  const badge = document.getElementById('pendingCount');
   if (!list) return;
 
   try {
@@ -6924,14 +6736,6 @@ async function loadPendingRequests() {
     if (!res.ok) return;
     const requests = await res.json();
     const pending  = requests.filter(r => r.status === 'pending');
-    // Update header notification bell (admin-only)
-    if (bellEl && state.isAdmin) {
-      bellEl.style.display = 'block';
-      if (bellCnt) {
-        bellCnt.textContent = pending.length;
-        bellCnt.style.display = pending.length > 0 ? 'flex' : 'none';
-      }
-    }
 
     if (badge) {
       badge.textContent = pending.length;
@@ -7583,17 +7387,12 @@ function renderFraudPatterns(resp) {
   const multiName = flagged.filter(f => f.identities.length > 1);
 
   if (meta) {
-    const skippedMsg = resp.skippedNoIdentity
-      ? ' (' + resp.skippedNoIdentity.toLocaleString('en-IN') + ' rows from Amazon/Acutas skipped — those exports never include buyer contact details)'
-      : '';
-    const uploadHint = (resp.skippedNoIdentity > 0 && !flagged.length)
-      ? ' · Upload Shopify, Flipkart, or Blinkit order files — those include buyer phone/pincode needed for pattern detection.'
-      : '';
     meta.textContent = flagged.length
       ? flagged.length + ' flagged contact' + (flagged.length !== 1 ? 's' : '') +
         (multiName.length ? ' · ' + multiName.length + ' involve multiple names on one contact' : '') +
-        (resp.skippedNoIdentity ? ' · ' + resp.skippedNoIdentity.toLocaleString('en-IN') + ' Amazon/Acutas rows skipped (no buyer PII in those exports)' : '')
-      : 'No repeat-cancellation patterns found' + skippedMsg + uploadHint;
+        (resp.skippedNoIdentity ? ' · ' + resp.skippedNoIdentity.toLocaleString('en-IN') + ' rows had no buyer details to check (e.g. Amazon/Acutas)' : '')
+      : 'No repeat-cancellation patterns found' +
+        (resp.skippedNoIdentity ? ' (' + resp.skippedNoIdentity.toLocaleString('en-IN') + ' rows had no buyer details to check, e.g. Amazon/Acutas)' : '');
   }
 
   if (!flagged.length) {
@@ -8018,26 +7817,15 @@ document.getElementById('uploadDrawer').addEventListener('click', e => { if (e.t
 
 // ─── CLIENT SWITCHER ────────────────────────────────────────────────
 async function loadClientSwitcher() {
-  // Ensure the Semya HQ comparison view option is present for admins
   const sw = document.getElementById('clientSwitcher');
   if (!sw) return;
   try {
     const resp = await apiFetch('/auth/clients');
     const clients = resp?.clients || [];
     if (clients.length) {
-      // Admin gets a "Semya HQ" option at the top to view cross-client comparison
-      const hqOption = state.isAdmin
-        ? '<option value="__semya_hq__" style="font-weight:700;color:#7c3aed;">&#9889; Semya HQ (All Clients)</option>'
-        : '';
-      sw.innerHTML = hqOption + clients.map(cl =>
-        '<option value="' + cl.slug + '"' + (cl.slug === state.clientSlug ? ' selected' : '') + '>' + cl.name + '</option>'
+      sw.innerHTML = clients.map(c =>
+        '<option value="' + c.slug + '"' + (c.slug === state.clientSlug ? ' selected' : '') + '>' + c.name + '</option>'
       ).join('');
-
-      // Honour ?client= URL param (shareable links) — only if the client exists in the list
-      if (window._sharedClientSlug && state.isAdmin) {
-        const found = clients.find(cl => cl.slug === window._sharedClientSlug);
-        if (found) { sw.value = found.slug; window._sharedClientSlug = null; switchClient(found.slug); }
-      }
     } else {
       // Fetch succeeded but returned nothing usable — still show
       // something rather than leaving the switcher blank.
@@ -8072,42 +7860,7 @@ async function switchClient(newSlug) {
   fetchAndRender();
 }
 
-document.getElementById('clientSwitcher')?.addEventListener('change', function(e) {
-  const val = e.target.value;
-  if (val === '__semya_hq__') {
-    loadCrossClientView();
-    return;
-  }
-  // Exiting HQ mode — restore the normal layout before switching client data
-  _exitHqMode();
-  switchClient(val);
-});
-
-// Cleanly exit HQ comparison mode and restore the normal per-client layout
-function _exitHqMode() {
-  const main = document.querySelector('.main');
-  if (!main || main.dataset.mode !== 'hq') return; // not in HQ mode, nothing to do
-
-  main.dataset.mode = '';
-
-  // Restore sidebar
-  document.querySelectorAll('[data-hq-hidden="true"]').forEach(el => {
-    el.style.display = '';
-    delete el.dataset.hqHidden;
-  });
-
-  // Restore nav tabs (they were hidden/greyed in HQ mode)
-  document.querySelectorAll('.nav-tab').forEach(t => {
-    t.style.opacity = ''; t.style.pointerEvents = '';
-  });
-
-  // Restore main content from cache, or fall back to the active tab skeleton
-  if (window._mainOriginalHTML) {
-    main.innerHTML = window._mainOriginalHTML;
-    window._mainOriginalHTML = null;
-  }
-  // Never reload — just let switchClient() + fetchAndRender() repopulate
-}
+document.getElementById('clientSwitcher')?.addEventListener('change', (e) => switchClient(e.target.value));
 
 // ═══════════════════════════════════════════════════════════════════
 // UTM ANALYTICS TAB
@@ -8378,10 +8131,7 @@ async function fetchAndRenderProjections() {
   try {
     const resp = await apiFetch('/clients/' + clientSlug + '/projections?bucket=' + bucket + '&periodsAhead=8');
     renderProjections(resp);
-    // Show as live if we have either series data OR ad spend data
-    const hasUsefulData = resp?.series?.length > 0 ||
-      (resp?.totals && (resp.totals.adSpend > 0 || resp.totals.revenue > 0));
-    setBadgeProj(hasUsefulData ? 'live' : 'empty');
+    setBadgeProj(resp?.series?.length ? 'live' : 'empty');
   } catch (e) {
     console.warn('[projections]', e.message);
     setBadgeProj('empty');
@@ -8394,48 +8144,20 @@ function renderProjections(resp) {
   const { totals, projection, unpricedSkus, unpricedRevenue, series } = resp;
 
   const note = document.getElementById('projUnpricedNote');
-  const hasAnyCosts = totals && (totals.profit !== 0 || totals.returnLoss > 0 || totals.adSpend > 0);
-  const noSkuCosts  = unpricedSkus && unpricedSkus.length > 0 && totals && totals.profit === 0;
-
-  if (noSkuCosts) {
-    // No cost prices at all — show revenue-only mode with setup guidance
-    note.style.display = '';
-    note.innerHTML = '<strong>&#9888; Cost prices not set yet.</strong> Add SKU cost prices in <strong>Settings → Projections → SKU Cost Prices</strong> to unlock profit calculations. ' +
-      'Showing <strong>revenue trend only</strong> for now — all ' + unpricedSkus.length + ' SKU' + (unpricedSkus.length !== 1 ? 's are' : ' is') + ' unpriced.';
-  } else if (unpricedSkus && unpricedSkus.length) {
+  if (unpricedSkus && unpricedSkus.length) {
     note.style.display = '';
     note.innerHTML = '⚠ ' + unpricedSkus.length + ' SKU' + (unpricedSkus.length !== 1 ? 's have' : ' has') +
-      ' no cost price set (' + fmtRevenue(unpricedRevenue) + ' in revenue excluded) — add pricing below for a complete picture. Missing: ' +
+      ' no cost price set (' + fmtRevenue(unpricedRevenue) + ' in revenue excluded from this calculation) — add pricing below for a complete picture. Missing: ' +
       unpricedSkus.slice(0, 6).join(', ') + (unpricedSkus.length > 6 ? '…' : '');
   } else {
     note.style.display = 'none';
   }
 
-  // Revenue-only mode: show revenue in the Net Profit card with a label
-  const profitEl = document.getElementById('projKpiProfit');
-  const profitLabelEl = document.getElementById('projKpiProfitLabel');
-  const hasAdSpendOnly = totals.adSpend > 0 && totals.revenue === 0;
-
-  if (noSkuCosts && totals.revenue > 0) {
-    // Has revenue but no cost prices — show revenue as proxy
-    profitEl.innerHTML = fmtRevenue(totals.revenue);
-    profitEl.style.color = '#0284c7';
-    if (profitLabelEl) profitLabelEl.textContent = 'Total Revenue (no costs set)';
-  } else if (hasAdSpendOnly) {
-    // Has campaign spend data but no revenue rows with dates — show spend
-    profitEl.innerHTML = fmtRevenue(totals.adSpend);
-    profitEl.style.color = '#d97706';
-    if (profitLabelEl) profitLabelEl.textContent = 'Ad Spend (no revenue data yet)';
-  } else {
-    profitEl.innerHTML = fmtRevenue(totals.profit);
-    profitEl.style.color = totals.profit >= 0 ? '#059669' : '#dc2626';
-    if (profitLabelEl) profitLabelEl.textContent = 'Net Profit';
-  }
+  document.getElementById('projKpiProfit').innerHTML = fmtRevenue(totals.profit);
+  document.getElementById('projKpiProfit').style.color = totals.profit >= 0 ? '#059669' : '#dc2626';
   document.getElementById('projKpiReturnLoss').innerHTML = fmtRevenue(totals.returnLoss);
-  document.getElementById('projKpiAdSpend').innerHTML    = fmtRevenue(totals.adSpend);
-  document.getElementById('projKpiAdSpendSub').textContent = totals.revenue > 0
-    ? (((totals.adSpend / totals.revenue) * 100).toFixed(1) + '% of revenue')
-    : (totals.adSpend > 0 ? 'No revenue data to compare against yet' : '—');
+  document.getElementById('projKpiAdSpend').innerHTML = fmtRevenue(totals.adSpend);
+  document.getElementById('projKpiAdSpendSub').textContent = totals.revenue > 0 ? (((totals.adSpend / totals.revenue) * 100).toFixed(1) + '% of revenue') : '—';
 
   if (projection) {
     document.getElementById('projKpiStatus').textContent = projection.isProfitableNow ? '✓ Profitable' : 'Not yet profitable';
@@ -8480,13 +8202,7 @@ function renderProjChart(series, projection) {
   const actualLabels = (series || []).map(s => s.period);
   const actualCum = [];
   let running = 0;
-  // If all series have zero profit but have revenue, show cumulative revenue instead
-  const allZeroProfit = (series || []).every(s => s.profit === 0);
-  const useRevenue = allZeroProfit && (series || []).some(s => s.revenue > 0 || s.adSpend > 0);
-  (series || []).forEach(s => {
-    running += useRevenue ? (s.revenue || 0) - (s.adSpend || 0) : s.profit;
-    actualCum.push(+running.toFixed(2));
-  });
+  (series || []).forEach(s => { running += s.profit; actualCum.push(+running.toFixed(2)); });
 
   const futureCount = projection?.linear?.projectedCumulative?.length || 0;
   const futureLabels = Array.from({ length: futureCount }, (_, i) => '+' + (i + 1));
@@ -8625,11 +8341,6 @@ const FRONTEND_BUILD = 'V38-onclick-quote-fix'; // bump alongside backend health
 console.log('[Semya] Frontend build:', FRONTEND_BUILD);
 
 async function boot(user) {
-  // Always reset "View as Client" on fresh page load — admins should
-  // start in admin view, not stuck in client-preview mode from a prior session.
-  // They can re-enable it explicitly via Settings → "Preview as client".
-  try { localStorage.removeItem('semya_view_as_client'); } catch(e) {}
-
   state.token      = user && user.token ? user.token : getToken();
   state.clientSlug = (user && user.clientSlug) || (window.location.pathname.match(/\/clients\/([^/]+)/)||[])[1] || 'neat-everyday';
   initDates();
@@ -8679,514 +8390,6 @@ if (window.semyaUser) {
   });
   setTimeout(function() { if (!state.clientSlug) boot({}); }, 400);
 }
-
-// ── Functions moved from end-of-body script to main script block ──
-// ── Portal dropdown helpers — position menus using fixed coords from button's bounding rect ──
-function _positionDropdown(menuId, btnId) {
-  const menu = document.getElementById(menuId);
-  const btn  = document.getElementById(btnId);
-  if (!menu || !btn) return;
-  const r = btn.getBoundingClientRect();
-  menu.style.top  = (r.bottom + 6) + 'px';
-  menu.style.left = r.left + 'px';
-  // Prevent right-edge overflow
-  const menuW = menu.offsetWidth || parseInt(menu.style.minWidth) || 240;
-  if (r.left + menuW > window.innerWidth - 12) {
-    menu.style.left = Math.max(8, window.innerWidth - menuW - 12) + 'px';
-  }
-}
-
-function _closeAllPsMenus() {
-  ['psStatusFilterMenu','psFulfillFilterMenu','psProductFilterMenu'].forEach(id => {
-    const m = document.getElementById(id);
-    if (m) m.style.display = 'none';
-  });
-}
-
-function togglePsStatusMenu() {
-  const m = document.getElementById('psStatusFilterMenu');
-  if (!m) return;
-  const wasOpen = m.style.display !== 'none';
-  _closeAllPsMenus();
-  if (!wasOpen) { m.style.display = 'block'; _positionDropdown('psStatusFilterMenu', 'psStatusFilterBtn'); }
-}
-
-function togglePsFulfillMenu() {
-  const m = document.getElementById('psFulfillFilterMenu');
-  if (!m) return;
-  const wasOpen = m.style.display !== 'none';
-  _closeAllPsMenus();
-  if (!wasOpen) { m.style.display = 'block'; _positionDropdown('psFulfillFilterMenu', 'psFulfillFilterBtn'); }
-}
-
-function togglePsProductMenu() {
-  const m = document.getElementById('psProductFilterMenu');
-  if (!m) return;
-  const wasOpen = m.style.display !== 'none';
-  _closeAllPsMenus();
-  if (!wasOpen) { m.style.display = 'block'; _positionDropdown('psProductFilterMenu', 'psProductFilterBtn'); }
-}
-
-// Close on outside click
-document.addEventListener('click', function(e) {
-  const menuIds = ['psStatusFilterMenu','psFulfillFilterMenu','psProductFilterMenu'];
-  const btnIds  = ['psStatusFilterBtn','psFulfillFilterBtn','psProductFilterBtn'];
-  const clickedInsideAny = menuIds.some(id => {
-    const el = document.getElementById(id);
-    return el && el.contains(e.target);
-  }) || btnIds.some(id => {
-    const el = document.getElementById(id);
-    return el && el.contains(e.target);
-  });
-  if (!clickedInsideAny) _closeAllPsMenus();
-}, true);
-
-// Reposition on scroll/resize so menus track their buttons
-window.addEventListener('scroll', function() {
-  ['psStatusFilterMenu','psFulfillFilterMenu','psProductFilterMenu'].forEach((id, i) => {
-    const m = document.getElementById(id);
-    if (m && m.style.display !== 'none') {
-      _positionDropdown(id, ['psStatusFilterBtn','psFulfillFilterBtn','psProductFilterBtn'][i]);
-    }
-  });
-}, true);
-window.addEventListener('resize', function() {
-  ['psStatusFilterMenu','psFulfillFilterMenu','psProductFilterMenu'].forEach((id, i) => {
-    const m = document.getElementById(id);
-    if (m && m.style.display !== 'none') {
-      _positionDropdown(id, ['psStatusFilterBtn','psFulfillFilterBtn','psProductFilterBtn'][i]);
-    }
-  });
-});
-
-// ══════════════════════════════════════════════════════════════
-// ISSUE 8 — Shareable Client Dashboard Link
-// Generates a link to the dashboard pre-scoped to a specific client
-// ══════════════════════════════════════════════════════════════
-// ── Client Share Link modal ─────────────────────────────────────
-let _cslCurrentSlug = null;
-let _cslMagicLinkUrl = null;
-let _cslPlainUrl     = null;
-
-function copyClientShareLink(clientSlug, clientName) {
-  _cslCurrentSlug  = clientSlug;
-  _cslMagicLinkUrl = null;
-
-  // Build the plain URL
-  const base = window.location.origin + window.location.pathname;
-  _cslPlainUrl = base + '?client=' + encodeURIComponent(clientSlug);
-
-  // Populate modal
-  const label = document.getElementById('cslClientLabel');
-  if (label) label.textContent = clientName + ' · Client Dashboard';
-
-  const urlEl = document.getElementById('cslPlainUrl');
-  if (urlEl) urlEl.textContent = _cslPlainUrl;
-
-  // Reset state
-  const result = document.getElementById('cslMagicResult');
-  const errEl  = document.getElementById('cslError');
-  const emailInput = document.getElementById('cslEmailInput');
-  if (result) result.style.display = 'none';
-  if (errEl)  errEl.style.display  = 'none';
-  if (emailInput) emailInput.value = '';
-
-  // Show modal
-  const modal = document.getElementById('clientShareModal');
-  if (modal) { modal.style.display = 'flex'; modal.style.removeProperty('display'); modal.style.display = 'flex'; }
-}
-
-function closeShareModal() {
-  const modal = document.getElementById('clientShareModal');
-  if (modal) modal.style.display = 'none';
-}
-
-// Close on backdrop click
-document.addEventListener('click', function(e) {
-  const modal = document.getElementById('clientShareModal');
-  if (modal && e.target === modal) closeShareModal();
-});
-
-function _cslCopyText(text, btnId) {
-  const btn = document.getElementById(btnId);
-  const orig = btn?.textContent || 'Copy';
-  const done = () => {
-    if (btn) { btn.textContent = '✓ Copied!'; setTimeout(() => { btn.textContent = orig; }, 2500); }
-  };
-  if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(text).then(done).catch(() => { prompt('Copy this link:', text); done(); });
-  } else {
-    prompt('Copy this link:', text);
-    done();
-  }
-}
-
-function cslCopyPlain()  { if (_cslPlainUrl)     _cslCopyText(_cslPlainUrl,     'cslCopyPlainBtn'); }
-function cslCopyMagic()  { if (_cslMagicLinkUrl) _cslCopyText(_cslMagicLinkUrl, 'cslCopyMagicBtn'); }
-
-async function cslSetPassword() {
-  const email  = document.getElementById('cslPwEmailInput')?.value?.trim();
-  const pw     = document.getElementById('cslPwInput')?.value;
-  const result = document.getElementById('cslPwResult');
-  const btn    = document.getElementById('cslSetPwBtn');
-
-  if (!email || !pw) {
-    if (result) { result.textContent = 'Please enter both email and password.'; result.style.background = '#fef2f2'; result.style.color = '#dc2626'; result.style.display = 'block'; }
-    return;
-  }
-  if (pw.length < 8) {
-    if (result) { result.textContent = 'Password must be at least 8 characters.'; result.style.background = '#fef2f2'; result.style.color = '#dc2626'; result.style.display = 'block'; }
-    return;
-  }
-
-  if (btn) { btn.textContent = 'Setting…'; btn.disabled = true; }
-  if (result) result.style.display = 'none';
-
-  try {
-    const resp = await apiFetch('/auth/admin/set-client-password', {
-      method: 'POST',
-      body: JSON.stringify({ email, password: pw, clientSlug: _cslCurrentSlug }),
-    });
-    if (resp?.ok) {
-      if (result) {
-        result.textContent = '✓ ' + resp.message;
-        result.style.background = '#f0fdf4';
-        result.style.color = '#166534';
-        result.style.display = 'block';
-      }
-      // Clear password field for security
-      const pwInput = document.getElementById('cslPwInput');
-      if (pwInput) pwInput.value = '';
-    } else {
-      throw new Error(resp?.error || 'Unknown error');
-    }
-  } catch (e) {
-    if (result) {
-      result.textContent = 'Failed: ' + (e.message || 'Server error');
-      result.style.background = '#fef2f2';
-      result.style.color = '#dc2626';
-      result.style.display = 'block';
-    }
-  } finally {
-    if (btn) { btn.textContent = 'Set Password'; btn.disabled = false; }
-  }
-}
-
-async function cslGenerateMagicLink() {
-  const email  = document.getElementById('cslEmailInput')?.value?.trim();
-  const errEl  = document.getElementById('cslError');
-  const result = document.getElementById('cslMagicResult');
-  const btn    = document.getElementById('cslMagicBtn');
-
-  if (!email) {
-    if (errEl) { errEl.textContent = "Please enter the client's email address."; errEl.style.display = 'block'; }
-    return;
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    if (errEl) { errEl.textContent = 'Please enter a valid email address.'; errEl.style.display = 'block'; }
-    return;
-  }
-
-  if (errEl)  errEl.style.display  = 'none';
-  if (result) result.style.display = 'none';
-  if (btn)    { btn.textContent = 'Generating…'; btn.disabled = true; }
-
-  try {
-    const resp = await apiFetch('/auth/admin/client-link', {
-      method: 'POST',
-      body: JSON.stringify({ clientSlug: _cslCurrentSlug, email }),
-    });
-
-    if (resp?.isNewUser) {
-      // Invite email was auto-sent by Supabase — show confirmation
-      _cslMagicLinkUrl = null;
-      const urlEl = document.getElementById('cslMagicUrl');
-      if (urlEl) {
-        urlEl.style.background = '#eff6ff';
-        urlEl.style.borderColor = '#bfdbfe';
-        urlEl.style.color = '#1d4ed8';
-        urlEl.textContent = '✓ Invite email sent to ' + email + ' — they will receive a link to set their password and access the ' + (resp.clientName || '') + ' dashboard.';
-        urlEl.style.whiteSpace = 'normal';
-        urlEl.style.height = 'auto';
-        urlEl.style.padding = '10px 12px';
-      }
-      // Hide the Copy button since there's nothing to copy
-      const copyBtn = document.getElementById('cslCopyMagicBtn');
-      if (copyBtn) copyBtn.style.display = 'none';
-      if (result) result.style.display = 'block';
-    } else if (resp?.magicLink) {
-      _cslMagicLinkUrl = resp.magicLink;
-      const urlEl = document.getElementById('cslMagicUrl');
-      if (urlEl) { urlEl.textContent = resp.magicLink; urlEl.style.whiteSpace = 'nowrap'; }
-      const copyBtn = document.getElementById('cslCopyMagicBtn');
-      if (copyBtn) copyBtn.style.display = '';
-      if (result) result.style.display = 'block';
-    } else {
-      throw new Error(resp?.error || resp?.message || 'Could not generate link');
-    }
-  } catch (e) {
-    if (errEl) { errEl.textContent = 'Failed to generate link: ' + (e.message || 'Server error'); errEl.style.display = 'block'; }
-  } finally {
-    if (btn) { btn.textContent = 'Generate'; btn.disabled = false; }
-  }
-}
-
-// On page load: honour ?client= param to auto-switch to a shared client link
-(function() {
-  const params = new URLSearchParams(window.location.search);
-  const sharedClient = params.get('client');
-  if (sharedClient) {
-    // Will be picked up after auth + client list loads
-    window._sharedClientSlug = sharedClient;
-  }
-})();
-
-// ══════════════════════════════════════════════════════════════
-// ISSUE 9 — Poll pending requests every 5 min for bell badge
-// ══════════════════════════════════════════════════════════════
-function _startNotifPolling() {
-  if (!state.isAdmin) return;
-  // Show bell immediately
-  const bellEl = document.getElementById('headerNotifBell');
-  if (bellEl) bellEl.style.display = 'block';
-  // Poll every 5 minutes
-  setInterval(() => {
-    if (state.isAdmin) loadPendingRequests();
-  }, 5 * 60 * 1000);
-}
-
-// ══════════════════════════════════════════════════════════════
-// ISSUE 10 — Access Control: client selector handler
-// ══════════════════════════════════════════════════════════════
-function _populateCaSelectors() {
-  // Populate both the Access Control and Appearance client selectors
-  // from the cached client list whenever it's loaded
-  const clients = _caClientsCache;
-  if (!clients || !clients.length) return;
-
-  const opts = '<option value="">— Choose a client —</option>' +
-    clients.map(cl => '<option value="' + cl.slug + '" data-id="' + cl.id + '" data-name="' + cl.name.replace(/"/g,'&quot;') + '">' + cl.name + '</option>').join('');
-
-  const accessSel = document.getElementById('caAccessClientSelect');
-  const appSel    = document.getElementById('caAppearanceClientSelect');
-  if (accessSel) accessSel.innerHTML = opts;
-  if (appSel)    appSel.innerHTML    = opts;
-
-  // Pre-select whichever client is currently active in caState
-  if (caState.clientSlug) {
-    if (accessSel) accessSel.value = caState.clientSlug;
-    if (appSel)    appSel.value    = caState.clientSlug;
-  }
-}
-
-function onCaAccessClientSelect(slug) {
-  if (!slug) return;
-  const sel = document.getElementById('caAccessClientSelect');
-  const opt = sel?.querySelector('option[value="' + slug + '"]');
-  const id   = opt?.dataset?.id   || null;
-  const name = opt?.dataset?.name || slug;
-  // Update caState so Access Control loads the right client
-  caState.clientSlug = slug; caState.clientId = id; caState.clientName = name;
-  updateCaAccessHeader();
-  const rows   = document.querySelector('#caPanel-access .acl-rows');
-  const notice = document.getElementById('caAccessNoClientNotice');
-  if (rows)   rows.style.display   = '';
-  if (notice) notice.style.display = 'none';
-  loadAccessControlForClient(slug);
-}
-
-// ══════════════════════════════════════════════════════════════
-// ISSUE 11 — Appearance: client selector handler
-// ══════════════════════════════════════════════════════════════
-function onCaAppearanceClientSelect(slug) {
-  if (!slug) return;
-  const sel  = document.getElementById('caAppearanceClientSelect');
-  const opt  = sel?.querySelector('option[value="' + slug + '"]');
-  const id   = opt?.dataset?.id   || null;
-  const name = opt?.dataset?.name || slug;
-  // Update caState so saveAppearance / loadAppearance targets the right client
-  caState.clientSlug = slug; caState.clientId = id; caState.clientName = name;
-  const hint = document.getElementById('caAppearanceScopeHint');
-  const lbl  = document.getElementById('caScopeClientName');
-  if (lbl)  lbl.textContent  = name + "'s";
-  if (hint) hint.style.display = '';
-  // Update "View as Client" toggle visibility
-  updateViewAsToggleUI();
-  // Pre-fill the brand name inputs with this client's current name
-  const brandInput = document.getElementById('brandNameInput');
-  if (brandInput) brandInput.value = name;
-  // Reload appearance for the newly selected client
-  if (typeof loadAppearanceForSlug === 'function') loadAppearanceForSlug(slug);
-}
-
-// ══════════════════════════════════════════════════════════════
-// ISSUE 7 — Semya cross-client comparison view
-// Admin can switch to "Semya" in the client switcher to see a
-// comparison dashboard of all clients side by side.
-// ══════════════════════════════════════════════════════════════
-async function loadCrossClientView() {
-  // Show the main area in cross-client mode
-  const main = document.querySelector('.main');
-  if (!main) return;
-
-  // Cache original HTML so we can restore it when switching back
-  if (!window._mainOriginalHTML) {
-    window._mainOriginalHTML = main.innerHTML;
-  }
-  main.dataset.mode = 'hq';
-
-  // Hide entire sidebar — irrelevant in multi-client comparison view
-  const aside = document.querySelector('aside.sidebar');
-  if (aside) { aside.dataset.hqHidden = 'true'; aside.style.display = 'none'; }
-
-  // Grey-out nav tabs so they don't fire fetchAndRender() while in HQ mode
-  document.querySelectorAll('.nav-tab').forEach(t => {
-    t.style.opacity = '0.4'; t.style.pointerEvents = 'none';
-  });
-
-  main.innerHTML = '<div style="padding:24px;">' +
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">' +
-      '<div>' +
-        '<div style="font-size:18px;font-weight:800;color:#0f172a;">Semya Digital — All Clients</div>' +
-        '<div style="font-size:12px;color:#64748b;margin-top:2px;">YTD revenue comparison across all clients</div>' +
-      '</div>' +
-      '<span class="fetch-badge loading" id="crossClientBadge"><span class="fetch-dot"></span>Loading…</span>' +
-    '</div>' +
-    // Tab selector for HQ view
-    '<div style="display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap;">' +
-      ['Platform Sales','SKU Performance','Campaign Insights','Geographic Analysis'].map((label, i) => {
-        const active = i === 0;
-        const slug = label.toLowerCase().replace(/ /g,'_');
-        return '<button onclick="switchHqTab(this,\''+slug+'\')" style="padding:6px 14px;border-radius:99px;border:1px solid '+(active?'var(--theme-primary)':'var(--color-border)')+';background:'+(active?'var(--theme-primary)':'var(--color-surface-2)')+';color:'+(active?'#fff':'var(--theme-muted)')+';font-size:11px;font-weight:600;cursor:pointer;">'+label+'</button>';
-      }).join('') +
-    '</div>' +
-    '<div id="crossClientGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;"></div>' +
-  '</div>';
-
-  // Fetch all clients from admin list
-  let clients = [];
-  try {
-    const resp = await apiFetch('/auth/admin/clients');
-    clients = resp?.clients || [];
-  } catch (e) {
-    document.getElementById('crossClientGrid').innerHTML =
-      '<div style="color:#dc2626;font-size:13px;">Failed to load clients: ' + e.message + '</div>';
-    return;
-  }
-
-  const badge = document.getElementById('crossClientBadge');
-  if (badge) { badge.className = 'fetch-badge live'; badge.innerHTML = '<span class="fetch-dot"></span>Live'; }
-
-  const grid = document.getElementById('crossClientGrid');
-  if (!clients.length) {
-    grid.innerHTML = '<div style="color:#94a3b8;font-size:13px;">No clients found.</div>';
-    return;
-  }
-
-  // Fetch platform-sales summary for each client in parallel
-  const today = new Date().toISOString().slice(0, 10);
-  const yearStart = new Date().getFullYear() + '-01-01';
-
-  const results = await Promise.allSettled(
-    clients.map(cl => apiFetch('/clients/' + cl.slug + '/platform-sales?from=' + yearStart + '&to=' + today))
-  );
-
-  // Store data for tab switching
-  window._hqClientsData = clients.map((cl, i) => ({
-    cl,
-    data: results[i].status === 'fulfilled' ? results[i].value : null
-  }));
-
-  // Render using the unified grid renderer.
-  // Arrow wrapper defers reference lookup to fire time across script blocks.
-  setTimeout(() => { if (typeof renderHqGrid === 'function') renderHqGrid(window._hqClientsData, window._hqCurrentTab || 'Platform Sales'); }, 0);
-}
-
-function switchToClient(slug) {
-  // Exit HQ mode first, then switch to the chosen client's data
-  _exitHqMode();
-  const sw = document.getElementById('clientSwitcher');
-  if (sw) sw.value = slug;
-  switchClient(slug);
-}
-
-// Switch what metric the HQ comparison shows per tab
-window._hqCurrentTab = 'Platform Sales';
-function switchHqTab(btn, tabLabel) {
-  window._hqCurrentTab = tabLabel;
-  // Update button styles
-  btn.closest('div').querySelectorAll('button').forEach(b => {
-    b.style.background  = b === btn ? 'var(--theme-primary)' : 'var(--color-surface-2)';
-    b.style.color       = b === btn ? '#fff' : 'var(--theme-muted)';
-    b.style.borderColor = b === btn ? 'var(--theme-primary)' : 'var(--color-border)';
-  });
-  // Re-render the grid with the same client data but different metric
-  const grid = document.getElementById('crossClientGrid');
-  if (!grid || !window._hqClientsData) return;
-  renderHqGrid(window._hqClientsData, tabLabel);
-}
-
-function renderHqGrid(clientData, tabLabel) {
-  const grid = document.getElementById('crossClientGrid');
-  if (!grid) return;
-  grid.innerHTML = clientData.map(({ cl, data }) => {
-    // Pick the right metric depending on tab
-    let primaryValue = '—', subLabel = '', platformRows = '', hasData = false;
-    const d = data;
-
-    if (tabLabel === 'Platform Sales' || tabLabel === 'SKU Performance') {
-      const rev = d?.grandTotal || 0;
-      primaryValue = fmtRevenue(rev);
-      subLabel = 'YTD Net Revenue · ' + (d?.platforms?.length || 0) + ' platforms';
-      hasData = rev > 0;
-      const pctChange = d?.prevGrandTotal > 0 ? (((rev - d.prevGrandTotal) / d.prevGrandTotal) * 100).toFixed(1) : null;
-      const deltaHtml = pctChange != null
-        ? '<span style="font-size:11px;font-weight:600;color:' + (pctChange > 0 ? '#059669' : '#dc2626') + ';background:' + (pctChange > 0 ? 'rgba(5,150,105,.1)' : 'rgba(220,38,38,.08)') + ';padding:2px 8px;border-radius:99px;">' + (pctChange > 0 ? '▲' : '▼') + ' ' + Math.abs(pctChange) + '%</span>'
-        : '';
-      const plats = (d?.platforms || []).slice(0, 4);
-      platformRows = (plats.length ? plats : []).map(p => {
-        const pm = PLATFORM_META[p.platform] || { label: p.platform, pillClass: 'pill-amz' };
-        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:12px;">' +
-          '<span class="platform-pill ' + pm.pillClass + '" style="font-size:9px;padding:2px 7px;">' + pm.label + '</span>' +
-          '<span style="font-weight:600;color:#1e293b;">' + fmtRevenue(p.totalRevenue) + '</span>' +
-          '<span style="color:#94a3b8;">' + (rev > 0 ? (p.totalRevenue / rev * 100).toFixed(1) + '%' : '—') + '</span>' +
-        '</div>';
-      }).join('');
-      return '<div class="card" style="cursor:pointer;" onclick="switchToClient(' + JSON.stringify(cl.slug) + ')">' +
-        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
-          '<div style="font-size:14px;font-weight:700;color:#1e293b;">' + cl.name + '</div>' + deltaHtml +
-        '</div>' +
-        '<div style="font-size:26px;font-weight:800;color:#0f172a;letter-spacing:-0.02em;margin-bottom:4px;">' + primaryValue + '</div>' +
-        '<div style="font-size:11px;color:#94a3b8;margin-bottom:14px;">' + subLabel + '</div>' +
-        (hasData ? '<div>' + platformRows + '</div>' : '<div style="font-size:12px;color:#94a3b8;padding:8px 0;">No data yet — upload files to get started.</div>') +
-        '<div style="margin-top:12px;text-align:right;"><span style="font-size:11px;color:var(--theme-primary);font-weight:600;">View Dashboard →</span></div>' +
-      '</div>';
-    }
-
-    // Fallback for other tabs
-    return '<div class="card" style="cursor:pointer;" onclick="switchToClient(' + JSON.stringify(cl.slug) + ')">' +
-      '<div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:12px;">' + cl.name + '</div>' +
-      '<div style="font-size:12px;color:#94a3b8;">Switch to this client to view ' + tabLabel + '</div>' +
-      '<div style="margin-top:12px;text-align:right;"><span style="font-size:11px;color:var(--theme-primary);font-weight:600;">View Dashboard →</span></div>' +
-    '</div>';
-  }).join('');
-}
-
-// (patchSwitcherForCrossClient merged into main change handler above)
-
-// ── Explicitly expose all new functions to window scope ───────────
-// Functions defined in later <script> blocks are in global scope but
-// some browsers and strict-mode contexts require explicit window assignment
-// when they're called from innerHTML onclick handlers.
-window.copyClientShareLink      = copyClientShareLink;
-window.closeShareModal          = closeShareModal;
-window.cslCopyPlain             = cslCopyPlain;
-window.cslCopyMagic             = cslCopyMagic;
-window.cslGenerateMagicLink     = cslGenerateMagicLink;
-window.switchToClient           = switchToClient;
-window.switchHqTab              = switchHqTab;
-window.onCaAccessClientSelect   = onCaAccessClientSelect;
-window.onCaAppearanceClientSelect = onCaAppearanceClientSelect;
 </script>
 
 <script>
@@ -9221,28 +8424,13 @@ document.addEventListener('click', function(e) {
 
 function toggleSkuDropdown(e) {
   e.stopPropagation();
-  const panel = document.getElementById('skuCustomPanel');
-  const wrap  = document.getElementById('skuCustomWrap');
-  if (!panel || !wrap) return;
-  const isOpen = panel.style.display !== 'none';
-  if (isOpen) {
-    panel.style.display = 'none';
-    wrap.classList.remove('open');
-    return;
+  const wrap = document.getElementById('skuCustomWrap');
+  const open = wrap.classList.contains('open');
+  wrap.classList.toggle('open', !open);
+  if (!open) {
+    const search = document.getElementById('skuCustomSearch');
+    if (search) { search.value = ''; filterSkuOptions(''); search.focus(); }
   }
-  // Position panel below the trigger using fixed coords
-  const r = wrap.getBoundingClientRect();
-  panel.style.display = 'block';
-  panel.style.top  = (r.bottom + 6) + 'px';
-  panel.style.left = r.left + 'px';
-  // Prevent right-edge overflow
-  const panelW = panel.offsetWidth || 280;
-  if (r.left + panelW > window.innerWidth - 12) {
-    panel.style.left = Math.max(8, window.innerWidth - panelW - 12) + 'px';
-  }
-  wrap.classList.add('open');
-  const search = document.getElementById('skuCustomSearch');
-  if (search) { search.value = ''; filterSkuOptions(''); search.focus(); }
 }
 
 function filterSkuOptions(query) {
@@ -9280,30 +8468,9 @@ function selectSkuOption(el) {
 
 // Close SKU dropdown on outside click
 document.addEventListener('click', function(e) {
-  const wrap  = document.getElementById('skuCustomWrap');
-  const panel = document.getElementById('skuCustomPanel');
-  if (!wrap || !panel) return;
-  if (!wrap.contains(e.target) && !panel.contains(e.target)) {
-    panel.style.display = 'none';
-    wrap.classList.remove('open');
-  }
+  const wrap = document.getElementById('skuCustomWrap');
+  if (wrap && !wrap.contains(e.target)) wrap.classList.remove('open');
 });
-
-// Reposition SKU panel on scroll/resize so it tracks the trigger
-function _repositionSkuPanel() {
-  const panel = document.getElementById('skuCustomPanel');
-  const wrap  = document.getElementById('skuCustomWrap');
-  if (!panel || !wrap || panel.style.display === 'none') return;
-  const r = wrap.getBoundingClientRect();
-  panel.style.top  = (r.bottom + 6) + 'px';
-  panel.style.left = r.left + 'px';
-  const panelW = panel.offsetWidth || 280;
-  if (r.left + panelW > window.innerWidth - 12) {
-    panel.style.left = Math.max(8, window.innerWidth - panelW - 12) + 'px';
-  }
-}
-window.addEventListener('scroll', _repositionSkuPanel, true);
-window.addEventListener('resize', _repositionSkuPanel);
 
 // ── Daily Targets Modal ─────────────────────────────────────────
 function openDailyTargetsPanel() {
@@ -10626,327 +9793,6 @@ function _buildPrompt(data) {
 }
 
 </script>
-
-
-<script>
-// ── AI Settings Modal — dynamically injected to avoid CSS conflicts ──
-const AI_MODELS = {
-  gemini: [
-    { value: 'gemini-2.0-flash',      label: 'Gemini 2.0 Flash (Latest · Recommended)' },
-    { value: 'gemini-1.5-flash',      label: 'Gemini 1.5 Flash (Fast · Reliable)' },
-    { value: 'gemini-1.5-flash-8b',   label: 'Gemini 1.5 Flash 8B (Free · Fastest)' },
-  ],
-  claude: [
-    { value: 'claude-haiku-4-5',  label: 'Claude Haiku 4.5 (Cheapest)' },
-    { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (Balanced)' },
-    { value: 'claude-opus-4-6',   label: 'Claude Opus 4.6 (Most capable)' },
-  ],
-};
-
-const AI_INFO = {
-  gemini: '🔑 Get a free API key at <a href="https://aistudio.google.com" target="_blank" style="color:#3b82f6;">aistudio.google.com</a> → Get API key. Free tier: 10 req/min, 1,500 req/day.',
-  claude: '🔑 Get an API key at <a href="https://console.anthropic.com" target="_blank" style="color:#3b82f6;">console.anthropic.com</a>. Claude is a paid service — charges apply per token used.',
-};
-
-function openAiSettingsModal() {
-  // Remove any existing modal
-  const existing = document.getElementById('aiSettingsModalDyn');
-  if (existing) existing.remove();
-
-  const modal = document.createElement('div');
-  modal.id = 'aiSettingsModalDyn';
-  modal.setAttribute('style', 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.65);z-index:2147483647;display:flex;align-items:center;justify-content:center;');
-  modal.innerHTML = `
-    <div style="background:#fff;border-radius:16px;padding:32px;width:480px;max-width:92vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.25);position:relative;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
-        <div>
-          <div style="font-size:18px;font-weight:700;color:#1e293b;">AI Settings</div>
-          <div style="font-size:12px;color:#64748b;margin-top:2px;">Connect your AI provider to unlock AI Insights</div>
-        </div>
-        <button onclick="document.getElementById('aiSettingsModalDyn').remove()" style="border:none;background:#f1f5f9;border-radius:8px;cursor:pointer;width:32px;height:32px;font-size:16px;color:#64748b;">✕</button>
-      </div>
-
-      <div style="margin-bottom:18px;">
-        <div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:10px;letter-spacing:.05em;">SELECT PROVIDER</div>
-        <div style="display:flex;gap:12px;">
-          <label style="flex:1;cursor:pointer;" onclick="aiSelectProvider('gemini')">
-            <div id="aiCardGemini" style="border:2px solid #e2e8f0;border-radius:12px;padding:16px;text-align:center;transition:all .15s;">
-              <div style="font-size:22px;">🔮</div>
-              <div style="font-size:13px;font-weight:600;color:#1e293b;margin-top:4px;">Gemini</div>
-              <div style="font-size:10px;color:#64748b;">Google · Free tier</div>
-            </div>
-          </label>
-          <label style="flex:1;cursor:pointer;" onclick="aiSelectProvider('claude')">
-            <div id="aiCardClaude" style="border:2px solid #e2e8f0;border-radius:12px;padding:16px;text-align:center;transition:all .15s;">
-              <div style="font-size:22px;">🤖</div>
-              <div style="font-size:13px;font-weight:600;color:#1e293b;margin-top:4px;">Claude</div>
-              <div style="font-size:10px;color:#64748b;">Anthropic · Paid</div>
-            </div>
-          </label>
-        </div>
-      </div>
-
-      <div style="margin-bottom:18px;">
-        <div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:8px;letter-spacing:.05em;">MODEL</div>
-        <select id="aiModelSelectDyn" style="width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;box-sizing:border-box;">
-          <option value="">— Select provider first —</option>
-        </select>
-      </div>
-
-      <div style="margin-bottom:18px;">
-        <div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:8px;letter-spacing:.05em;">API KEY</div>
-        <input type="password" id="aiApiKeyDyn" placeholder="Paste your API key here..."
-          style="width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;color:#1e293b;box-sizing:border-box;">
-        <div id="aiKeyStatusDyn" style="font-size:11px;color:#64748b;margin-top:6px;"></div>
-      </div>
-
-      <div id="aiInfoBoxDyn" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:18px;font-size:11px;color:#475569;display:none;"></div>
-
-      <div style="display:flex;gap:10px;">
-        <button id="aiSaveBtnDyn" onclick="saveAiSettingsDyn()"
-          style="flex:1;padding:12px;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
-          Save AI Settings
-        </button>
-        <button onclick="clearAiSettingsDyn()"
-          style="padding:12px 16px;background:#fee2e2;color:#dc2626;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
-          Clear
-        </button>
-      </div>
-    </div>`;
-
-  document.body.appendChild(modal);
-  window._aiProvider = null;
-  loadCurrentAiSettingsDyn();
-}
-
-function aiSelectProvider(provider) {
-  window._aiProvider = provider;
-  const gemCard = document.getElementById('aiCardGemini');
-  const cluCard = document.getElementById('aiCardClaude');
-  if (gemCard) gemCard.style.border = provider === 'gemini' ? '2px solid #3b82f6' : '2px solid #e2e8f0';
-  if (cluCard) cluCard.style.border = provider === 'claude' ? '2px solid #3b82f6' : '2px solid #e2e8f0';
-
-  const select = document.getElementById('aiModelSelectDyn');
-  if (select) select.innerHTML = AI_MODELS[provider].map(m => `<option value="${m.value}">${m.label}</option>`).join('');
-
-  const info = document.getElementById('aiInfoBoxDyn');
-  if (info) { info.innerHTML = AI_INFO[provider]; info.style.display = 'block'; }
-}
-
-async function loadCurrentAiSettingsDyn() {
-  try {
-    const slug  = window.SEMYA_CLIENT_SLUG || document.querySelector('[data-client-slug]')?.dataset?.clientSlug || 'neat-everyday';
-    const token = localStorage.getItem('semya_token') || localStorage.getItem('token');
-    const res   = await fetch(`https://semya-digital-dashboard.onrender.com/clients/${slug}/ai-settings`, {
-      headers: { 'Authorization': 'Bearer ' + token }
-    });
-    const data = await res.json();
-    if (data.ai_provider) {
-      aiSelectProvider(data.ai_provider);
-      if (data.ai_model) {
-        const sel = document.getElementById('aiModelSelectDyn');
-        if (sel) sel.value = data.ai_model;
-      }
-    }
-    if (data.ai_key_set) {
-      const status = document.getElementById('aiKeyStatusDyn');
-      if (status) status.innerHTML = '✅ API key is set. Enter a new key to replace it.';
-      const input = document.getElementById('aiApiKeyDyn');
-      if (input) input.placeholder = '••••••••••••••••••••••';
-    }
-  } catch(e) { console.log('[ai-settings] load error:', e.message); }
-}
-
-async function saveAiSettingsDyn() {
-  const provider = window._aiProvider;
-  const model    = document.getElementById('aiModelSelectDyn')?.value;
-  const apiKey   = document.getElementById('aiApiKeyDyn')?.value.trim();
-  const btn      = document.getElementById('aiSaveBtnDyn');
-
-  if (!provider) { alert('Please select an AI provider first.'); return; }
-  if (!model)    { alert('Please select a model.'); return; }
-
-  if (btn) { btn.textContent = 'Saving...'; btn.disabled = true; }
-
-  try {
-    const slug  = window.SEMYA_CLIENT_SLUG || 'neat-everyday';
-    const token = localStorage.getItem('semya_token') || localStorage.getItem('token');
-    const res = await fetch(`https://semya-digital-dashboard.onrender.com/clients/${slug}/ai-settings`, {
-      method:  'POST',
-      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ai_provider: provider, ai_model: model, ai_api_key: apiKey || undefined }),
-    });
-    const data = await res.json();
-    if (data.ok) {
-      const status = document.getElementById('aiKeyStatusDyn');
-      if (status) status.innerHTML = '✅ Saved! AI Insights will now use your key.';
-      if (btn) { btn.textContent = '✅ Saved!'; setTimeout(() => { btn.textContent = 'Save AI Settings'; btn.disabled = false; }, 2000); }
-    } else throw new Error(data.error);
-  } catch(e) {
-    if (btn) { btn.textContent = 'Save AI Settings'; btn.disabled = false; }
-    alert('Error: ' + e.message);
-  }
-}
-
-async function clearAiSettingsDyn() {
-  if (!confirm('Remove AI key? AI Insights will be disabled.')) return;
-  const slug  = window.SEMYA_CLIENT_SLUG || 'neat-everyday';
-  const token = localStorage.getItem('semya_token') || localStorage.getItem('token');
-  await fetch(`https://semya-digital-dashboard.onrender.com/clients/${slug}/ai-settings`, {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ai_api_key: '' }),
-  });
-  document.getElementById('aiSettingsModalDyn')?.remove();
-}
-</script>
-
-
-<!-- ═══ CLIENT SHARE LINK MODAL ═══════════════════════════════════════ -->
-<div id="clientShareModal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.45);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.18);width:100%;max-width:480px;margin:20px;overflow:hidden;">
-
-    <!-- Header -->
-    <div style="padding:22px 24px 18px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;">
-      <div>
-        <div style="font-size:15px;font-weight:800;color:#0f172a;">Share Dashboard Link</div>
-        <div style="font-size:12px;color:#64748b;margin-top:2px;" id="cslClientLabel">—</div>
-      </div>
-      <button onclick="closeShareModal()" style="background:none;border:none;cursor:pointer;color:#94a3b8;padding:4px;border-radius:6px;line-height:0;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-
-    <!-- Body -->
-    <div style="padding:22px 24px;">
-
-      <!-- Section 1: Plain dashboard link -->
-      <div style="margin-bottom:20px;">
-        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Dashboard URL</div>
-        <div style="font-size:11px;color:#94a3b8;margin-bottom:10px;">Share this URL with clients who already have a login. They will see only their own data.</div>
-        <div style="display:flex;gap:8px;">
-          <div id="cslPlainUrl" style="flex:1;padding:9px 12px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;font-family:monospace;color:#334155;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
-          <button onclick="cslCopyPlain()" id="cslCopyPlainBtn"
-            style="padding:9px 16px;background:var(--theme-primary);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">
-            Copy
-          </button>
-        </div>
-      </div>
-
-      <!-- Divider -->
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
-        <div style="flex:1;height:1px;background:#f1f5f9;"></div>
-        <span style="font-size:11px;color:#94a3b8;font-weight:600;">OR</span>
-        <div style="flex:1;height:1px;background:#f1f5f9;"></div>
-      </div>
-
-      <!-- Section 2: Magic link by email -->
-      <div>
-        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">One-Click Sign-In Link</div>
-        <div style="font-size:11px;color:#94a3b8;margin-bottom:10px;">Enter the client's email to generate a magic link they can click to sign in instantly — no password needed. If they don't have an account yet, one will be created automatically.</div>
-        <div style="display:flex;gap:8px;margin-bottom:10px;">
-          <input id="cslEmailInput" type="email" placeholder="client@example.com"
-            style="flex:1;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;color:#1e293b;outline:none;"
-            onfocus="this.style.borderColor='var(--theme-primary)'" onblur="this.style.borderColor='#e2e8f0'"
-            onkeydown="if(event.key==='Enter') cslGenerateMagicLink()" />
-          <button onclick="cslGenerateMagicLink()" id="cslMagicBtn"
-            style="padding:9px 16px;background:#0f172a;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">
-            Generate
-          </button>
-        </div>
-
-        <!-- Magic link result — hidden until generated -->
-        <div id="cslMagicResult" style="display:none;">
-          <div id="cslResultHeader" style="font-size:11px;font-weight:600;color:#059669;margin-bottom:6px;">&#10003; Ready to share</div>
-          <div style="display:flex;gap:8px;">
-            <div id="cslMagicUrl" style="flex:1;padding:9px 12px;background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:8px;font-size:11px;font-family:monospace;color:#166534;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
-            <button onclick="cslCopyMagic()" id="cslCopyMagicBtn"
-              style="padding:9px 16px;background:#059669;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">
-              Copy
-            </button>
-          </div>
-          <div style="font-size:10px;color:#94a3b8;margin-top:6px;">&#9888; This link signs in as that specific email. Do not share it publicly — send it only to the intended client.</div>
-        </div>
-
-        <!-- Error message -->
-        <div id="cslError" style="display:none;font-size:12px;color:#dc2626;padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;margin-top:8px;"></div>
-      </div>
-
-      <!-- Divider -->
-      <div style="display:flex;align-items:center;gap:12px;margin:20px 0;">
-        <div style="flex:1;height:1px;background:#f1f5f9;"></div>
-        <span style="font-size:11px;color:#94a3b8;font-weight:600;">OR</span>
-        <div style="flex:1;height:1px;background:#f1f5f9;"></div>
-      </div>
-
-      <!-- Section 3: Set password directly -->
-      <div>
-        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Set Login Password Directly</div>
-        <div style="font-size:11px;color:#94a3b8;margin-bottom:10px;">Create or update a password for this client so they can log in immediately with email + password. No invite email needed.</div>
-        <div style="display:flex;gap:8px;margin-bottom:8px;">
-          <input id="cslPwEmailInput" type="email" placeholder="client@example.com"
-            style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;color:#1e293b;outline:none;"
-            onfocus="this.style.borderColor='var(--theme-primary)'" onblur="this.style.borderColor='#e2e8f0'" />
-        </div>
-        <div style="display:flex;gap:8px;">
-          <input id="cslPwInput" type="password" placeholder="Password (min 8 characters)"
-            style="flex:1;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;color:#1e293b;outline:none;"
-            onfocus="this.style.borderColor='var(--theme-primary)'" onblur="this.style.borderColor='#e2e8f0'"
-            onkeydown="if(event.key==='Enter') cslSetPassword()" />
-          <button onclick="cslSetPassword()" id="cslSetPwBtn"
-            style="padding:9px 16px;background:#7c3aed;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">
-            Set Password
-          </button>
-        </div>
-        <div id="cslPwResult" style="display:none;font-size:12px;padding:8px 12px;border-radius:8px;margin-top:8px;"></div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ── PORTAL DROPDOWNS — rendered at body level to escape flex/overflow contexts ── -->
-
-<!-- SKU Performance dropdown -->
-<div id="skuCustomPanel" style="display:none;position:fixed;z-index:9999;background:#fff;border:1px solid var(--color-border);border-radius:var(--radius-md);box-shadow:0 8px 24px rgba(2,132,199,.13);min-width:260px;max-width:360px;overflow:hidden;">
-  <input type="text" class="sku-custom-search" id="skuCustomSearch" placeholder="Search SKU…" oninput="filterSkuOptions(this.value)" />
-  <div class="sku-custom-list" id="skuCustomList"></div>
-  <div class="sku-custom-empty" id="skuCustomEmpty">No matching SKUs</div>
-</div>
-<div id="psStatusFilterMenu" style="display:none;position:fixed;z-index:9999;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:10px 12px;min-width:230px;">
-  <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">Uncheck a status to exclude it from every number below. Everything is included by default.</div>
-  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-status-cb" value="Cancelled" onchange="onPsStatusChange()"> Cancelled</label>
-  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-status-cb" value="Returned" onchange="onPsStatusChange()"> Returned</label>
-  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-status-cb" value="Pending" checked onchange="onPsStatusChange()"> Pending</label>
-  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-status-cb" value="Unshipped" checked onchange="onPsStatusChange()"> Unshipped</label>
-  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-status-cb" value="Shipped - Returned to Seller" checked onchange="onPsStatusChange()"> Returned to Seller</label>
-  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-status-cb" value="Shipped - Returning to Seller" checked onchange="onPsStatusChange()"> Returning to Seller</label>
-</div>
-
-<div id="psFulfillFilterMenu" style="display:none;position:fixed;z-index:9999;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:10px 12px;min-width:250px;max-height:340px;overflow-y:auto;">
-  <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">Filter by fulfillment status. All included by default.</div>
-  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Shipped" checked onchange="onPsFulfillChange()"> Shipped</label>
-  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Shipped - Delivered to Buyer" checked onchange="onPsFulfillChange()"> Delivered to Buyer</label>
-  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Delivered" checked onchange="onPsFulfillChange()"> Delivered</label>
-  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Shipped - Picked Up" checked onchange="onPsFulfillChange()"> Picked Up</label>
-  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Shipped - Out for Delivery" checked onchange="onPsFulfillChange()"> Out for Delivery</label>
-  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Pending" checked onchange="onPsFulfillChange()"> Pending</label>
-  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Pending - Waiting for Pick Up" checked onchange="onPsFulfillChange()"> Waiting for Pick Up</label>
-  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Approved" checked onchange="onPsFulfillChange()"> Approved</label>
-  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Shipping" checked onchange="onPsFulfillChange()"> Shipping</label>
-  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Shipped - Returned to Seller" checked onchange="onPsFulfillChange()"> Returned to Seller</label>
-  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Shipped - Returning to Seller" checked onchange="onPsFulfillChange()"> Returning to Seller</label>
-  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer;"><input type="checkbox" class="ps-fulfill-cb" value="Return Requested" checked onchange="onPsFulfillChange()"> Return Requested</label>
-  <div style="border-top:1px solid #f1f5f9;margin-top:8px;padding-top:8px;display:flex;gap:8px;">
-    <button onclick="psFulfillSelectAll()" style="font-size:11px;color:#0284c7;background:none;border:none;cursor:pointer;padding:0;">Select all</button>
-    <button onclick="psFulfillClearAll()" style="font-size:11px;color:#64748b;background:none;border:none;cursor:pointer;padding:0;">Clear all</button>
-  </div>
-</div>
-
-<div id="psProductFilterMenu" style="display:none;position:fixed;z-index:9999;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:8px;min-width:240px;max-height:320px;overflow-y:auto;">
-  <input type="text" id="psProductSearch" placeholder="Search product…" oninput="filterPsProductOptions(this.value)"
-         style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--color-border);border-radius:6px;margin-bottom:6px;box-sizing:border-box;" />
-  <div id="psProductOptionsList"></div>
-</div>
 
 </body>
 </html>
