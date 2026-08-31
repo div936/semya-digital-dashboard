@@ -4347,16 +4347,21 @@ function aggregateRevenue(rows) {
   let totalRevenue = 0, totalUnits = 0;
 
   for (const r of rows) {
-    const rev   = Number(r.standard_revenue) || 0;
-    const units = Number(r.standard_units)   || 0;
+    // Exclude cancelled/returned rows from revenue — same logic as
+    // aggregatePlatformSales on the backend. Without this, SKU Performance
+    // total was higher than Platform Sales total by the value of all
+    // cancelled orders (their standard_revenue > 0 in the DB).
+    const isCancelled = r.standard_status === 'Cancelled' || r.standard_status === 'Returned';
+    const rev   = isCancelled ? 0 : (Number(r.standard_revenue) || 0);
+    const units = isCancelled ? 0 : (Number(r.standard_units)   || 0);
     totalRevenue += rev;
     totalUnits   += units;
 
     const city = r.standard_city || 'Unknown';
-    byCity[city] = (byCity[city] || 0) + rev;
+    if (!isCancelled) byCity[city] = (byCity[city] || 0) + rev;
 
     const plat = r.platform || 'unknown';
-    byPlatform[plat] = (byPlatform[plat] || 0) + rev;
+    if (!isCancelled) byPlatform[plat] = (byPlatform[plat] || 0) + rev;
 
     if (r.order_date) {
       const d = new Date(r.order_date);
