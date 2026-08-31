@@ -396,11 +396,9 @@
       // Store token and redirect
       localStorage.setItem('semya_token', data.session.access_token);
 
-      // Redirect to the dashboard — always the same URL, client scope
-      // passed as a ?client= query param (GitHub Pages has no server-side
-      // routing so /clients/slug/dashboard.html would 404).
-      if (me.clientSlug && me.role !== 'admin') {
-        window.location.replace(DASHBOARD_URL + '?client=' + encodeURIComponent(me.clientSlug));
+      // Redirect to the right dashboard
+      if (me.clientSlug) {
+        window.location.replace('/clients/' + me.clientSlug + '/dashboard.html');
       } else {
         window.location.replace(DASHBOARD_URL);
       }
