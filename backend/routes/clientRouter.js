@@ -537,32 +537,23 @@ router.get(
       ? new Set(req.query.excludeStatuses.split(',').map(s => s.trim()).filter(Boolean))
       : new Set();
 
-    let query = supabaseAdmin
-      .from('campaign_data')
-      .select('*')
-      .eq('client_id', client.id)
-      .order('campaign_date', { ascending: false });
-
-    // Undated campaign rows (campaign_date IS NULL) used to be included
-    // via an "OR campaign_date IS NULL" fallback on BOTH the gte and lte
-    // filters — which, combined, is equivalent to
-    // "(date in range) OR (date is null)". That means any undated
-    // campaign silently matched every possible date range, so if a
-    // meaningful share of campaign_data rows have no campaign_date set,
-    // picking a narrow range (or even a single day) still pulls in the
-    // full all-time total for those rows — the date filter becomes a
-    // no-op for exactly the rows that most need it to work. Now: when a
-    // date filter is actually active, apply it strictly (undated rows
-    // are excluded, since we genuinely don't know if they belong in the
-    // selected window); only fall back to "everything" when no filter
-    // is applied at all.
-    if (from && to) query = query.gte('campaign_date', from).lte('campaign_date', to);
-    else if (from)  query = query.gte('campaign_date', from);
-    else if (to)    query = query.lte('campaign_date', to);
-    if (platform) query = query.in('platform', expandPlatform(platform));
-
-    const { data: campaigns, error } = await query;
-    if (error) return res.status(500).json({ error: 'Failed to fetch campaigns.' });
+    // Use fetchAllRows (paginated) instead of a plain query — Supabase's
+    // default 1,000-row limit was silently truncating large campaign datasets
+    // (18,120+ Meta rows), causing the ROAS date range note to only show
+    // the most recent ~1,000 rows instead of the full selected period.
+    const campaigns = await fetchAllRows((rangeFrom, rangeTo) => {
+      let query = supabaseAdmin
+        .from('campaign_data')
+        .select('*')
+        .eq('client_id', client.id)
+        .order('campaign_date', { ascending: false })
+        .range(rangeFrom, rangeTo);
+      if (from && to) query = query.gte('campaign_date', from).lte('campaign_date', to);
+      else if (from)  query = query.gte('campaign_date', from);
+      else if (to)    query = query.lte('campaign_date', to);
+      if (platform) query = query.in('platform', expandPlatform(platform));
+      return query;
+    }).catch(e => { throw e; });
 
     // Surface how many campaigns were excluded for having no date at
     // all, whenever a date filter is active — otherwise a narrow range
