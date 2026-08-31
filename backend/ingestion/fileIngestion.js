@@ -116,13 +116,15 @@ function parseFile(fileBuffer, originalName) {
     || fileBuffer.slice(0, 8).toString('hex') === 'd0cf11e0a1b11ae1';                 // legacy .xls (OLE2)
 
   if (ext !== '.csv' && looksLikeSpreadsheet) {
-    return { rows: parseSpreadsheet(fileBuffer), defaultDate: null };
+    // parseSpreadsheet now returns { rows, defaultDate } — same shape as
+    // parseCsvSmart — so preamble dates work for XLSX files too.
+    return parseSpreadsheet(fileBuffer);
   }
   if (ext === '.csv' || !looksLikeSpreadsheet) {
     return parseCsvSmart(fileBuffer);
   }
 
-  return { rows: parseSpreadsheet(fileBuffer), defaultDate: null };
+  return parseSpreadsheet(fileBuffer);
 }
 
 function parseSpreadsheet(fileBuffer) {
@@ -136,19 +138,45 @@ function parseSpreadsheet(fileBuffer) {
   const sheetName = workbook.SheetNames[0];
   const sheet     = workbook.Sheets[sheetName];
 
-  const rows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: '' });
-  if (rows.length < 2) return [];
+  const allRows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false });
+  if (allRows.length < 2) return [];
 
-  const headers = rows[0].map(String);
-  const dataRows = rows.slice(1);
+  // Apply the same smart header detection used for CSV files — many
+  // campaign exports (Meta, Google Ads, Amazon) have 1-4 metadata rows
+  // above the real header, including a date range line. Blindly using
+  // row 0 as the header caused those metadata rows to become column names,
+  // so the real date/spend/campaign columns were never found, leaving
+  // campaign_date = NULL for every row in the file.
+  const searchLimit = Math.min(allRows.length, 20);
+  let headerIdx = 0;
+  let bestScore = -1;
+  for (let i = 0; i < searchLimit; i++) {
+    const row = allRows[i];
+    if (!row || !row.length) continue;
+    const cells = row.map(String);
+    if (cells.length < 2) continue;
+    const { total } = scoreHeaderRow(cells);
+    if (total > bestScore) { bestScore = total; headerIdx = i; }
+  }
 
-  return dataRows
+  // Extract a file-level date from any preamble rows above the header —
+  // same as extractDateFromPreamble() for CSV. Returned alongside rows
+  // so the caller can use it as defaultDate for rows with no date column.
+  const preambleRows = allRows.slice(0, headerIdx).map(r => r.map(String).join(' '));
+  const defaultDate  = extractDateFromPreamble(preambleRows);
+
+  const headers  = allRows[headerIdx].map(String);
+  const dataRows = allRows.slice(headerIdx + 1);
+
+  const rows = dataRows
     .filter((row) => row.some((cell) => cell !== ''))   // skip blank rows
     .map((row) => {
       const obj = {};
       headers.forEach((h, i) => { obj[h] = row[i] ?? ''; });
       return obj;
     });
+
+  return { rows, defaultDate };
 }
 
 // ─── Smart CSV/TSV parsing ──────────────────────────────────────
