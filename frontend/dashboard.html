@@ -7914,10 +7914,37 @@ async function handleUploadAll() {
       const data = await uploadOneFile(file, clientSlug);
       successCount++;
       if (rowStatus) {
-        if (data.usedFallbackMapping) {
-          // Columns didn't match any known format — auto-detected by
-          // pattern-matching instead. Flagged distinctly (amber, not
-          // green) so it's not mistaken for a normal clean success.
+        if (data.async) {
+          // Large file — processing in background. Show pending state
+          // and poll the uploads list for completion.
+          rowStatus.textContent = '⏳ Processing in background — check Upload History for status';
+          rowStatus.style.color = '#0284c7';
+          // Poll upload status every 3s for up to 5 minutes
+          if (data.uploadId) {
+            let polls = 0;
+            const maxPolls = 100;
+            const pollInterval = setInterval(async () => {
+              polls++;
+              try {
+                const uploads = await apiFetch('/clients/' + clientSlug + '/uploads?limit=5');
+                const thisUpload = (uploads?.uploads || []).find(u => u.id === data.uploadId);
+                if (thisUpload?.status === 'success') {
+                  clearInterval(pollInterval);
+                  rowStatus.textContent = '✓ ' + (thisUpload.row_count ?? '') + ' rows → ' + (thisUpload.detected_platform || 'done');
+                  rowStatus.style.color = '#059669';
+                } else if (thisUpload?.status === 'error') {
+                  clearInterval(pollInterval);
+                  rowStatus.textContent = '✗ ' + (thisUpload.error_message || 'Processing failed');
+                  rowStatus.style.color = '#dc2626';
+                } else if (polls >= maxPolls) {
+                  clearInterval(pollInterval);
+                  rowStatus.textContent = '⏳ Still processing — check Upload History';
+                  rowStatus.style.color = '#b45309';
+                }
+              } catch (_) {}
+            }, 3000);
+          }
+        } else if (data.usedFallbackMapping) {
           rowStatus.innerHTML = '⚠ ' + (data.rowsIngested ?? '') + ' rows (auto-detected — verify) → ' + (data.platform || 'done');
           rowStatus.title = data.message || 'Column names were auto-detected by pattern-matching. Please spot-check the data.';
           rowStatus.style.color = '#b45309';
