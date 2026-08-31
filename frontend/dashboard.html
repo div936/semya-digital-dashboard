@@ -2417,6 +2417,41 @@
           <div id="caBrandsSaveStatus" style="font-size:12px;margin:-14px 0 18px;"></div>
         </div>
 
+        <!-- Campaign Name Patterns -->
+        <div id="caCampaignPatternsSection">
+          <div class="acl-section-label">
+            Campaign Name Patterns — <span id="caPatternsClientName" style="color:#1e293b;"></span>
+          </div>
+          <p style="font-size:11.5px;color:#64748b;margin:6px 0 10px;">
+            Defines how to extract a product name from campaign names on platforms that don't have a dedicated product column (Meta, Google, Flipkart).
+            Amazon doesn't need this — it uses the Portfolio name column directly.
+            Leave blank to skip extraction for that platform.
+          </p>
+
+          <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:8px;" id="caPatternsRows">
+            <!-- rows injected by JS -->
+          </div>
+
+          <button onclick="caPatternsAddRow()" style="font-size:12px;color:var(--theme-primary);background:none;border:none;cursor:pointer;padding:4px 0;font-weight:600;">+ Add platform pattern</button>
+          <div style="margin-top:10px;display:flex;gap:8px;align-items:center;">
+            <button class="btn btn-primary" onclick="saveCaPatterns()">Save Patterns</button>
+            <div id="caPatternsSaveStatus" style="font-size:12px;"></div>
+          </div>
+
+          <!-- Pattern builder guide -->
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin:14px 0 22px;font-size:11.5px;color:#64748b;line-height:1.7;">
+            <strong style="color:#334155;">How to configure:</strong><br>
+            Split the campaign name by a delimiter and pick the segment that contains the product name.<br><br>
+            <strong>Example — Flipkart:</strong> <code style="background:#e2e8f0;padding:1px 5px;border-radius:3px;">FK_NT_Auto_F1_sales_Almond Oil_SP</code><br>
+            Delimiter: <code style="background:#e2e8f0;padding:1px 5px;border-radius:3px;">_</code> &nbsp;|&nbsp;
+            Start segment: <code style="background:#e2e8f0;padding:1px 5px;border-radius:3px;">5</code> &nbsp;|&nbsp;
+            End segment: <code style="background:#e2e8f0;padding:1px 5px;border-radius:3px;">-1</code> &nbsp;→&nbsp; <strong>Almond Oil</strong><br><br>
+            <strong>Example — Meta:</strong> <code style="background:#e2e8f0;padding:1px 5px;border-radius:3px;">FB_NEAT_F1_Sales_Garlic Oil_INSTAGRAM</code><br>
+            Delimiter: <code style="background:#e2e8f0;padding:1px 5px;border-radius:3px;">_</code> &nbsp;|&nbsp;
+            Start segment: <code style="background:#e2e8f0;padding:1px 5px;border-radius:3px;">4</code> &nbsp;→&nbsp; <strong>Garlic Oil</strong>
+          </div>
+        </div>
+
         <div class="acl-section-label">
           Employees — <span id="caSelectedClientName" style="color:#1e293b;"></span>
         </div>
@@ -6537,6 +6572,13 @@ function selectCaClient(id, slug, name) {
   const brandsInput = document.getElementById('caBrandsInput');
   if (brandsInput) brandsInput.value = (cached?.registered_brands || []).join(', ');
   document.getElementById('caBrandsSaveStatus').textContent = '';
+
+  // Load campaign naming patterns for this client
+  const patternsClientName = document.getElementById('caPatternsClientName');
+  if (patternsClientName) patternsClientName.textContent = name;
+  document.getElementById('caPatternsSaveStatus').textContent = '';
+  caPatternsRender(cached?.campaign_naming_patterns || []);
+
   updateCaAccessHeader();
   loadCaClients();     // re-render so the "Manage"/"Selected" state updates
   loadCaEmployees(id);
@@ -6555,6 +6597,95 @@ async function saveCaClientBrands() {
     });
     const cached = _caClientsCache.find(c => c.id === caState.clientId);
     if (cached) cached.registered_brands = registeredBrands;
+    statusEl.textContent = '✓ Saved'; statusEl.style.color = '#059669';
+    setTimeout(() => { statusEl.textContent = ''; }, 2000);
+  } catch (e) {
+    statusEl.textContent = 'Failed: ' + e.message; statusEl.style.color = '#dc2626';
+  }
+}
+
+// ── Campaign Name Patterns ───────────────────────────────────────
+const PATTERN_PLATFORMS = ['flipkart', 'meta', 'google', 'blinkit'];
+
+function caPatternsRender(patterns) {
+  const container = document.getElementById('caPatternsRows');
+  if (!container) return;
+  container.innerHTML = '';
+  const list = (patterns || []);
+  if (!list.length) {
+    // Show one empty row by default
+    caPatternsAddRow();
+    return;
+  }
+  list.forEach((p, i) => caPatternsAddRow(p));
+}
+
+function caPatternsAddRow(pattern = {}) {
+  const container = document.getElementById('caPatternsRows');
+  if (!container) return;
+  const idx = container.children.length;
+  const platformOpts = PATTERN_PLATFORMS.map(p =>
+    `<option value="${p}" ${pattern.platform === p ? 'selected' : ''}>${p.charAt(0).toUpperCase()+p.slice(1)}</option>`
+  ).join('');
+
+  const row = document.createElement('div');
+  row.style.cssText = 'display:grid;grid-template-columns:110px 80px 90px 90px 1fr 28px;gap:6px;align-items:center;';
+  row.innerHTML = `
+    <select class="ca-pattern-platform" style="padding:6px 8px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:12px;">
+      <option value="">Platform…</option>${platformOpts}
+    </select>
+    <input type="text" class="ca-pattern-delim" placeholder="Delimiter" value="${pattern.delimiter || '_'}"
+      title="Character that splits the campaign name into segments"
+      style="padding:6px 8px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:12px;" />
+    <input type="number" class="ca-pattern-start" placeholder="Start seg" value="${pattern.product_segment_index ?? ''}"
+      title="0-based index of the segment containing the product name. Use negative to count from end."
+      style="padding:6px 8px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:12px;" />
+    <input type="number" class="ca-pattern-end" placeholder="End seg" value="${pattern.product_segment_end ?? ''}"
+      title="Optional end segment index (exclusive). Leave blank to use only the start segment."
+      style="padding:6px 8px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:12px;" />
+    <input type="text" class="ca-pattern-suffix" placeholder="Strip suffixes (comma-sep, e.g. _SP,_CPC)" value="${(pattern.strip_suffix||[]).join(',')}"
+      title="Optional: remove these exact strings from the end of the extracted product name"
+      style="padding:6px 8px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:12px;" />
+    <button onclick="this.closest('div').remove()" title="Remove" style="background:none;border:none;cursor:pointer;font-size:16px;color:#94a3b8;line-height:1;">×</button>
+  `;
+  container.appendChild(row);
+}
+
+function caPatternsCollect() {
+  const rows = document.querySelectorAll('#caPatternsRows > div');
+  const patterns = [];
+  rows.forEach(row => {
+    const platform = row.querySelector('.ca-pattern-platform')?.value?.trim();
+    const delim    = row.querySelector('.ca-pattern-delim')?.value?.trim() || '_';
+    const start    = row.querySelector('.ca-pattern-start')?.value?.trim();
+    const end      = row.querySelector('.ca-pattern-end')?.value?.trim();
+    const suffixes = (row.querySelector('.ca-pattern-suffix')?.value || '')
+      .split(',').map(s => s.trim()).filter(Boolean);
+    if (!platform || start === '') return;
+    const obj = {
+      platform,
+      delimiter: delim,
+      product_segment_index: parseInt(start, 10),
+    };
+    if (end !== '') obj.product_segment_end = parseInt(end, 10);
+    if (suffixes.length) obj.strip_suffix = suffixes;
+    patterns.push(obj);
+  });
+  return patterns;
+}
+
+async function saveCaPatterns() {
+  if (!caState.clientId || caState.clientId === '__admin__') { alert('Select a client first.'); return; }
+  const statusEl = document.getElementById('caPatternsSaveStatus');
+  const patterns = caPatternsCollect();
+  statusEl.textContent = 'Saving…'; statusEl.style.color = '#64748b';
+  try {
+    await apiFetch('/auth/admin/clients/' + caState.clientId, {
+      method: 'PATCH', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ campaignNamingPatterns: patterns }),
+    });
+    const cached = _caClientsCache?.find(c => c.id === caState.clientId);
+    if (cached) cached.campaign_naming_patterns = patterns;
     statusEl.textContent = '✓ Saved'; statusEl.style.color = '#059669';
     setTimeout(() => { statusEl.textContent = ''; }, 2000);
   } catch (e) {
