@@ -481,14 +481,18 @@ router.get('/admin/clients', asyncHandler(async (req, res) => {
     .from('clients').select('id, slug, name').order('name');
   if (error) return res.status(500).json({ error: 'Failed to load clients.' });
 
-  // Fail-safe: fetch registered_brands separately — if the migration hasn't
-  // been applied yet, this fails silently and the list still loads.
+  // Fail-safe: fetch registered_brands and campaign_naming_patterns separately.
+  // These columns may not exist if migrations haven't been run — fail silently.
   let brandMap = {};
+  let patternMap = {};
   try {
-    const { data: brandRows } = await supabaseAdmin
-      .from('clients').select('id, registered_brands');
-    for (const r of brandRows || []) brandMap[r.id] = r.registered_brands || null;
-  } catch (_) { /* column may not exist yet — treat as no brands configured */ }
+    const { data: extRows } = await supabaseAdmin
+      .from('clients').select('id, registered_brands, campaign_naming_patterns');
+    for (const r of extRows || []) {
+      brandMap[r.id]   = r.registered_brands        || null;
+      patternMap[r.id] = r.campaign_naming_patterns  || null;
+    }
+  } catch (_) { /* columns may not exist yet — treat as not configured */ }
 
   const { data: users } = await supabaseAdmin
     .from('users').select('client_id').eq('is_active', true).not('client_id', 'is', null);
@@ -499,28 +503,46 @@ router.get('/admin/clients', asyncHandler(async (req, res) => {
   return res.json({
     clients: (clients || []).map(c => ({
       ...c,
-      registered_brands: brandMap[c.id] || null,
+      registered_brands:        brandMap[c.id]   || null,
+      campaign_naming_patterns: patternMap[c.id] || null,
       employeeCount: counts[c.id] || 0,
     })),
   });
 }));
 
 
-// ── PATCH /auth/admin/clients/:id — update a client's registered
-// brand name(s), used to validate inventory file uploads belong to
-// the right client. Body: { registeredBrands: string[] }
+// ── PATCH /auth/admin/clients/:id — update a client's settings.
+// Accepts: { registeredBrands, campaignNamingPatterns }
 router.patch('/admin/clients/:id', asyncHandler(async (req, res) => {
   const admin = await requireAdmin(req, res); if (!admin) return;
-  const { registeredBrands } = req.body || {};
-  const cleaned = Array.isArray(registeredBrands)
-    ? registeredBrands.map(b => String(b).trim()).filter(Boolean)
-    : [];
+  const { registeredBrands, campaignNamingPatterns } = req.body || {};
+
+  const updates = {};
+
+  if (registeredBrands !== undefined) {
+    const cleaned = Array.isArray(registeredBrands)
+      ? registeredBrands.map(b => String(b).trim()).filter(Boolean)
+      : [];
+    updates.registered_brands = cleaned.length ? cleaned : null;
+  }
+
+  if (campaignNamingPatterns !== undefined) {
+    // Validate it's an array of pattern objects — store null if empty
+    const patterns = Array.isArray(campaignNamingPatterns)
+      ? campaignNamingPatterns.filter(p => p && typeof p.platform === 'string')
+      : [];
+    updates.campaign_naming_patterns = patterns.length ? patterns : null;
+  }
+
+  if (!Object.keys(updates).length) {
+    return res.status(400).json({ error: 'No valid fields to update.' });
+  }
 
   const { error } = await supabaseAdmin
-    .from('clients').update({ registered_brands: cleaned.length ? cleaned : null }).eq('id', req.params.id);
+    .from('clients').update(updates).eq('id', req.params.id);
   if (error) return res.status(500).json({ error: 'Failed to update: ' + error.message });
 
-  return res.json({ ok: true, registeredBrands: cleaned });
+  return res.json({ ok: true, ...updates });
 }));
 
 
