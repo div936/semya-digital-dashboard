@@ -33,7 +33,7 @@ async function getClientAiConfig(clientId) {
   if (data?.ai_api_key) {
     return {
       provider: data.ai_provider || 'gemini',
-      model:    data.ai_model    || (data.ai_provider === 'claude' ? 'claude-haiku-4-5-20251001' : 'gemini-1.5-flash'),
+      model:    data.ai_model    || (data.ai_provider === 'claude' ? 'claude-haiku-4-5-20251001' : 'gemini-2.5-flash'),
       apiKey:   data.ai_api_key,
       source:   'client',
     };
@@ -43,7 +43,7 @@ async function getClientAiConfig(clientId) {
   if (process.env.GEMINI_API_KEY) {
     return {
       provider: 'gemini',
-      model:    'gemini-1.5-flash',
+      model:    'gemini-2.5-flash',
       apiKey:   process.env.GEMINI_API_KEY,
       source:   'admin',
     };
