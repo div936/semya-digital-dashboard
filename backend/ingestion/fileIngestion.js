@@ -285,8 +285,8 @@ function extractDateFromPreamble(preambleLines) {
 // large files (10k+ rows) don't take so long that a hosting platform's
 // request/gateway timeout kills the connection before we respond.
 // ═══════════════════════════════════════════════════════════════════
-const CHUNK_SIZE   = 500;
-const CONCURRENCY  = 5; // number of chunk inserts in flight at once
+const CHUNK_SIZE   = 1000; // raised from 500 — fewer round trips for large files (22k+ rows)
+const CONCURRENCY  = 8;    // raised from 5 — more parallelism per batch
 
 // ═══════════════════════════════════════════════════════════════════
 // MERGE DUPLICATE CAMPAIGN ROWS
@@ -634,7 +634,7 @@ async function bulkInsert(table, rows) {
 // Returns:
 //   { uploadId, platform, dataType, rowCount, skippedRows }
 // ═══════════════════════════════════════════════════════════════════
-export async function ingestFile({ fileBuffer, originalName, clientId, uploadedBy }) {
+export async function ingestFile({ fileBuffer, originalName, clientId, uploadedBy, existingUploadId = null }) {
 
   // 1. Detect platform + data type
   const route = detectRoute(originalName);
@@ -649,7 +649,11 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
   // 2. Create an uploads audit record in 'processing' state
   //    (dataType may still be corrected by content-detection below —
   //     we update it before finalising if that happens)
-  const { data: uploadRecord, error: uploadErr } = await supabaseAdmin
+  //    If existingUploadId is provided (async large-file path), skip
+  //    creation and use the pre-created placeholder record instead.
+  const { data: uploadRecord, error: uploadErr } = existingUploadId
+    ? { data: { id: existingUploadId }, error: null }
+    : await supabaseAdmin
     .from('uploads')
     .insert({
       client_id:          clientId,
