@@ -20,14 +20,14 @@ import { toISTDateString } from './dateUtils.js';
 
 // Uses Gemini REST API — no SDK needed, same approach as insightsRouter.js.
 // Reads GEMINI_API_KEY from the environment (set this in Render → Environment).
-const GEMINI_MODEL = 'gemini-1.5-flash';
+const GEMINI_MODEL = 'gemini-2.0-flash';
 
 async function callGemini(prompt, maxTokens = 1500) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY is not set in environment variables.');
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
     {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
