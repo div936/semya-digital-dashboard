@@ -580,12 +580,24 @@ function fmt(n) {
 // ═══════════════════════════════════════════════════════════════════
 function parseInsightResponse(raw) {
   try {
-    // Strip any accidental markdown fences
-    const cleaned = raw
-      .replace(/^```json\s*/i, '')
-      .replace(/^```\s*/i, '')
-      .replace(/\s*```$/,  '')
-      .trim();
+    // Strip markdown fences — Gemini often wraps output in ```json ... ```
+    // even when told not to. Handle fences anywhere in the string, not just
+    // at the very start/end, since some models add preamble text before them.
+    let cleaned = raw.trim();
+
+    // Extract content from inside fences if present
+    const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fenceMatch) {
+      cleaned = fenceMatch[1].trim();
+    } else {
+      // No fences — find the first [ and last ] to extract the JSON array
+      // even if Gemini prepends/appends explanatory text.
+      const start = cleaned.indexOf('[');
+      const end   = cleaned.lastIndexOf(']');
+      if (start !== -1 && end !== -1 && end > start) {
+        cleaned = cleaned.slice(start, end + 1);
+      }
+    }
 
     const parsed = JSON.parse(cleaned);
     if (!Array.isArray(parsed)) throw new Error('Response is not an array');
