@@ -20,7 +20,7 @@ import { toISTDateString } from './dateUtils.js';
 
 // Uses Gemini REST API — no SDK needed, same approach as insightsRouter.js.
 // Reads GEMINI_API_KEY from the environment (set this in Render → Environment).
-const GEMINI_MODEL = 'gemini-2.0-flash';
+const GEMINI_MODEL = 'gemini-2.5-flash';
 
 async function callGemini(prompt, maxTokens = 1500) {
   const apiKey = process.env.GEMINI_API_KEY;
