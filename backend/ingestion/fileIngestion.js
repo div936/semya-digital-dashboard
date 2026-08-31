@@ -724,11 +724,29 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
 
     // 4. Normalise via column mapper
     const map = dataType === 'revenue' ? REVENUE_MAP : CAMPAIGN_MAP;
+
+    // For campaign files: fetch this client's naming patterns so the
+    // normaliser can extract product names from campaign names on platforms
+    // that have no dedicated product column (Meta, Google, Flipkart).
+    // Fetched once per upload — null if not configured for this client.
+    let campaignNamingPatterns = null;
+    if (dataType === 'campaign') {
+      try {
+        const { data: clientRow } = await supabaseAdmin
+          .from('clients')
+          .select('campaign_naming_patterns')
+          .eq('id', clientId)
+          .maybeSingle();
+        campaignNamingPatterns = clientRow?.campaign_naming_patterns || null;
+      } catch (_) { /* column may not exist yet — safe to ignore */ }
+    }
+
     let { rows: normalisedRows, skipped } = normaliseBatch(rawRows, map, {
       clientId,
       platform,
       uploadId,
       defaultDate,
+      campaignNamingPatterns,
     });
 
     // Fallback: the dictionary only recognises exact header text it's
