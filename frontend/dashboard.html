@@ -5419,13 +5419,20 @@ function renderCI(payload) {
   document.getElementById('ciKpiClicksDelta').innerHTML = '';
   document.getElementById('ciKpiClicksSub').innerHTML   = 'Avg CTR: ' + avgCTR.toFixed(2) + '% · ' + fmtUnits(totalImpr) + ' impressions';
 
-  const ciWeeks = ['W1 Jul','W2 Jul','W3 Jul','W4 Jul'];
-  const ciRoasVals = [3.8, 4.2, 4.7, blendedRoas > 0 ? +blendedRoas.toFixed(1) : 4.4];
+  // Use real weekly ROAS data from backend (weeklyRoas array) instead of
+  // hardcoded placeholder values. Falls back to a single current-value
+  // point if the backend doesn't return trend data.
+  const weeklyRoasData = payload.weeklyRoas && payload.weeklyRoas.length
+    ? payload.weeklyRoas
+    : [{ label: 'Current', roas: blendedRoas }];
+  const ciWeeks    = weeklyRoasData.map(w => w.label);
+  const ciRoasVals = weeklyRoasData.map(w => w.roas != null ? +w.roas.toFixed(2) : null);
+  const ciTargets  = weeklyRoasData.map(() => 4);
   renderOrUpdateChart('ciRoasChart', '_ciRoasChart', {
     type: 'line',
     data: { labels: ciWeeks, datasets: [
       { label: 'Blended RoAS', data: ciRoasVals, borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.06)', pointBackgroundColor: '#7c3aed', pointRadius: 5, pointHoverRadius: 7, tension: 0.4, fill: true, borderWidth: 2 },
-      { label: 'Target (4x)',  data: [4,4,4,4],  borderColor: '#d97706', backgroundColor: 'transparent', pointRadius: 0, borderDash: [6,4], borderWidth: 1.5 }
+      { label: 'Target (4x)',  data: ciTargets,  borderColor: '#d97706', backgroundColor: 'transparent', pointRadius: 0, borderDash: [6,4], borderWidth: 1.5 }
     ]},
     options: lineChartOptions('', 'x', 1),
   });
