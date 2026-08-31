@@ -4051,7 +4051,11 @@ async function _streamClaudeInsight(prompt, list, confEl) {
         if (raw === '[DONE]') break;
         try {
           const evt = JSON.parse(raw);
-          if (evt.type === 'content_block_delta' && evt.delta?.text) {
+          // Handle both Gemini's normalised {text:"..."} chunks (from insightsRouter streamGemini)
+          // and Claude's native {type:"content_block_delta", delta:{text:"..."}} format.
+          if (evt.text) {
+            fullText += evt.text;
+          } else if (evt.type === 'content_block_delta' && evt.delta?.text) {
             fullText += evt.delta.text;
           }
         } catch {}
@@ -4072,8 +4076,15 @@ async function _streamClaudeInsight(prompt, list, confEl) {
 function _renderParsedInsight(raw, list, confEl) {
   let parsed = null;
   try {
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (match) parsed = JSON.parse(match[0]);
+    // First try: strip markdown fences and parse directly (Gemini often wraps in ```json)
+    let cleaned = raw.trim();
+    const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fenceMatch) cleaned = fenceMatch[1].trim();
+    // Second try: find first { to last } to extract JSON object even with preamble text
+    const start = cleaned.indexOf('{');
+    const end   = cleaned.lastIndexOf('}');
+    if (start !== -1 && end !== -1 && end > start) cleaned = cleaned.slice(start, end + 1);
+    parsed = JSON.parse(cleaned);
   } catch {}
 
   if (!parsed) {
