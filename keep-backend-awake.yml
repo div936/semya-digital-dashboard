@@ -24,7 +24,7 @@ jobs:
     steps:
       - name: Ping backend health endpoint
         run: |
-          URL="https://semya-api.onrender.com/health"
+          URL="https://semya-digital-dashboard.onrender.com/health"
           for attempt in 1 2 3; do
             echo "Attempt $attempt: pinging $URL"
             if curl --fail --silent --show-error --max-time 60 "$URL"; then
