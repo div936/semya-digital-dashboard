@@ -26,19 +26,26 @@ async function callGemini(prompt, maxTokens = 1500) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY is not set in environment variables.');
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-    {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: maxTokens },
-      }),
+  // Retry up to 3 times on 503 (overloaded) with exponential backoff
+  let res;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+      {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: maxTokens },
+        }),
+      }
+    );
+    if (res.ok) break;
+    if (res.status === 503 && attempt < 3) {
+      console.warn(`[gemini] 503 on attempt ${attempt}, retrying in ${attempt * 2}s...`);
+      await new Promise(r => setTimeout(r, attempt * 2000));
+      continue;
     }
-  );
-
-  if (!res.ok) {
     const err = await res.text();
     throw new Error(`Gemini API error ${res.status}: ${err}`);
   }

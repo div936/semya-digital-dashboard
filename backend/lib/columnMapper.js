@@ -975,6 +975,10 @@ function coerceValue(targetField, raw) {
     'standard_revenue', 'standard_units', 'standard_spend',
     'standard_impressions', 'standard_clicks', 'standard_orders',
     'standard_discount',
+    // New campaign metric columns added in campaign_data_extra_columns_migration
+    'standard_acos', 'standard_ctr', 'standard_cpc',
+    'standard_adds_to_cart', 'standard_checkouts_initiated',
+    'standard_cost_per_purchase',
   ];
   const dateFields = ['order_date', 'campaign_date'];
 
