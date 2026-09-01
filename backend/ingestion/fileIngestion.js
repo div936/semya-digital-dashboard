@@ -602,10 +602,21 @@ async function bulkInsert(table, rows) {
     const results = await Promise.all(
       batch.map((chunk) => {
         if (isCampaignTable) {
-          return supabaseAdmin.from(table).upsert(chunk, { onConflict: 'client_id,platform,campaign_date,campaign_name' });
+          return supabaseAdmin.from(table).upsert(chunk, {
+            onConflict: 'client_id,platform,campaign_date,campaign_name',
+            ignoreDuplicates: true,
+          });
         }
         if (isRevenueTable) {
-          return supabaseAdmin.from(table).upsert(chunk, { onConflict: 'client_id,row_hash' });
+          // ignoreDuplicates: true — if a row with this (client_id, row_hash) already
+          // exists, skip it silently instead of trying to UPDATE it. This prevents
+          // the "ON CONFLICT DO UPDATE command cannot affect row a second time" error
+          // that occurs when a chunk contains two rows mapping to the same hash,
+          // or when a retry upload finds rows from a previous partial attempt.
+          return supabaseAdmin.from(table).upsert(chunk, {
+            onConflict: 'client_id,row_hash',
+            ignoreDuplicates: true,
+          });
         }
         return supabaseAdmin.from(table).insert(chunk);
       })
