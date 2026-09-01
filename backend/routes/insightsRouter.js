@@ -61,19 +61,26 @@ function sseWrite(res, text) {
 
 // ─── Stream Gemini response ───────────────────────────────────────
 async function streamGemini(apiKey, model, prompt, res) {
-  const geminiRes = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: 800 },
-      }),
+  // Retry up to 3 times on 503 (overloaded) with exponential backoff
+  let geminiRes;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 800 },
+        }),
+      }
+    );
+    if (geminiRes.ok) break;
+    if (geminiRes.status === 503 && attempt < 3) {
+      console.warn(`[gemini-insight] 503 on attempt ${attempt}, retrying in ${attempt * 2}s...`);
+      await new Promise(r => setTimeout(r, attempt * 2000));
+      continue;
     }
-  );
-
-  if (!geminiRes.ok) {
     const err = await geminiRes.text();
     console.error('[gemini-insight] API error:', err);
     throw new Error('Gemini API error: ' + geminiRes.status);
