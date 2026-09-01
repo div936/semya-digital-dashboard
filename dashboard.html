@@ -1028,6 +1028,12 @@
     .progress-vals   { display: flex; align-items: center; gap: 8px; font-size: 11px; }
     .progress-achieved { font-family: var(--font-mono); font-weight: 700; color: var(--theme-primary); }
     .progress-target   { font-family: var(--font-mono); color: #94a3b8; }
+    /* Inventory tab styles */
+    #tab-inventory table tr:hover { background: #f8fafc !important; transition: background .1s; }
+    #notifPanel { animation: fadeInDown .15s ease; }
+    @keyframes fadeInDown { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
+    #invAlertsTable table tr:hover { background: #f8fafc !important; }
+    .inv-stat-chip { display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700; }
     .toggle-btn { font-size:11px;font-weight:600;padding:3px 10px;border-radius:6px;border:1px solid #e2e8f0;background:#f8fafc;color:#64748b;cursor:pointer;transition:all .15s; }
     .toggle-btn:hover { background:#f1f5f9;color:#334155; }
     .toggle-btn.active-toggle { background:var(--theme-primary,#0f172a);color:#fff;border-color:var(--theme-primary,#0f172a); }
@@ -1169,6 +1175,30 @@
 
       <span class="tag-admin" id="headerAdminBadge" style="display:none;">Admin</span>
 
+      <!-- Notification Bell — low-stock alerts -->
+      <div style="position:relative;display:inline-flex;align-items:center;">
+        <button id="notifBellBtn" onclick="toggleNotifPanel(event)"
+          style="background:none;border:none;cursor:pointer;padding:6px;border-radius:8px;position:relative;display:flex;align-items:center;justify-content:center;transition:background .15s;"
+          onmouseenter="this.style.background='#f1f5f9'" onmouseleave="this.style.background='none'"
+          title="Stock alerts">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          <span id="notifBadge" style="display:none;position:absolute;top:2px;right:2px;min-width:16px;height:16px;background:#dc2626;color:#fff;border-radius:999px;font-size:9px;font-weight:700;line-height:16px;text-align:center;padding:0 3px;border:2px solid #fff;">0</span>
+        </button>
+        <!-- Notification dropdown panel -->
+        <div id="notifPanel" style="display:none;position:absolute;top:calc(100% + 8px);right:0;width:320px;background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.12);z-index:9999;overflow:hidden;">
+          <div style="padding:12px 16px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:13px;font-weight:700;color:#0f172a;">Stock Alerts</span>
+            <button onclick="showTab('inventory');toggleNotifPanel()" style="font-size:11px;color:var(--theme-primary);background:none;border:none;cursor:pointer;font-weight:600;">View all →</button>
+          </div>
+          <div id="notifList" style="max-height:320px;overflow-y:auto;padding:8px 0;">
+            <div style="padding:16px;text-align:center;color:#94a3b8;font-size:12px;">Loading…</div>
+          </div>
+        </div>
+      </div>
+
       <!-- Client Switcher -->
       <select class="select-styled" id="clientSwitcher" title="Switch client">
         <option value="neat-everyday" selected>Neat Everyday</option>
@@ -1249,6 +1279,7 @@
     <div class="nav-tab" data-tab="ai_insights"       onclick="showTab('ai_insights')"><span class="dot"></span>AI Insights</div>
     <div class="nav-tab" data-tab="daily_targets"     onclick="showTab('daily_targets')"><span class="dot"></span>Daily Targets</div>
     <div class="nav-tab" data-tab="utm_analytics"     onclick="showTab('utm_analytics')"><span class="dot"></span>UTM Analytics</div>
+    <div class="nav-tab" data-tab="inventory"          onclick="showTab('inventory')"><span class="dot"></span>Inventory</div>
     <div class="nav-tab" data-tab="projections_insights" onclick="showTab('projections_insights')"><span class="dot"></span>Projections Insights</div>
   </nav>
 
@@ -2209,15 +2240,53 @@
         <div id="utmAttributionList"><div class="skel skel-row" style="height:32px;"></div></div>
       </div>
 
-      <!-- Inventory & Warehouse Stock — every sale in an uploaded file
-           automatically deducts from whichever warehouse its platform
-           is mapped to below. This whole section lives here rather
-           than tucked behind Settings, since it's something worth
-           checking regularly, not a one-time configuration step.
-           Settings → Inventory Settings is now ONLY for entering
-           stock quantities (manual or bulk Excel) — everything else
-           about inventory is set up and viewed right here. -->
-      <div class="card" style="margin-top:16px;">
+    </div><!-- /tab-utm_analytics -->
+
+    <!-- ══════════════════════════════════════════════════════════════
+         INVENTORY TAB
+         Moved from UTM Analytics — Warehouses, Platform Mapping,
+         Low-Stock Alerts with smart sorting, and full stock table.
+         ══════════════════════════════════════════════════════════════ -->
+    <div class="tab-panel" id="tab-inventory">
+
+      <!-- KPI summary strip -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;" id="invKpiStrip">
+        <div class="card" style="padding:14px 16px;">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;">Total SKUs</div>
+          <div id="invKpiSkus" style="font-size:22px;font-weight:800;color:#0f172a;">—</div>
+        </div>
+        <div class="card" style="padding:14px 16px;">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;">Low Stock</div>
+          <div id="invKpiLow" style="font-size:22px;font-weight:800;color:#d97706;">—</div>
+        </div>
+        <div class="card" style="padding:14px 16px;">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;">Out of Stock</div>
+          <div id="invKpiOut" style="font-size:22px;font-weight:800;color:#dc2626;">—</div>
+        </div>
+        <div class="card" style="padding:14px 16px;">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;">Warehouses</div>
+          <div id="invKpiWarehouses" style="font-size:22px;font-weight:800;color:#0f172a;">—</div>
+        </div>
+      </div>
+
+      <!-- CRITICAL ALERTS — sorted by urgency (out of stock first, then lowest days remaining) -->
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-header">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="card-title">⚠️ Stock Alerts</span>
+            <span id="invAlertCount" style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:#fee2e2;color:#dc2626;display:none;">0</span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span style="font-size:11px;color:#94a3b8;">Sorted by urgency — out of stock first, then fewest days remaining</span>
+            <span class="card-badge" id="invAlertsBadge" data-role="admin" style="cursor:pointer;" onclick="openInventoryModal();">+ Enter stock</span>
+          </div>
+        </div>
+        <div style="font-size:11px;color:#94a3b8;padding:2px 2px 10px;">Days-remaining is estimated from the last 14 days of sales velocity — not a guarantee.</div>
+        <div id="invAlertsTable"><div class="skel skel-row" style="height:36px;margin-bottom:6px;"></div><div class="skel skel-row" style="height:36px;"></div></div>
+      </div>
+
+      <!-- WAREHOUSES & PLATFORM MAPPING -->
+      <div class="card" style="margin-bottom:16px;">
         <div class="card-header">
           <span class="card-title">Warehouses &amp; Platform Mapping</span>
           <span class="card-badge">Which warehouse each platform's sales deduct from</span>
@@ -2238,24 +2307,42 @@
         </div>
       </div>
 
-      <div class="card" style="margin-top:16px;">
+      <!-- ALL STOCK — full table with search + sort -->
+      <div class="card">
         <div class="card-header">
-          <span class="card-title">Inventory &amp; Low-Stock Alerts</span>
-          <span class="card-badge" id="invAlertsBadge" data-role="admin" style="cursor:pointer;" onclick="openInventoryModal();">+ Enter stock</span>
+          <span class="card-title">All Stock</span>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="text" id="invStockSearch" placeholder="Search SKU…"
+              oninput="filterStockTable(this.value)"
+              style="padding:5px 10px;border:1.5px solid var(--color-border);border-radius:6px;font-size:12px;width:160px;" />
+            <select id="invStockFilter" onchange="filterStockTable(document.getElementById('invStockSearch').value)"
+              style="padding:5px 8px;border:1.5px solid var(--color-border);border-radius:6px;font-size:12px;">
+              <option value="all">All stock</option>
+              <option value="low">Low stock only</option>
+              <option value="out">Out of stock</option>
+            </select>
+          </div>
         </div>
-        <div style="font-size:11px;color:#94a3b8;padding:4px 2px 8px;">Days-remaining is a rough estimate from the last 14 days of sales — not a guarantee.</div>
-        <div id="utmInventoryAlerts"><div class="skel skel-row" style="height:32px;"></div></div>
-
-        <div style="font-size:10.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin:20px 0 10px;">All Stock</div>
-        <div style="overflow-x:auto;">
+        <div style="overflow-x:auto;margin-top:8px;">
           <table>
-            <thead><tr><th>SKU</th><th>Warehouse</th><th>Qty on Hand</th><th>Alert Below</th><th>Updated</th></tr></thead>
-            <tbody id="stockLevelsTbody"><tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:16px 0;">Loading…</td></tr></tbody>
+            <thead>
+              <tr>
+                <th style="cursor:pointer;" onclick="sortStockTable('sku')">SKU ↕</th>
+                <th>Warehouse</th>
+                <th style="cursor:pointer;" onclick="sortStockTable('qty')">Qty on Hand ↕</th>
+                <th>Alert Below</th>
+                <th style="cursor:pointer;" onclick="sortStockTable('days')">Days Est. ↕</th>
+                <th>Updated</th>
+              </tr>
+            </thead>
+            <tbody id="stockLevelsTbody">
+              <tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:20px 0;">Loading…</td></tr>
+            </tbody>
           </table>
         </div>
       </div>
 
-    </div><!-- /tab-utm_analytics -->
+    </div><!-- /tab-inventory -->
 
     <!-- ══════════════════════════════════════════════════════════════
          PROJECTIONS INSIGHTS TAB
@@ -2645,6 +2732,11 @@
             <span class="acl-row-desc">Campaign link builder, click/conversion tracking, attribution</span>
           </div>
           <label class="toggle"><input type="checkbox" data-tab="utm_analytics"><span class="toggle-slider"></span></label>
+          <div class="acl-row">
+            <span class="acl-row-title">Inventory</span>
+            <div></div>
+            <label class="toggle"><input type="checkbox" data-tab="inventory"><span class="toggle-slider"></span></label>
+          </div>
         </div>
         <div class="acl-row">
           <div class="acl-row-info">
@@ -2934,12 +3026,12 @@
 
     <!-- Deliberately just the stock-quantity input here — warehouse
          setup, platform mapping, the full stock table, and low-stock
-         alerts all live on the UTM Analytics tab instead, where
+         alerts all live on the Inventory tab instead, where
          they're actually visible day to day rather than tucked
          behind a settings menu. This modal is only for entering
          numbers, two ways. -->
     <div class="acl-section-label">Set Stock Quantity — One SKU at a Time</div>
-    <p style="font-size:12px;color:#64748b;margin:8px 0 12px;">Warehouses need to exist first — set those up on the UTM Analytics tab. Changing the quantity here is logged as a manual adjustment; automatic deductions from sales happen on their own as files are uploaded, no need to re-enter anything for those.</p>
+    <p style="font-size:12px;color:#64748b;margin:8px 0 12px;">Warehouses need to exist first — set those up on the Inventory tab. Changing the quantity here is logged as a manual adjustment; automatic deductions from sales happen on their own as files are uploaded, no need to re-enter anything for those.</p>
     <div style="display:grid;grid-template-columns:1.5fr 1.5fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:24px;">
       <div>
         <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">SKU</label>
@@ -3492,6 +3584,7 @@ async function runOrderIdBackfill() {
     );
     tabCache = {}; // clear all cached tab data so numbers refresh immediately
     fetchAndRender();
+  startNotifPolling(); // Start inventory alert bell polling
   } catch (err) {
     alert('✗ Backfill failed or timed out: ' + err.message + '\n\nIf it timed out, the backfill may still be running on the server — wait a few minutes, then refresh the dashboard to check if Total Orders changed before retrying.');
   } finally {
@@ -4122,20 +4215,31 @@ async function _streamClaudeInsight(prompt, list, confEl) {
 function _renderParsedInsight(raw, list, confEl) {
   let parsed = null;
   try {
-    // First try: strip markdown fences and parse directly (Gemini often wraps in ```json)
     let cleaned = raw.trim();
+    // Strategy 1: strip markdown fences
     const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
     if (fenceMatch) cleaned = fenceMatch[1].trim();
-    // Second try: find first { to last } to extract JSON object even with preamble text
+    // Strategy 2: find first { to last } (handles preamble text)
     const start = cleaned.indexOf('{');
     const end   = cleaned.lastIndexOf('}');
     if (start !== -1 && end !== -1 && end > start) cleaned = cleaned.slice(start, end + 1);
     parsed = JSON.parse(cleaned);
   } catch {}
 
+  // If JSON parse failed, check if it looks like a prose response
+  // (Gemini sometimes ignores the JSON instruction and writes prose)
+  if (!parsed && raw && raw.trim().length > 50) {
+    // Show as formatted prose instead of raw JSON string
+    const prose = raw.trim().replace(/^\{[\s\S]*$/, '').trim() || raw.trim();
+    list.innerHTML = '<div class="ai-insight positive" style="border-left:3px solid #7c3aed;">' +
+      '<p style="font-size:12px;line-height:1.7;color:#1e293b;margin:0;">' +
+      prose.replace(/</g,'&lt;').replace(/\n/g,'<br>') + '</p></div>';
+    if (confEl) confEl.textContent = 'Live';
+    return;
+  }
+
   if (!parsed) {
-    // Fallback: show raw text
-    list.innerHTML = '<div class="ai-insight positive"><p style="font-size:12px;line-height:1.65;color:#334155;">' + raw.replace(/</g,'&lt;') + '</p></div>';
+    list.innerHTML = '<div class="ai-insight neutral"><p>Analysis unavailable — try again.</p></div>';
     if (confEl) confEl.textContent = '—';
     return;
   }
@@ -4580,7 +4684,7 @@ document.querySelectorAll('.sku-pill').forEach(pill => {
 // ─── TAB STATE ────────────────────────────────────────────────────
 let activeTab  = 'platform_sales';
 let tabCache = {};
-const CACHE_TTL = 60000;
+const CACHE_TTL = 0; // Always fetch fresh data on tab switch — cache disabled
 
 // ─── SHOW TAB ─────────────────────────────────────────────────────
 function showTab(tabKey) {
@@ -4596,7 +4700,7 @@ function showTab(tabKey) {
   // call updateSidebarForTab() AFTER data is loaded — so the AI
   // always has real data to analyse, not an empty psState._lastData
   const sub = document.getElementById('aiSubtitle');
-  const SIDEBAR_LABELS = { platform_sales: 'Platform overview', sku_performance: 'SKU-level analysis', campaign_insights: 'Campaign analysis', geographic_analysis: 'Geographic analysis', ai_insights: 'AI insights', daily_targets: 'Daily targets', utm_analytics: 'Campaign attribution', projections_insights: 'Profit projections' };
+  const SIDEBAR_LABELS = { platform_sales: 'Platform overview', sku_performance: 'SKU-level analysis', campaign_insights: 'Campaign analysis', geographic_analysis: 'Geographic analysis', ai_insights: 'AI insights', daily_targets: 'Daily targets', utm_analytics: 'Campaign attribution', inventory: 'Stock management', projections_insights: 'Profit projections' };
   if (sub) sub.textContent = 'Powered · ' + (SIDEBAR_LABELS[tabKey] || tabKey);
 
   // Restricted-access check — permissions[tabKey].enabled is always
@@ -4617,6 +4721,7 @@ function showTab(tabKey) {
   else if (tabKey === 'daily_targets')        { if (!fresh) fetchAndRenderDT(); }
   else if (tabKey === 'ai_insights')          { if (!fresh) { fetchAndRenderAI(); fetchAndRenderFraud(); fetchAndRenderOrderRisk(); } }
   else if (tabKey === 'utm_analytics')        { if (!fresh) fetchAndRenderUTM(); }
+  else if (tabKey === 'inventory')            { if (!fresh) fetchAndRenderInventory(); }
   else if (tabKey === 'projections_insights') { if (!fresh) fetchAndRenderProjections(); }
 }
 
@@ -4827,7 +4932,7 @@ function applyLockBadgesToNav() {
 
 function renderLockedPanel(tabKey, panel) {
   if (!panel) return;
-  const labels = { platform_sales: 'Platform Sales', sku_performance: 'SKU Performance', campaign_insights: 'Campaign Insights', geographic_analysis: 'Geographic Analysis', ai_insights: 'AI Insights', daily_targets: 'Daily Targets', utm_analytics: 'UTM Analytics', projections_insights: 'Projections Insights' };
+  const labels = { platform_sales: 'Platform Sales', sku_performance: 'SKU Performance', campaign_insights: 'Campaign Insights', geographic_analysis: 'Geographic Analysis', ai_insights: 'AI Insights', daily_targets: 'Daily Targets', utm_analytics: 'UTM Analytics', inventory: 'Inventory', inventory: 'Inventory', projections_insights: 'Projections Insights' };
   panel.innerHTML = '<div class="card" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:64px 24px;text-align:center;">' +
     '<div style="font-size:36px;margin-bottom:14px;">🔒</div>' +
     '<div style="font-size:15px;font-weight:700;color:#1e293b;margin-bottom:6px;">' + (labels[tabKey] || tabKey) + ' isn\'t available</div>' +
@@ -8024,9 +8129,11 @@ async function loadClientSwitcher() {
     const resp = await apiFetch('/auth/clients');
     const clients = resp?.clients || [];
     if (clients.length) {
-      sw.innerHTML = clients.map(c =>
-        '<option value="' + c.slug + '"' + (c.slug === state.clientSlug ? ' selected' : '') + '>' + c.name + '</option>'
-      ).join('');
+      sw.innerHTML =
+        '<option value="__all__"' + (state.clientSlug === '__all__' ? ' selected' : '') + '>⭐ All Clients</option>' +
+        clients.map(c =>
+          '<option value="' + c.slug + '"' + (c.slug === state.clientSlug ? ' selected' : '') + '>' + c.name + '</option>'
+        ).join('');
     } else {
       // Fetch succeeded but returned nothing usable — still show
       // something rather than leaving the switcher blank.
@@ -8040,6 +8147,139 @@ async function loadClientSwitcher() {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// ALL CLIENTS COMPARISON VIEW
+// Shown when admin selects "All Clients" in the switcher.
+// Fetches Platform Sales data for each client in parallel and renders
+// side-by-side comparison cards.
+// ═══════════════════════════════════════════════════════════════════
+
+async function fetchAndRenderAllClients() {
+  // Show comparison panel, hide normal tab content
+  showAllClientsPanel(true);
+
+  const activeTabKey = activeTab || 'platform_sales';
+  const compEl = document.getElementById('allClientsComparison');
+  if (!compEl) return;
+  compEl.innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;font-size:13px;">Loading data for all clients…</div>';
+
+  try {
+    const resp = await apiFetch('/auth/clients');
+    const clients = resp?.clients || [];
+    if (!clients.length) {
+      compEl.innerHTML = '<div style="padding:32px;color:#94a3b8;text-align:center;">No clients found.</div>';
+      return;
+    }
+
+    // Fetch platform-sales for each client in parallel
+    const qp = new URLSearchParams();
+    if (psState.dateFrom) qp.set('from', psState.dateFrom);
+    if (psState.dateTo)   qp.set('to',   psState.dateTo);
+    const q = qp.toString() ? '?' + qp.toString() : '';
+
+    const results = await Promise.allSettled(
+      clients.map(c => apiFetch('/clients/' + c.slug + '/platform-sales' + q)
+        .then(data => ({ client: c, data }))
+        .catch(err => ({ client: c, data: null, error: err.message }))
+      )
+    );
+
+    const cards = results.map(r => {
+      const { client, data, error } = r.value || {};
+      const total = data?.grandTotal || 0;
+      const platforms = data?.platforms || [];
+      const prev  = data?.prevGrandTotal || 0;
+      const growth = prev > 0 ? (((total - prev) / prev) * 100).toFixed(1) : null;
+
+      const fmtRev = n => n >= 100000 ? (n/100000).toFixed(2)+' L' : n >= 1000 ? (n/1000).toFixed(1)+'K' : Math.round(n).toString();
+      const platformRows = platforms.slice(0, 5).map(p => {
+        const pct = total > 0 ? (p.totalRevenue/total*100).toFixed(1) : 0;
+        const pm = { amazon:'#ff9900', acutas:'#ff9900', flipkart:'#0077ff', blinkit:'#fbbf24', meta:'#1877f2', google:'#34a853' };
+        const color = pm[p.platform] || '#94a3b8';
+        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #f1f5f9;">' +
+          '<span style="font-size:11px;color:#475569;display:flex;align-items:center;gap:5px;">' +
+          '<span style="width:8px;height:8px;border-radius:50%;background:' + color + ';display:inline-block;flex-shrink:0;"></span>' +
+          p.platform.charAt(0).toUpperCase() + p.platform.slice(1) + '</span>' +
+          '<span style="font-size:11px;font-weight:600;color:#1e293b;">₹' + fmtRev(p.totalRevenue) + '</span>' +
+          '<span style="font-size:10px;color:#94a3b8;">' + pct + '%</span>' +
+          '</div>';
+      }).join('');
+
+      const growthHtml = growth !== null
+        ? '<span style="font-size:11px;font-weight:600;color:' + (parseFloat(growth) >= 0 ? '#059669' : '#dc2626') + ';margin-left:8px;">' +
+          (parseFloat(growth) >= 0 ? '▲' : '▼') + ' ' + Math.abs(growth) + '%</span>'
+        : '';
+
+      return '<div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:20px;min-width:280px;flex:1;">' +
+        '<div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:4px;">' + (client?.name || '—') + '</div>' +
+        '<div style="font-size:11px;color:#94a3b8;margin-bottom:14px;">' + (psState.dateFrom || '') + ' → ' + (psState.dateTo || '') + '</div>' +
+        (error ? '<div style="color:#dc2626;font-size:12px;">Failed to load: ' + error + '</div>' :
+          '<div style="display:flex;align-items:baseline;gap:4px;margin-bottom:12px;">' +
+          '<span style="font-size:24px;font-weight:800;color:#0f172a;">₹' + fmtRev(total) + '</span>' +
+          growthHtml + '</div>' +
+          '<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;">Platform Breakdown</div>' +
+          (platformRows || '<div style="font-size:11px;color:#94a3b8;padding:8px 0;">No data — upload files for this client</div>') +
+          '<div style="margin-top:12px;">' +
+          '<button onclick="switchClient('' + client?.slug + '')" style="font-size:11px;font-weight:600;padding:6px 14px;border-radius:6px;border:1.5px solid #e2e8f0;background:#f8fafc;color:#334155;cursor:pointer;">View Full Dashboard →</button>' +
+          '</div>') +
+        '</div>';
+    }).join('');
+
+    compEl.innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;">' + cards + '</div>';
+
+  } catch(e) {
+    compEl.innerHTML = '<div style="padding:32px;color:#dc2626;font-size:13px;">Failed to load: ' + e.message + '</div>';
+  }
+}
+
+function showAllClientsPanel(show) {
+  // Create panel if it doesn't exist
+  let panel = document.getElementById('allClientsPanel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'allClientsPanel';
+    panel.style.cssText = 'display:none;padding:24px;';
+    panel.innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">' +
+      '<div>' +
+      '<div style="font-size:18px;font-weight:800;color:#0f172a;">All Clients Overview</div>' +
+      '<div style="font-size:12px;color:#94a3b8;margin-top:2px;">Platform Sales comparison across all clients</div>' +
+      '</div>' +
+      '</div>' +
+      '<div id="allClientsComparison"></div>';
+
+    // Insert after the tab content area
+    const mainContent = document.querySelector('.content-area') ||
+                        document.querySelector('main') ||
+                        document.getElementById('tabPanels');
+    if (mainContent) mainContent.parentNode.insertBefore(panel, mainContent.nextSibling);
+    else document.body.appendChild(panel);
+  }
+
+  // Toggle visibility
+  const tabPanels = document.getElementById('tabPanels') ||
+                    document.querySelector('.tab-panels') ||
+                    document.querySelector('[id^="tab-panel"]')?.parentElement;
+
+  // Hide/show the right elements
+  ['platform_sales','sku_performance','campaign_insights','geographic_analysis',
+   'ai_insights','daily_targets','utm_analytics','inventory','projections_insights'].forEach(t => {
+    const el = document.getElementById('panel-' + t) || document.getElementById('tab-' + t);
+    if (el) el.style.display = show ? 'none' : '';
+  });
+
+  const sidebar = document.querySelector('.sidebar');
+  if (sidebar) sidebar.style.display = show ? 'none' : '';
+
+  panel.style.display = show ? 'block' : 'none';
+
+  // Hide/show nav tabs visual active state
+  document.querySelectorAll('.nav-tab').forEach(t => {
+    t.style.opacity = show ? '0.4' : '';
+    t.style.pointerEvents = show ? 'none' : '';
+  });
+}
+
 // Incremented every time the client changes — any in-flight fetch
 // that started before the switch checks this and aborts rendering
 // if it no longer matches. Prevents race condition where Neat's
@@ -8049,7 +8289,7 @@ let _fetchGeneration = 0;
 async function switchClient(newSlug) {
   if (!newSlug || newSlug === state.clientSlug) return;
   state.clientSlug = newSlug;
-  _fetchGeneration++; // invalidate all in-flight fetches from previous client
+  _fetchGeneration++;
   tabCache = {}; // every tab's data belongs to the previous client — drop it all
   _sidebarCache = {};
   // Reset all per-tab state so stale data can never bleed into the new client
@@ -8068,17 +8308,24 @@ async function switchClient(newSlug) {
   try {
     const cfg = await apiFetch('/clients/' + newSlug + '/dashboard-config');
     _lastDashboardConfig = cfg;
-    // Switching which client's DATA is shown is NOT the same as
-    // switching branding — an admin browsing a different client's
-    // numbers should keep seeing Semya's own look unless they've
-    // explicitly turned on "View as Client" (see applyBranding above).
-    // A client-role user can't reach this switcher at all, so this
-    // path is admin-only in practice.
     applyBranding(cfg);
   } catch (e) {
     console.warn('[client-switch] failed to load new client config:', e.message);
   }
-  fetchAndRender();
+  // Force all tabs to refetch — no cached data from previous client
+  if (newSlug === '__all__') {
+    fetchAndRenderAllClients();
+  } else {
+    // If coming from all-clients view, restore normal tab panels
+    showAllClientsPanel(false);
+    // Re-enable nav tabs
+    document.querySelectorAll('.nav-tab').forEach(t => {
+      t.style.opacity = '';
+      t.style.pointerEvents = '';
+    });
+    fetchAndRenderPS();
+    updateNotifBell(); // refresh low-stock bell for new client
+  }
 }
 
 document.getElementById('clientSwitcher')?.addEventListener('change', (e) => switchClient(e.target.value));
@@ -8287,9 +8534,6 @@ function fetchAndRenderUTM() {
   fetchAndRenderUtmStats();
   fetchAndRenderUtmDetails();
   fetchAndRenderUtmAttribution();
-  loadWarehouses();      // also populates the platform-mapping grid
-  loadStockLevels();
-  loadUtmInventoryAlerts();
   tabCache['utm_analytics'] = { data: true, timestamp: Date.now() };
 }
 
@@ -8335,6 +8579,279 @@ async function loadUtmInventoryAlerts() {
   }
 }
 
+
+// ═══════════════════════════════════════════════════════════════════
+// INVENTORY TAB — moved from UTM Analytics
+// ═══════════════════════════════════════════════════════════════════
+
+// Main entry point — called when Inventory tab is selected
+function fetchAndRenderInventory() {
+  loadWarehouses();            // warehouses + platform mapping grid
+  loadInventoryAlerts();       // smart-sorted alert cards + KPIs
+  loadStockLevels();           // full stock table
+  updateNotifBell();           // sync notification bell count
+  tabCache['inventory'] = { data: true, timestamp: Date.now() };
+}
+
+// ── Smart-sorted inventory alerts ──────────────────────────────────
+// Sorts by urgency: out-of-stock first (qty ≤ 0), then by fewest
+// days remaining. Updates KPI strip and notification bell in one pass.
+async function loadInventoryAlerts() {
+  const { clientSlug } = state; if (!clientSlug) return;
+  const el = document.getElementById('invAlertsTable');
+  if (!el) return;
+
+  try {
+    const alerts = await apiFetch('/clients/' + clientSlug + '/inventory/alerts');
+
+    // Update KPI strip (requires all stock for total count)
+    const allStock = _invAllStock || [];
+    document.getElementById('invKpiSkus').textContent  = allStock.length || '—';
+    document.getElementById('invKpiLow').textContent   = alerts.filter(a => a.quantityOnHand > 0).length;
+    document.getElementById('invKpiOut').textContent   = alerts.filter(a => a.quantityOnHand <= 0).length;
+
+    // Update notification bell
+    _updateNotifPanel(alerts);
+
+    if (!alerts.length) {
+      el.innerHTML = '<div style="padding:20px;text-align:center;color:#059669;font-size:13px;">✓ All stock is above alert thresholds</div>';
+      document.getElementById('invAlertCount').style.display = 'none';
+      return;
+    }
+
+    // Sort: out of stock (qty ≤ 0) first, then by days remaining ascending
+    const sorted = [...alerts].sort((a, b) => {
+      const aOut = a.quantityOnHand <= 0;
+      const bOut = b.quantityOnHand <= 0;
+      if (aOut && !bOut) return -1;
+      if (!aOut && bOut) return 1;
+      const aDays = a.daysRemainingEstimate ?? 999;
+      const bDays = b.daysRemainingEstimate ?? 999;
+      return aDays - bDays;
+    });
+
+    const badge = document.getElementById('invAlertCount');
+    badge.textContent = sorted.length;
+    badge.style.display = 'inline';
+
+    el.innerHTML = '<table style="width:100%;border-collapse:collapse;">' +
+      '<thead><tr>' +
+        '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;">Status</th>' +
+        '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;">SKU</th>' +
+        '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;">Warehouse</th>' +
+        '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;">Qty</th>' +
+        '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;">Alert Below</th>' +
+        '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;">Days Est.</th>' +
+      '</tr></thead><tbody>' +
+      sorted.map(a => {
+        const isOut   = a.quantityOnHand <= 0;
+        const isCrit  = !isOut && a.daysRemainingEstimate != null && a.daysRemainingEstimate <= 3;
+        const isWarn  = !isOut && !isCrit && a.daysRemainingEstimate != null && a.daysRemainingEstimate <= 7;
+        const statusLabel = isOut  ? '<span style="background:#fee2e2;color:#dc2626;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;">Out of stock</span>'
+                          : isCrit ? '<span style="background:#fff7ed;color:#c2410c;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;">Critical</span>'
+                          : isWarn ? '<span style="background:#fefce8;color:#a16207;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;">Low stock</span>'
+                          :          '<span style="background:#f0fdf4;color:#166534;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;">Monitor</span>';
+        const qtyColor = isOut ? '#dc2626' : isCrit ? '#c2410c' : '#d97706';
+        const dayLabel = a.daysRemainingEstimate != null
+          ? (a.daysRemainingEstimate <= 0 ? 'Out' : '~' + a.daysRemainingEstimate + 'd')
+          : '—';
+        const rowBg = isOut ? 'background:#fff5f5;' : isCrit ? 'background:#fff9f5;' : '';
+        return '<tr style="' + rowBg + 'border-bottom:1px solid #f1f5f9;">' +
+          '<td style="padding:10px 10px;">' + statusLabel + '</td>' +
+          '<td style="padding:10px 10px;font-size:12px;font-weight:600;color:#1e293b;">' + (a.sku || '—') + '</td>' +
+          '<td style="padding:10px 10px;font-size:11px;color:#64748b;">' + (a.warehouseName || '—') + '</td>' +
+          '<td style="padding:10px 10px;font-size:13px;font-weight:700;color:' + qtyColor + ';">' + a.quantityOnHand + '</td>' +
+          '<td style="padding:10px 10px;font-size:12px;color:#64748b;">' + a.lowStockThreshold + '</td>' +
+          '<td style="padding:10px 10px;font-size:12px;color:' + (a.daysRemainingEstimate != null && a.daysRemainingEstimate <= 3 ? '#dc2626' : '#64748b') + ';font-weight:' + (a.daysRemainingEstimate != null && a.daysRemainingEstimate <= 3 ? '700' : '400') + ';">' + dayLabel + '</td>' +
+        '</tr>';
+      }).join('') +
+      '</tbody></table>';
+
+  } catch(e) {
+    el.innerHTML = '<div style="padding:16px;color:#dc2626;font-size:12px;">Failed to load inventory alerts: ' + e.message + '</div>';
+  }
+}
+
+// ── Stock table — filter and sort ──────────────────────────────────
+let _invAllStock = [];
+let _invSortCol = 'qty';
+let _invSortDir = 1; // 1=asc, -1=desc
+
+function filterStockTable(q) {
+  const filter = document.getElementById('invStockFilter')?.value || 'all';
+  const search = (q || '').toLowerCase();
+  const tbody = document.getElementById('stockLevelsTbody');
+  if (!tbody || !_invAllStock.length) return;
+
+  let rows = _invAllStock.filter(r => {
+    const matchSearch = !search || (r.sku || '').toLowerCase().includes(search) || (r.warehouseName || '').toLowerCase().includes(search);
+    const matchFilter = filter === 'all' ? true
+      : filter === 'out' ? r.quantityOnHand <= 0
+      : filter === 'low' ? (r.quantityOnHand > 0 && r.quantityOnHand <= r.lowStockThreshold)
+      : true;
+    return matchSearch && matchFilter;
+  });
+
+  // Apply current sort
+  rows = sortRows(rows);
+  renderStockTable(rows);
+}
+
+function sortStockTable(col) {
+  if (_invSortCol === col) _invSortDir *= -1;
+  else { _invSortCol = col; _invSortDir = 1; }
+  filterStockTable(document.getElementById('invStockSearch')?.value || '');
+}
+
+function sortRows(rows) {
+  return [...rows].sort((a, b) => {
+    if (_invSortCol === 'sku')  return _invSortDir * (a.sku || '').localeCompare(b.sku || '');
+    if (_invSortCol === 'qty')  return _invSortDir * ((a.quantityOnHand || 0) - (b.quantityOnHand || 0));
+    if (_invSortCol === 'days') {
+      const ad = a.daysRemainingEstimate ?? 999;
+      const bd = b.daysRemainingEstimate ?? 999;
+      return _invSortDir * (ad - bd);
+    }
+    return 0;
+  });
+}
+
+function renderStockTable(rows) {
+  const tbody = document.getElementById('stockLevelsTbody');
+  if (!tbody) return;
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:20px 0;">No matching stock entries</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r => {
+    const isOut  = r.quantityOnHand <= 0;
+    const isLow  = !isOut && r.quantityOnHand <= r.lowStockThreshold;
+    const qtyColor = isOut ? '#dc2626' : isLow ? '#d97706' : '#059669';
+    const dayLabel = r.daysRemainingEstimate != null
+      ? (r.daysRemainingEstimate <= 0 ? 'Out' : '~' + r.daysRemainingEstimate + 'd')
+      : '—';
+    const updated = r.updatedAt ? new Date(r.updatedAt).toLocaleDateString('en-IN') : '—';
+    return '<tr style="border-bottom:1px solid #f8fafc;">' +
+      '<td style="padding:8px 10px;font-size:11px;color:#334155;">' + (r.sku || '—') + '</td>' +
+      '<td style="padding:8px 10px;font-size:11px;color:#64748b;">' + (r.warehouseName || '—') + '</td>' +
+      '<td style="padding:8px 10px;font-size:13px;font-weight:700;color:' + qtyColor + ';">' + r.quantityOnHand + '</td>' +
+      '<td style="padding:8px 10px;font-size:11px;color:#64748b;">' + (r.lowStockThreshold || 10) + '</td>' +
+      '<td style="padding:8px 10px;font-size:11px;color:' + (r.daysRemainingEstimate != null && r.daysRemainingEstimate <= 3 ? '#dc2626' : '#64748b') + ';font-weight:' + (r.daysRemainingEstimate != null && r.daysRemainingEstimate <= 3 ? '700' : '400') + ';">' + dayLabel + '</td>' +
+      '<td style="padding:8px 10px;font-size:11px;color:#94a3b8;">' + updated + '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+// Override existing loadStockLevels to use new render
+async function loadStockLevels() {
+  const { clientSlug } = state; if (!clientSlug) return;
+  const tbody = document.getElementById('stockLevelsTbody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:20px 0;">Loading…</td></tr>';
+  try {
+    const data = await apiFetch('/clients/' + clientSlug + '/inventory/stock');
+    _invAllStock = data || [];
+    // Update KPI
+    const kpiEl = document.getElementById('invKpiSkus');
+    if (kpiEl) kpiEl.textContent = _invAllStock.length;
+    const whEl = document.getElementById('invKpiWarehouses');
+    // Count unique warehouses
+    if (whEl) {
+      const whs = new Set(_invAllStock.map(r => r.warehouseId)).size;
+      whEl.textContent = whs || '—';
+    }
+    filterStockTable(document.getElementById('invStockSearch')?.value || '');
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#dc2626;padding:20px 0;">Failed to load: ' + e.message + '</td></tr>';
+  }
+}
+
+// ── Notification bell ─────────────────────────────────────────────
+let _notifPanelOpen = false;
+
+function toggleNotifPanel(e) {
+  if (e) e.stopPropagation();
+  _notifPanelOpen = !_notifPanelOpen;
+  const panel = document.getElementById('notifPanel');
+  if (panel) panel.style.display = _notifPanelOpen ? 'block' : 'none';
+  if (_notifPanelOpen) updateNotifBell();
+}
+
+// Close on outside click
+document.addEventListener('click', (e) => {
+  if (_notifPanelOpen && !document.getElementById('notifBellBtn')?.contains(e.target)
+      && !document.getElementById('notifPanel')?.contains(e.target)) {
+    _notifPanelOpen = false;
+    const panel = document.getElementById('notifPanel');
+    if (panel) panel.style.display = 'none';
+  }
+});
+
+async function updateNotifBell() {
+  const { clientSlug } = state; if (!clientSlug) return;
+  try {
+    const alerts = await apiFetch('/clients/' + clientSlug + '/inventory/alerts');
+    _updateNotifPanel(alerts);
+  } catch(e) {
+    console.warn('[notif-bell]', e.message);
+  }
+}
+
+function _updateNotifPanel(alerts) {
+  const badge  = document.getElementById('notifBadge');
+  const list   = document.getElementById('notifList');
+
+  if (!alerts || !alerts.length) {
+    if (badge) badge.style.display = 'none';
+    if (list)  list.innerHTML = '<div style="padding:16px;text-align:center;color:#94a3b8;font-size:12px;">✓ All stock levels are healthy</div>';
+    return;
+  }
+
+  // Sort: out of stock first, then by urgency
+  const sorted = [...alerts].sort((a, b) => {
+    if (a.quantityOnHand <= 0 && b.quantityOnHand > 0) return -1;
+    if (b.quantityOnHand <= 0 && a.quantityOnHand > 0) return 1;
+    return (a.daysRemainingEstimate ?? 999) - (b.daysRemainingEstimate ?? 999);
+  });
+
+  // Update badge
+  if (badge) {
+    badge.textContent = sorted.length;
+    badge.style.display = 'flex';
+    badge.style.alignItems = 'center';
+    badge.style.justifyContent = 'center';
+  }
+
+  // Update panel
+  if (list) {
+    list.innerHTML = sorted.map(a => {
+      const isOut  = a.quantityOnHand <= 0;
+      const isCrit = !isOut && a.daysRemainingEstimate != null && a.daysRemainingEstimate <= 3;
+      const dotColor = isOut ? '#dc2626' : isCrit ? '#c2410c' : '#d97706';
+      const dayText  = a.daysRemainingEstimate != null
+        ? (a.daysRemainingEstimate <= 0 ? 'Out of stock' : '~' + a.daysRemainingEstimate + ' days left')
+        : 'Below threshold';
+      return '<div style="padding:10px 16px;border-bottom:1px solid #f1f5f9;display:flex;align-items:flex-start;gap:10px;">' +
+        '<span style="width:8px;height:8px;border-radius:50%;background:' + dotColor + ';flex-shrink:0;margin-top:3px;"></span>' +
+        '<div style="flex:1;min-width:0;">' +
+          '<div style="font-size:12px;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (a.sku || 'Unknown SKU') + '</div>' +
+          '<div style="font-size:11px;color:#64748b;margin-top:1px;">' + (a.warehouseName || 'Warehouse') + ' · Qty: <strong>' + a.quantityOnHand + '</strong></div>' +
+          '<div style="font-size:10px;color:' + dotColor + ';margin-top:2px;font-weight:600;">' + dayText + '</div>' +
+        '</div>' +
+        '<button onclick="showTab('inventory')" style="font-size:10px;color:var(--theme-primary);background:none;border:none;cursor:pointer;flex-shrink:0;font-weight:600;">View →</button>' +
+      '</div>';
+    }).join('') +
+    '<div style="padding:10px 16px;text-align:center;">' +
+      '<button onclick="showTab('inventory');toggleNotifPanel()" style="font-size:12px;font-weight:600;color:var(--theme-primary);background:none;border:none;cursor:pointer;">View Inventory Tab →</button>' +
+    '</div>';
+  }
+}
+
+// Load bell on app init and every 5 minutes
+function startNotifPolling() {
+  updateNotifBell();
+  setInterval(updateNotifBell, 5 * 60 * 1000);
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // PROJECTIONS INSIGHTS TAB
@@ -9193,7 +9710,7 @@ function openInventoryModal() {
   document.getElementById('inventoryModal')?.classList.add('open');
   // Only needs the warehouse dropdown populated for manual entry —
   // the warehouse list, mapping grid, and stock table all live on the
-  // UTM Analytics tab now, not in this modal.
+  // Inventory tab now, not in this modal.
   loadWarehouses();
 }
 function closeInventoryModal() {
@@ -9383,7 +9900,7 @@ async function saveStockLevel() {
   const threshold = document.getElementById('stockThreshold')?.value;
   const statusEl = document.getElementById('stockSaveStatus');
   if (!sku)         { alert('Enter a SKU.'); return; }
-  if (!warehouseId) { alert('Add a warehouse first — on the UTM Analytics tab.'); return; }
+  if (!warehouseId) { alert('Add a warehouse first — on the Inventory tab.'); return; }
   if (statusEl) { statusEl.textContent = 'Saving…'; statusEl.style.color = '#64748b'; }
   try {
     await apiFetch('/clients/' + state.clientSlug + '/inventory/stock', {
@@ -9930,7 +10447,8 @@ function _buildPrompt(data) {
     ? data.dateFrom + ' to ' + data.dateTo
     : 'the selected period';
 
-  let prompt = 'You are an expert e-commerce analytics advisor for Neat Everyday, a D2C brand in India.\n';
+  const clientLabel = (typeof state !== 'undefined' && state.clientSlug) ? state.clientSlug.replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase()) : 'this brand';
+  let prompt = 'You are an expert e-commerce analytics advisor for ' + clientLabel + ', a D2C brand in India.\n';
   prompt += 'Analyse the following dashboard data for the period ' + dateRange + ' and give a concise, sharp, actionable insight.\n\n';
   prompt += 'Tab being viewed: ' + (TAB_LABELS[data.tab] || data.tab) + '\n';
   prompt += 'Date range: ' + dateRange + '\n';
