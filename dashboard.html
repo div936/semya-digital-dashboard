@@ -3584,7 +3584,6 @@ async function runOrderIdBackfill() {
     );
     tabCache = {}; // clear all cached tab data so numbers refresh immediately
     fetchAndRender();
-  startNotifPolling(); // Start inventory alert bell polling
   } catch (err) {
     alert('✗ Backfill failed or timed out: ' + err.message + '\n\nIf it timed out, the backfill may still be running on the server — wait a few minutes, then refresh the dashboard to check if Total Orders changed before retrying.');
   } finally {
@@ -9105,6 +9104,7 @@ async function boot(user) {
   loadClientSwitcher();
   loadTabPermissions();
   startAutoRefresh();
+  startNotifPolling(); // Start low-stock notification bell
   showTab('platform_sales'); // Start on Platform Sales
 }
 
