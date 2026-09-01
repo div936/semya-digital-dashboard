@@ -8219,7 +8219,7 @@ async function fetchAndRenderAllClients() {
           '<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;">Platform Breakdown</div>' +
           (platformRows || '<div style="font-size:11px;color:#94a3b8;padding:8px 0;">No data — upload files for this client</div>') +
           '<div style="margin-top:12px;">' +
-          '<button onclick="switchClient('' + client?.slug + '')" style="font-size:11px;font-weight:600;padding:6px 14px;border-radius:6px;border:1.5px solid #e2e8f0;background:#f8fafc;color:#334155;cursor:pointer;">View Full Dashboard →</button>' +
+          '<button onclick="switchClient(\'' + client?.slug + '\')" style="font-size:11px;font-weight:600;padding:6px 14px;border-radius:6px;border:1.5px solid #e2e8f0;background:#f8fafc;color:#334155;cursor:pointer;">View Full Dashboard →</button>' +
           '</div>') +
         '</div>';
     }).join('');
@@ -8837,11 +8837,11 @@ function _updateNotifPanel(alerts) {
           '<div style="font-size:11px;color:#64748b;margin-top:1px;">' + (a.warehouseName || 'Warehouse') + ' · Qty: <strong>' + a.quantityOnHand + '</strong></div>' +
           '<div style="font-size:10px;color:' + dotColor + ';margin-top:2px;font-weight:600;">' + dayText + '</div>' +
         '</div>' +
-        '<button onclick="showTab('inventory')" style="font-size:10px;color:var(--theme-primary);background:none;border:none;cursor:pointer;flex-shrink:0;font-weight:600;">View →</button>' +
+        '<button onclick="showTab(\'\1\')" style="font-size:10px;color:var(--theme-primary);background:none;border:none;cursor:pointer;flex-shrink:0;font-weight:600;">View →</button>' +
       '</div>';
     }).join('') +
     '<div style="padding:10px 16px;text-align:center;">' +
-      '<button onclick="showTab('inventory');toggleNotifPanel()" style="font-size:12px;font-weight:600;color:var(--theme-primary);background:none;border:none;cursor:pointer;">View Inventory Tab →</button>' +
+      '<button onclick="showTab(\'\1\');toggleNotifPanel()" style="font-size:12px;font-weight:600;color:var(--theme-primary);background:none;border:none;cursor:pointer;">View Inventory Tab →</button>' +
     '</div>';
   }
 }
