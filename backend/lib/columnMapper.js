@@ -341,6 +341,12 @@ export const CAMPAIGN_MAP = {
 
   // ── Campaign date ─────────────────────────────────────────────
   'date':                       'campaign_date',
+  // Also preserve the full Flipkart date range string (e.g. "24 Aug '26 - Till budget ends")
+  // in raw_extras so expandFlipkartCampaignDates can read the end date.
+  // Achieved by mapping 'flipkart date range' as a fallback — the actual
+  // raw value is stored in raw_extras automatically for unmapped columns.
+  // The 'Date' column maps to campaign_date (start date only after parsing),
+  // so we store the original via raw_extras preservation below.
   'report date':                'campaign_date',
   'campaign date':              'campaign_date',
   'start date':                 'campaign_date',
@@ -692,6 +698,13 @@ export function normaliseRow(rawRow, map) {
       // Don't overwrite if already set by a higher-priority column
       if (standardFields[target] === undefined) {
         standardFields[target] = coerceValue(target, rawValue);
+      }
+      // Special case: also preserve the original 'Date' string in raw_extras
+      // so Flipkart campaign date spread can read the end date from
+      // "DD Mon YY - Till budget ends" or "DD Mon YY - DD Mon YY".
+      // The mapped value (campaign_date) only captures the start date.
+      if (target === 'campaign_date') {
+        rawExtras['_raw_date_range'] = rawValue;
       }
     } else {
       // Unmapped column — store in raw_extras for AI insight generator
