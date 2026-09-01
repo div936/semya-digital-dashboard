@@ -2440,6 +2440,15 @@
 
     </div><!-- /tab-projections_insights -->
 
+    <!-- All Clients comparison panel — shown when "All Clients" selected -->
+    <div id="allClientsPanel" style="display:none;padding:24px 28px;">
+      <div style="margin-bottom:20px;">
+        <div style="font-size:20px;font-weight:800;color:#0f172a;">All Clients Overview</div>
+        <div style="font-size:12px;color:#94a3b8;margin-top:3px;">Platform Sales comparison across all clients · select a client to view their full dashboard</div>
+      </div>
+      <div id="allClientsComparison"></div>
+    </div>
+
   </main>
 
 <!-- ══════════════════════════════════════════════════════════════════
@@ -8258,51 +8267,18 @@ async function fetchAndRenderAllClients() {
 }
 
 function showAllClientsPanel(show) {
-  // Create panel if it doesn't exist
-  let panel = document.getElementById('allClientsPanel');
-  if (!panel) {
-    panel = document.createElement('div');
-    panel.id = 'allClientsPanel';
-    panel.style.cssText = 'display:none;padding:24px;';
-    panel.innerHTML =
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">' +
-      '<div>' +
-      '<div style="font-size:18px;font-weight:800;color:#0f172a;">All Clients Overview</div>' +
-      '<div style="font-size:12px;color:#94a3b8;margin-top:2px;">Platform Sales comparison across all clients</div>' +
-      '</div>' +
-      '</div>' +
-      '<div id="allClientsComparison"></div>';
+  const panel = document.getElementById('allClientsPanel');
+  if (!panel) return;
 
-    // Insert after the tab content area
-    const mainContent = document.querySelector('.content-area') ||
-                        document.querySelector('main') ||
-                        document.getElementById('tabPanels');
-    if (mainContent) mainContent.parentNode.insertBefore(panel, mainContent.nextSibling);
-    else document.body.appendChild(panel);
-  }
-
-  // Toggle visibility
-  const tabPanels = document.getElementById('tabPanels') ||
-                    document.querySelector('.tab-panels') ||
-                    document.querySelector('[id^="tab-panel"]')?.parentElement;
-
-  // Hide/show the right elements
+  // Hide/show individual tab panels
   ['platform_sales','sku_performance','campaign_insights','geographic_analysis',
    'ai_insights','daily_targets','utm_analytics','inventory','projections_insights'].forEach(t => {
-    const el = document.getElementById('panel-' + t) || document.getElementById('tab-' + t);
+    const el = document.getElementById('tab-' + t);
     if (el) el.style.display = show ? 'none' : '';
   });
 
-  const sidebar = document.querySelector('.sidebar');
-  if (sidebar) sidebar.style.display = show ? 'none' : '';
-
   panel.style.display = show ? 'block' : 'none';
 
-  // Hide/show nav tabs visual active state
-  document.querySelectorAll('.nav-tab').forEach(t => {
-    t.style.opacity = show ? '0.4' : '';
-    t.style.pointerEvents = show ? 'none' : '';
-  });
 }
 
 // Incremented every time the client changes — any in-flight fetch
@@ -8341,13 +8317,7 @@ async function switchClient(newSlug) {
   if (newSlug === '__all__') {
     fetchAndRenderAllClients();
   } else {
-    // If coming from all-clients view, restore normal tab panels
     showAllClientsPanel(false);
-    // Re-enable nav tabs
-    document.querySelectorAll('.nav-tab').forEach(t => {
-      t.style.opacity = '';
-      t.style.pointerEvents = '';
-    });
     fetchAndRenderPS();
     updateNotifBell(); // refresh low-stock bell for new client
   }
@@ -11368,6 +11338,15 @@ function startNotifPolling() {
 
     </div><!-- /tab-projections_insights -->
 
+    <!-- All Clients comparison panel — shown when "All Clients" selected -->
+    <div id="allClientsPanel" style="display:none;padding:24px 28px;">
+      <div style="margin-bottom:20px;">
+        <div style="font-size:20px;font-weight:800;color:#0f172a;">All Clients Overview</div>
+        <div style="font-size:12px;color:#94a3b8;margin-top:3px;">Platform Sales comparison across all clients · select a client to view their full dashboard</div>
+      </div>
+      <div id="allClientsComparison"></div>
+    </div>
+
   </main>
 
 <!-- ══════════════════════════════════════════════════════════════════
@@ -17186,51 +17165,18 @@ async function fetchAndRenderAllClients() {
 }
 
 function showAllClientsPanel(show) {
-  // Create panel if it doesn't exist
-  let panel = document.getElementById('allClientsPanel');
-  if (!panel) {
-    panel = document.createElement('div');
-    panel.id = 'allClientsPanel';
-    panel.style.cssText = 'display:none;padding:24px;';
-    panel.innerHTML =
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">' +
-      '<div>' +
-      '<div style="font-size:18px;font-weight:800;color:#0f172a;">All Clients Overview</div>' +
-      '<div style="font-size:12px;color:#94a3b8;margin-top:2px;">Platform Sales comparison across all clients</div>' +
-      '</div>' +
-      '</div>' +
-      '<div id="allClientsComparison"></div>';
+  const panel = document.getElementById('allClientsPanel');
+  if (!panel) return;
 
-    // Insert after the tab content area
-    const mainContent = document.querySelector('.content-area') ||
-                        document.querySelector('main') ||
-                        document.getElementById('tabPanels');
-    if (mainContent) mainContent.parentNode.insertBefore(panel, mainContent.nextSibling);
-    else document.body.appendChild(panel);
-  }
-
-  // Toggle visibility
-  const tabPanels = document.getElementById('tabPanels') ||
-                    document.querySelector('.tab-panels') ||
-                    document.querySelector('[id^="tab-panel"]')?.parentElement;
-
-  // Hide/show the right elements
+  // Hide/show individual tab panels
   ['platform_sales','sku_performance','campaign_insights','geographic_analysis',
    'ai_insights','daily_targets','utm_analytics','inventory','projections_insights'].forEach(t => {
-    const el = document.getElementById('panel-' + t) || document.getElementById('tab-' + t);
+    const el = document.getElementById('tab-' + t);
     if (el) el.style.display = show ? 'none' : '';
   });
 
-  const sidebar = document.querySelector('.sidebar');
-  if (sidebar) sidebar.style.display = show ? 'none' : '';
-
   panel.style.display = show ? 'block' : 'none';
 
-  // Hide/show nav tabs visual active state
-  document.querySelectorAll('.nav-tab').forEach(t => {
-    t.style.opacity = show ? '0.4' : '';
-    t.style.pointerEvents = show ? 'none' : '';
-  });
 }
 
 // Incremented every time the client changes — any in-flight fetch
@@ -17269,13 +17215,7 @@ async function switchClient(newSlug) {
   if (newSlug === '__all__') {
     fetchAndRenderAllClients();
   } else {
-    // If coming from all-clients view, restore normal tab panels
     showAllClientsPanel(false);
-    // Re-enable nav tabs
-    document.querySelectorAll('.nav-tab').forEach(t => {
-      t.style.opacity = '';
-      t.style.pointerEvents = '';
-    });
     fetchAndRenderPS();
     updateNotifBell(); // refresh low-stock bell for new client
   }
