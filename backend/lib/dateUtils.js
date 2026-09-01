@@ -82,8 +82,31 @@ export function toISTDateString(input) {
 export function extractLiteralDate(input) {
   if (input == null || input === '') return null;
   const str = String(input).trim();
-  const m = str.match(/^(\d{4}-\d{2}-\d{2})/);
-  if (m) return m[1];
+
+  // Tier 1: standard ISO date at start — "2026-08-24" or "2026-08-24T..."
+  const iso = str.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (iso) return iso[1];
+
+  // Tier 2: Flipkart date range — "24 Aug '26 - Till budget ends"
+  //          or "08 May '26 - 04 Nov '26" — extract the START date only
+  const fkRange = str.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+['`]?(\d{2})\b/);
+  if (fkRange) {
+    const months = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,
+                     jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
+    const day   = fkRange[1].padStart(2, '0');
+    const mon   = months[fkRange[2].toLowerCase()];
+    const yr    = '20' + fkRange[3];
+    if (mon) return `${yr}-${String(mon).padStart(2,'0')}-${day}`;
+  }
+
+  // Tier 3: "Aug 24, 2026" or "August 24 2026" style
+  const longDate = str.match(/([A-Za-z]+)\s+(\d{1,2})[,\s]+(\d{4})/);
+  if (longDate) {
+    const d = new Date(longDate[0]);
+    if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+  }
+
+  // Tier 4: fallback to JS Date parsing (handles many formats)
   const d = new Date(str);
   if (isNaN(d.getTime())) return null;
   return d.toISOString().split('T')[0];

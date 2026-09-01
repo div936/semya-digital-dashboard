@@ -289,6 +289,16 @@ export const CAMPAIGN_MAP = {
   // ── Campaign name ─────────────────────────────────────────────
   'campaign name':              'campaign_name',
 
+  // ── Flipkart campaign columns ─────────────────────────────────
+  'ad spends':                  'standard_spend',
+  'ad spend':                   'standard_spend',
+  'total units sold':           'standard_orders',
+  'units sold':                 'standard_orders',
+  'total revenue':              'standard_revenue',
+  'roi':                        'standard_acos',      // Flipkart ROI ≈ inverse of ACOS
+  'cvr':                        'standard_ctr',       // CVR stored alongside CTR
+  'views':                      'standard_impressions',
+
   // ── Product / Portfolio name ───────────────────────────────────
   // Amazon Ads exports include a "Portfolio name" column that contains
   // the product category/line name (e.g. "Paper Air Fryer Liner").
@@ -983,8 +993,11 @@ function coerceValue(targetField, raw) {
   const dateFields = ['order_date', 'campaign_date'];
 
   if (numericFields.includes(targetField)) {
-    // Strip currency symbols and commas before parsing
-    const cleaned = String(raw).replace(/[₹$,\s]/g, '');
+    // Strip currency symbols, commas, %, < > and whitespace before parsing
+    // CTR/ACOS values often come as "3.16%" or "12.5%" — strip the %
+    // CPC/spend values come as "₹45.00" or "$12.50" — strip currency
+    // Flipkart Remaining Budget comes as "< 500.00" — strip the <
+    const cleaned = String(raw).replace(/[₹$,%<>\s]/g, '');
     const num = Number(cleaned);
     return isNaN(num) ? null : num;
   }
