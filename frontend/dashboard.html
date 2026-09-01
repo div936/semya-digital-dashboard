@@ -1715,10 +1715,10 @@
         <div class="card">
           <div class="card-header">
             <span class="card-title">RoAS Trend</span>
-            <div style="display:flex;gap:4px;">
-              <button id="ciRoasToggleWeek"  onclick="setCiRoasPeriod('week')"  class="toggle-btn active-toggle">Weekly</button>
-              <button id="ciRoasToggleMonth" onclick="setCiRoasPeriod('month')" class="toggle-btn">Monthly</button>
-              <button id="ciRoasToggleYear"  onclick="setCiRoasPeriod('year')"  class="toggle-btn">Yearly</button>
+            <div>
+              <button class="trend-period-btn active" id="ciRoasToggleWeek"  onclick="setCiRoasPeriod('week')">Weekly</button>
+              <button class="trend-period-btn"        id="ciRoasToggleMonth" onclick="setCiRoasPeriod('month')">Monthly</button>
+              <button class="trend-period-btn"        id="ciRoasToggleYear"  onclick="setCiRoasPeriod('year')">Yearly</button>
             </div>
           </div>
           <div class="chart-wrap" style="height:220px;">
@@ -4383,16 +4383,21 @@ function aggregateRevenue(rows) {
   let totalRevenue = 0, totalUnits = 0;
 
   for (const r of rows) {
-    const rev   = Number(r.standard_revenue) || 0;
-    const units = Number(r.standard_units)   || 0;
+    // Exclude cancelled/returned orders from revenue — same logic as
+    // aggregatePlatformSales on the backend. Without this, SKU Performance
+    // total was higher than Platform Sales total by the value of all
+    // cancelled orders (their standard_revenue > 0 in the DB).
+    const isCancelled = r.standard_status === 'Cancelled' || r.standard_status === 'Returned';
+    const rev   = isCancelled ? 0 : (Number(r.standard_revenue) || 0);
+    const units = isCancelled ? 0 : (Number(r.standard_units)   || 0);
     totalRevenue += rev;
     totalUnits   += units;
 
     const city = r.standard_city || 'Unknown';
-    byCity[city] = (byCity[city] || 0) + rev;
+    if (!isCancelled) byCity[city] = (byCity[city] || 0) + rev;
 
     const plat = r.platform || 'unknown';
-    byPlatform[plat] = (byPlatform[plat] || 0) + rev;
+    if (!isCancelled) byPlatform[plat] = (byPlatform[plat] || 0) + rev;
 
     if (r.order_date) {
       const d = new Date(r.order_date);
@@ -5431,7 +5436,9 @@ function setCiRoasPeriod(period) {
   });
   ['week','month','year'].forEach(p => {
     const btn = document.getElementById('ciRoasToggle' + p.charAt(0).toUpperCase() + p.slice(1));
-    if (btn) btn.classList.toggle('active-toggle', p === period);
+    if (btn) {
+      btn.classList.toggle('active', p === period);
+    }
   });
 }
 
