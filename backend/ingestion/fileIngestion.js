@@ -390,6 +390,78 @@ function mergeDuplicateCampaignRows(rows) {
 //
 // SCOPE: only touches rows carrying a "Total" value in their
 // raw_extras (i.e. actually came from a Shopify-shaped export). A
+// ── Flipkart campaign date spread ────────────────────────────────────────
+// Flipkart exports give LIFETIME cumulative stats per campaign, not daily.
+// The Date column contains the campaign start (and optional end date).
+// This expands each campaign row into N daily rows, dividing numeric
+// metrics evenly across the campaign run period.
+// End date rules:
+//   Status=Paused or "Till budget ends" → use today (upload date) as end
+//   Fixed range "DD Mon YY - DD Mon YY"  → parse the end date
+function expandFlipkartCampaignDates(rows, uploadDate) {
+  const MONTHS = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,
+                   jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
+
+  function parseFkDate(s) {
+    const str = String(s || '');
+    const m = str.match(/(\d{1,2})\s+([A-Za-z]{3})\s+[\x27\x60]?(\d{2})\b/);
+    if (!m) return null;
+    const mon = MONTHS[m[2].toLowerCase()];
+    if (!mon) return null;
+    return new Date(parseInt('20'+m[3]), mon-1, parseInt(m[1]));
+  }
+
+  function parseFkEndDate(rawDate) {
+    // Extract end date from "DD Mon YY - DD Mon YY" or null for "Till budget ends"
+    const parts = String(rawDate || '').split(' - ');
+    if (parts.length > 1 && !/till budget/i.test(parts[1])) {
+      return parseFkDate(parts[1]);
+    }
+    return null;
+  }
+
+  const today = uploadDate ? new Date(uploadDate) : new Date();
+  const SPREAD_FIELDS = [
+    'standard_spend', 'standard_revenue', 'standard_impressions',
+    'standard_clicks', 'standard_orders', 'standard_ctr',
+    'standard_acos', 'standard_cpc',
+  ];
+
+  const expanded = [];
+  for (const row of rows) {
+    // campaign_date is already the parsed ISO start date (set during normalisation)
+    // The end date range is preserved in raw_extras under the original "Date" key
+    // OR we use the status to determine end date behaviour
+    const startDate = row.campaign_date ? new Date(row.campaign_date) : null;
+    if (!startDate || isNaN(startDate)) { expanded.push(row); continue; }
+
+    // Read the original date range string preserved by normaliseRow
+    // under raw_extras._raw_date_range (e.g. "24 Aug '26 - Till budget ends")
+    const rawDate = String(row.raw_extras?._raw_date_range || '');
+
+    // Determine end date
+    let endDate = parseFkEndDate(rawDate);
+    if (!endDate) endDate = new Date(today); // Paused / Till budget ends → today
+    if (endDate < startDate) endDate = new Date(startDate);
+
+    const days = Math.round((endDate - startDate) / 86400000) + 1;
+    if (days <= 1) { expanded.push(row); continue; }
+
+    for (let d = 0; d < days; d++) {
+      const dayDate = new Date(startDate);
+      dayDate.setDate(startDate.getDate() + d);
+      const isoDate = dayDate.toISOString().split('T')[0];
+      const dayRow = { ...row, campaign_date: isoDate };
+      for (const field of SPREAD_FIELDS) {
+        const val = parseFloat(dayRow[field]);
+        if (!isNaN(val)) dayRow[field] = +(val / days).toFixed(4);
+      }
+      expanded.push(dayRow);
+    }
+  }
+  return expanded;
+}
+
 // no-op for Amazon/Flipkart/Blinkit files, which don't have this
 // column at all — nothing here changes their behaviour.
 // ═══════════════════════════════════════════════════════════════════
@@ -913,8 +985,14 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
     // include it in the tier-2 hash, preventing collisions when the
     // same order has multiple line-items with the same SKU.
     const orderSeqCounter = new Map();
+    // For Flipkart campaigns: expand each row into daily rows before merging.
+    // Other platforms already export daily data so this is a no-op for them.
+    const campaignRowsToMerge = (dataType === 'campaign' && platform === 'flipkart')
+      ? expandFlipkartCampaignDates(normalisedRows, new Date().toISOString().split('T')[0])
+      : normalisedRows;
+
     const rows = dataType === 'campaign'
-      ? mergeDuplicateCampaignRows(normalisedRows)
+      ? mergeDuplicateCampaignRows(campaignRowsToMerge)
       : discountAdjustedRows.map(row => {
           const orderKey = (row.platform || '') + '|' + (row.standard_order_id || '');
           const seq = orderSeqCounter.get(orderKey) || 0;
