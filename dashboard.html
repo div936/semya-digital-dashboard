@@ -2326,11 +2326,17 @@
 
     <!-- Inventory Tab -->
     <div class="tab-panel" id="tab-inventory">
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;" id="invKpiStrip">
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px;" id="invKpiStrip">
         <div class="card" style="padding:14px 16px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;">Total SKUs</div><div id="invKpiSkus" style="font-size:22px;font-weight:800;color:#0f172a;">—</div></div>
         <div class="card" style="padding:14px 16px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;">Low Stock</div><div id="invKpiLow" style="font-size:22px;font-weight:800;color:#d97706;">—</div></div>
         <div class="card" style="padding:14px 16px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;">Out of Stock</div><div id="invKpiOut" style="font-size:22px;font-weight:800;color:#dc2626;">—</div></div>
         <div class="card" style="padding:14px 16px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;">Warehouses</div><div id="invKpiWarehouses" style="font-size:22px;font-weight:800;color:#0f172a;">—</div></div>
+        <div class="card" style="padding:14px 16px;position:relative;overflow:hidden;">
+          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--theme-primary),var(--theme-accent));"></div>
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;">Avg. Days in Hand</div>
+          <div id="invKpiAvgDays" style="font-size:22px;font-weight:800;color:#0f172a;">—</div>
+          <div id="invKpiAvgDaysSub" style="font-size:9px;color:#94a3b8;margin-top:3px;"></div>
+        </div>
       </div>
       <div class="card" style="margin-bottom:16px;">
         <div class="card-header">
@@ -2344,9 +2350,10 @@
         <div class="card-header"><span class="card-title">Warehouses &amp; Platform Mapping</span><span class="card-badge">Which warehouse each platform's sales deduct from</span></div>
         <div style="font-size:11px;color:#94a3b8;padding:4px 2px 12px;">A sale on any platform decreases stock at whichever warehouse it's mapped to below — or the one marked <strong>Default</strong> if no mapping is set for it.</div>
         <div id="warehousesList" style="margin-bottom:12px;"><div class="skel skel-row" style="height:44px;margin-bottom:6px;"></div></div>
-        <div style="display:flex;gap:8px;margin-bottom:20px;">
-          <input type="text" id="newWarehouseName" placeholder="Warehouse name (e.g. Main Warehouse)" style="flex:2;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
-          <input type="text" id="newWarehouseLocation" placeholder="Location (optional)" style="flex:1;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
+        <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
+          <input type="text" id="newWarehouseName" placeholder="Warehouse name (e.g. Mumbai WH)" style="flex:2;min-width:160px;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
+          <input type="text" id="newWarehouseCity" placeholder="City (e.g. Mumbai)" style="flex:1;min-width:120px;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" title="Used to match orders by city when computing Days in Hand" />
+          <input type="text" id="newWarehouseLocation" placeholder="Location (optional)" style="flex:1;min-width:120px;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;" />
           <button class="btn btn-primary" onclick="addWarehouse()">+ Add</button>
         </div>
         <div style="font-size:10.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">Platform → Warehouse Mapping</div>
@@ -2361,8 +2368,16 @@
           </div>
         </div>
         <div style="overflow-x:auto;margin-top:8px;">
-          <table><thead><tr><th style="cursor:pointer;" onclick="sortStockTable('sku')">SKU ↕</th><th>Warehouse</th><th style="cursor:pointer;" onclick="sortStockTable('qty')">Qty ↕</th><th>Alert Below</th><th style="cursor:pointer;" onclick="sortStockTable('days')">Days Est. ↕</th><th>Updated</th></tr></thead>
-          <tbody id="stockLevelsTbody"><tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:20px 0;">Loading…</td></tr></tbody></table>
+          <table><thead><tr>
+            <th style="cursor:pointer;" onclick="sortStockTable('sku')">SKU ↕</th>
+            <th>Warehouse · City</th>
+            <th style="cursor:pointer;" onclick="sortStockTable('qty')">Qty ↕</th>
+            <th>Alert Below</th>
+            <th style="min-width:80px;">Lead Time</th>
+            <th style="cursor:pointer;min-width:160px;" onclick="sortStockTable('days')">Days in Hand ↕</th>
+            <th>Updated</th>
+          </tr></thead>
+          <tbody id="stockLevelsTbody"><tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px 0;">Loading…</td></tr></tbody></table>
         </div>
       </div>
     </div><!-- /tab-inventory -->
@@ -8161,24 +8176,27 @@ async function loadUtmInventoryAlerts() {
       '<table style="width:100%;border-collapse:collapse;">' +
         '<thead><tr>' +
           '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">SKU</th>' +
-          '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">Warehouse</th>' +
+          '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">Warehouse · City</th>' +
           '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">Qty on Hand</th>' +
           '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">Alert Below</th>' +
-          '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">Days Est.</th>' +
+          '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;min-width:160px;">Days in Hand</th>' +
         '</tr></thead>' +
         '<tbody>' +
         alerts.map(a => {
           const urgent = a.quantityOnHand <= 0;
           const qtyColour = urgent ? 'color:#dc2626;font-weight:700;' : 'color:#d97706;font-weight:700;';
-          const dayLabel = a.daysRemainingEstimate != null
-            ? (a.daysRemainingEstimate <= 0 ? 'Out of stock' : '~' + a.daysRemainingEstimate + 'd')
-            : '—';
+          const whCityCell = '<td style="padding:8px 10px;vertical-align:middle;">' +
+            '<div style="font-size:11px;font-weight:600;color:#1e293b;">' + (a.warehouseName || '—') + '</div>' +
+            (a.warehouseCity
+              ? '<div style="font-size:10px;color:#64748b;margin-top:1px;">📍 ' + a.warehouseCity + '</div>'
+              : '<div style="font-size:10px;color:#d97706;margin-top:1px;font-weight:600;">⚠ City not set</div>') +
+          '</td>';
           return '<tr>' +
             '<td style="padding:8px 10px;font-size:12px;font-weight:600;color:#1e293b;">' + a.sku + '</td>' +
-            '<td style="padding:8px 10px;font-size:11px;color:#94a3b8;">' + a.warehouseName + '</td>' +
+            whCityCell +
             '<td style="padding:8px 10px;font-size:12px;' + qtyColour + '">' + a.quantityOnHand + '</td>' +
             '<td style="padding:8px 10px;font-size:12px;color:#64748b;">' + a.lowStockThreshold + '</td>' +
-            '<td style="padding:8px 10px;font-size:11px;color:' + (a.daysRemainingEstimate != null && a.daysRemainingEstimate <= 0 ? '#dc2626' : '#94a3b8') + ';">' + dayLabel + '</td>' +
+            invBurnDownCell(a) +
           '</tr>';
         }).join('') +
         '</tbody></table>';
@@ -8286,25 +8304,38 @@ async function loadInventoryAlerts() {
     el.innerHTML = '<table style="width:100%;border-collapse:collapse;"><thead><tr>' +
       '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;">Status</th>' +
       '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;">SKU</th>' +
-      '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;">Warehouse</th>' +
+      '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;">Warehouse · City</th>' +
       '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;">Qty</th>' +
       '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;">Alert Below</th>' +
-      '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;">Days Est.</th>' +
+      '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;min-width:160px;">Days in Hand</th>' +
     '</tr></thead><tbody>' +
     sorted.map(a => {
-      const isOut=a.quantityOnHand<=0, isCrit=!isOut&&(a.daysRemainingEstimate??99)<=3, isWarn=!isOut&&!isCrit&&(a.daysRemainingEstimate??99)<=7;
-      const chip=isOut?'<span style="background:#fee2e2;color:#dc2626;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;">Out of stock</span>':isCrit?'<span style="background:#fff7ed;color:#c2410c;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;">Critical</span>':isWarn?'<span style="background:#fefce8;color:#a16207;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;">Low stock</span>':'<span style="background:#f0fdf4;color:#166534;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;">Monitor</span>';
-      const qc=isOut?'#dc2626':isCrit?'#c2410c':'#d97706';
-      const dl=a.daysRemainingEstimate!=null?(a.daysRemainingEstimate<=0?'Out':'~'+a.daysRemainingEstimate+'d'):'—';
-      return '<tr style="'+(isOut?'background:#fff5f5;':isCrit?'background:#fff9f5;':'')+'border-bottom:1px solid #f1f5f9;">' +
-        '<td style="padding:10px 10px;">'+chip+'</td>' +
-        '<td style="padding:10px 10px;font-size:12px;font-weight:600;color:#1e293b;">'+(a.sku||'—')+'</td>' +
-        '<td style="padding:10px 10px;font-size:11px;color:#64748b;">'+(a.warehouseName||'—')+'</td>' +
-        '<td style="padding:10px 10px;font-size:13px;font-weight:700;color:'+qc+';">'+a.quantityOnHand+'</td>' +
-        '<td style="padding:10px 10px;font-size:12px;color:#64748b;">'+a.lowStockThreshold+'</td>' +
-        '<td style="padding:10px 10px;font-size:12px;color:'+(a.daysRemainingEstimate!=null&&a.daysRemainingEstimate<=3?'#dc2626':'#64748b')+';font-weight:'+(a.daysRemainingEstimate!=null&&a.daysRemainingEstimate<=3?'700':'400')+';">'+dl+'</td>' +
+      const isOut = a.quantityOnHand <= 0;
+      const isCrit = !isOut && (a.daysRemainingEstimate ?? 99) <= 7;
+      const isWarn = !isOut && !isCrit && (a.daysRemainingEstimate ?? 99) <= 14;
+      const chip = isOut
+        ? '<span style="background:#fee2e2;color:#dc2626;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;">Out of stock</span>'
+        : isCrit
+        ? '<span style="background:#fff7ed;color:#c2410c;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;">Critical</span>'
+        : isWarn
+        ? '<span style="background:#fefce8;color:#a16207;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;">Low stock</span>'
+        : '<span style="background:#f0fdf4;color:#166534;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;">Monitor</span>';
+      const qc = isOut ? '#dc2626' : isCrit ? '#c2410c' : '#d97706';
+      const whCityCell = '<td style="padding:10px 10px;vertical-align:middle;">' +
+        '<div style="font-size:12px;font-weight:600;color:#1e293b;">' + (a.warehouseName || '—') + '</div>' +
+        (a.warehouseCity
+          ? '<div style="font-size:10px;color:#64748b;margin-top:1px;">📍 ' + a.warehouseCity + '</div>'
+          : '<div style="font-size:10px;color:#d97706;margin-top:1px;font-weight:600;">⚠ City not set</div>') +
+      '</td>';
+      return '<tr style="' + (isOut ? 'background:#fff5f5;' : isCrit ? 'background:#fff9f5;' : '') + 'border-bottom:1px solid #f1f5f9;">' +
+        '<td style="padding:10px 10px;">' + chip + '</td>' +
+        '<td style="padding:10px 10px;font-size:12px;font-weight:600;color:#1e293b;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (a.sku || '—') + '</td>' +
+        whCityCell +
+        '<td style="padding:10px 10px;font-size:13px;font-weight:700;color:' + qc + ';">' + a.quantityOnHand + '</td>' +
+        '<td style="padding:10px 10px;font-size:12px;color:#64748b;">' + a.lowStockThreshold + '</td>' +
+        invBurnDownCell(a) +
       '</tr>';
-    }).join('')+'</tbody></table>';
+    }).join('') + '</tbody></table>';
   } catch(e) {
     if (el) el.innerHTML = '<div style="padding:16px;color:#dc2626;font-size:12px;">Failed: '+e.message+'</div>';
   }
@@ -8312,55 +8343,212 @@ async function loadInventoryAlerts() {
 
 let _invAllStock=[], _invSortCol='qty', _invSortDir=1;
 
+// ── Burn-down bar cell — number + bar + reorder date stacked in one td.
+// BAR_MAX_DAYS: a full bar = 45 days of stock. Beyond that the bar
+// is capped at 100% (still healthy — no need to show "more than full").
+// Color zones match the status chips used in the alerts table:
+//   > 14d  → theme-primary blue  (healthy)
+//   7–14d  → #d97706 amber       (low)
+//   0–7d   → #dc2626 red         (critical)
+function invBurnDownCell(r) {
+  const BAR_MAX = 45;
+  const days = r.daysRemainingEstimate;
+  const lead = r.leadTimeDays || 0;
+
+  // No city configured on this warehouse — can't compute velocity
+  if (!r.cityConfigured) {
+    return '<td style="padding:8px 10px;vertical-align:middle;">' +
+      '<span style="font-size:10px;color:#d97706;font-weight:600;">⚠ City not set</span>' +
+      '<div style="font-size:10px;color:#94a3b8;margin-top:2px;">Set city on warehouse to enable</div>' +
+    '</td>';
+  }
+
+  // City set but no sales in last 14 days — no velocity signal
+  if (days == null) {
+    return '<td style="padding:8px 10px;vertical-align:middle;">' +
+      '<span style="font-size:12px;color:#94a3b8;">—</span>' +
+      '<div style="font-size:10px;color:#94a3b8;margin-top:2px;">No recent sales data</div>' +
+    '</td>';
+  }
+
+  const isOut  = days <= 0;
+  const isCrit = !isOut && days <= 7;
+  const isLow  = !isOut && !isCrit && days <= 14;
+  const barColor = isOut || isCrit ? '#dc2626' : isLow ? '#d97706' : 'var(--theme-primary)';
+  const numColor = isOut || isCrit ? '#dc2626' : isLow ? '#d97706' : '#059669';
+  const pct = Math.min(100, Math.max(0, (days / BAR_MAX) * 100)).toFixed(1);
+  const label = isOut ? 'Out of stock' : '~' + days + 'd';
+
+  let reorderLine = '';
+  if (!isOut && lead > 0 && r.reorderByDate) {
+    const rd = r.reorderByDate === 'today'
+      ? 'Reorder today'
+      : 'Reorder by ' + new Date(r.reorderByDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+    const rdColor = (r.reorderByDate === 'today' || isCrit) ? '#dc2626' : '#64748b';
+    reorderLine = '<div style="font-size:10px;color:' + rdColor + ';margin-top:3px;font-weight:' + (rdColor === '#dc2626' ? '700' : '400') + ';">' + rd + '</div>';
+  } else if (!isOut && lead === 0) {
+    reorderLine = '<div style="font-size:10px;color:#94a3b8;margin-top:3px;">Set lead time ↓</div>';
+  }
+
+  return '<td style="padding:8px 10px;vertical-align:middle;">' +
+    '<div style="font-size:12px;font-weight:700;color:' + numColor + ';">' + label + '</div>' +
+    '<div style="margin:4px 0 0;height:5px;background:#e2eaf2;border-radius:99px;overflow:hidden;width:100%;max-width:120px;">' +
+      '<div style="height:100%;width:' + pct + '%;background:' + (isOut || isCrit ? '#dc2626' : isLow ? '#d97706' : 'linear-gradient(90deg,var(--theme-primary),var(--theme-accent))') + ';border-radius:99px;transition:width .4s ease;"></div>' +
+    '</div>' +
+    reorderLine +
+  '</td>';
+}
+
+// Lead time inline input — saves on blur/enter without reloading the whole table
+function invLeadTimeCell(r) {
+  const id = 'lt_' + r.warehouseId + '_' + r.sku.replace(/[^a-z0-9]/gi, '_');
+  return '<td style="padding:6px 8px;vertical-align:middle;">' +
+    '<div style="display:flex;align-items:center;gap:4px;">' +
+      '<input type="number" id="' + id + '" min="0" max="365" value="' + (r.leadTimeDays || 0) + '" ' +
+        'style="width:52px;padding:4px 6px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:12px;text-align:center;" ' +
+        'title="Replenishment lead time for this SKU at this warehouse (days)" ' +
+        'onblur="saveLeadTime(' + jsAttr(r.warehouseId) + ',' + jsAttr(r.sku) + ',this.value,this)" ' +
+        'onkeydown="if(event.key===\'Enter\')this.blur();" />' +
+      '<span style="font-size:10px;color:#94a3b8;">d</span>' +
+    '</div>' +
+  '</td>';
+}
+
+async function saveLeadTime(warehouseId, sku, value, inputEl) {
+  const days = Math.max(0, parseInt(value, 10) || 0);
+  if (inputEl) inputEl.value = days; // normalise display
+  try {
+    await apiFetch('/clients/' + state.clientSlug + '/inventory/stock/lead-time', {
+      method: 'PATCH',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ warehouseId, sku, leadTimeDays: days }),
+    });
+    // Update in-memory store so re-renders use the new value without a full reload
+    const row = _invAllStock.find(r => r.warehouseId === warehouseId && r.sku === sku);
+    if (row) {
+      row.leadTimeDays = days;
+      // Recompute reorderByDate client-side so bar updates immediately
+      if (row.daysRemainingEstimate != null && days > 0) {
+        const daysUntilReorder = row.daysRemainingEstimate - days;
+        if (daysUntilReorder <= 0) {
+          row.reorderByDate = 'today';
+        } else {
+          const d = new Date();
+          d.setDate(d.getDate() + daysUntilReorder);
+          row.reorderByDate = d.toISOString().split('T')[0];
+        }
+      } else {
+        row.reorderByDate = null;
+      }
+    }
+    filterStockTable(document.getElementById('invStockSearch')?.value || '');
+  } catch (e) {
+    console.warn('[inventory] Failed to save lead time:', e.message);
+    if (inputEl) inputEl.style.borderColor = '#dc2626';
+    setTimeout(() => { if (inputEl) inputEl.style.borderColor = ''; }, 2000);
+  }
+}
+
 function filterStockTable(q) {
-  const filter=document.getElementById('invStockFilter')?.value||'all';
-  const search=(q||'').toLowerCase();
-  let rows=_invAllStock.filter(r => {
-    const ms=!search||(r.sku||'').toLowerCase().includes(search)||(r.warehouseName||'').toLowerCase().includes(search);
-    const mf=filter==='all'?true:filter==='out'?r.quantityOnHand<=0:filter==='low'?(r.quantityOnHand>0&&r.quantityOnHand<=r.lowStockThreshold):true;
-    return ms&&mf;
+  const filter = document.getElementById('invStockFilter')?.value || 'all';
+  const search = (q || '').toLowerCase();
+  let rows = _invAllStock.filter(r => {
+    const ms = !search
+      || (r.sku || '').toLowerCase().includes(search)
+      || (r.warehouseName || '').toLowerCase().includes(search)
+      || (r.warehouseCity || '').toLowerCase().includes(search);
+    const mf = filter === 'all'  ? true
+             : filter === 'out'  ? r.quantityOnHand <= 0
+             : filter === 'low'  ? (r.quantityOnHand > 0 && r.quantityOnHand <= r.lowStockThreshold)
+             : true;
+    return ms && mf;
   });
-  rows=[...rows].sort((a,b)=>{
-    if(_invSortCol==='sku') return _invSortDir*(a.sku||'').localeCompare(b.sku||'');
-    if(_invSortCol==='qty') return _invSortDir*((a.quantityOnHand||0)-(b.quantityOnHand||0));
-    if(_invSortCol==='days') return _invSortDir*((a.daysRemainingEstimate??999)-(b.daysRemainingEstimate??999));
+  rows = [...rows].sort((a, b) => {
+    if (_invSortCol === 'sku')  return _invSortDir * (a.sku || '').localeCompare(b.sku || '');
+    if (_invSortCol === 'qty')  return _invSortDir * ((a.quantityOnHand || 0) - (b.quantityOnHand || 0));
+    if (_invSortCol === 'days') return _invSortDir * ((a.daysRemainingEstimate ?? 9999) - (b.daysRemainingEstimate ?? 9999));
     return 0;
   });
-  const tbody=document.getElementById('stockLevelsTbody');
+
+  const tbody = document.getElementById('stockLevelsTbody');
   if (!tbody) return;
-  if (!rows.length) { tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:20px 0;">No matching entries</td></tr>'; return; }
-  tbody.innerHTML=rows.map(r=>{
-    const isOut=r.quantityOnHand<=0, isLow=!isOut&&r.quantityOnHand<=r.lowStockThreshold;
-    const qc=isOut?'#dc2626':isLow?'#d97706':'#059669';
-    const dl=r.daysRemainingEstimate!=null?(r.daysRemainingEstimate<=0?'Out':'~'+r.daysRemainingEstimate+'d'):'—';
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px 0;">No matching entries</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => {
+    const isOut = r.quantityOnHand <= 0;
+    const isLow = !isOut && r.quantityOnHand <= r.lowStockThreshold;
+    const qc = isOut ? '#dc2626' : isLow ? '#d97706' : '#059669';
+
+    // Warehouse + city cell
+    const cityBadge = r.cityConfigured
+      ? '<div style="font-size:10px;color:#94a3b8;margin-top:1px;">' + r.warehouseCity + '</div>'
+      : '<div style="font-size:10px;color:#d97706;margin-top:1px;font-weight:600;">⚠ City not set</div>';
+    const whCell = '<td style="padding:8px 10px;vertical-align:middle;">' +
+      '<div style="font-size:11px;font-weight:600;color:#334155;">' + (r.warehouseName || '—') + '</div>' +
+      cityBadge +
+    '</td>';
+
     return '<tr style="border-bottom:1px solid #f8fafc;">' +
-      '<td style="padding:8px 10px;font-size:11px;color:#334155;">'+(r.sku||'—')+'</td>' +
-      '<td style="padding:8px 10px;font-size:11px;color:#64748b;">'+(r.warehouseName||'—')+'</td>' +
-      '<td style="padding:8px 10px;font-size:13px;font-weight:700;color:'+qc+';">'+r.quantityOnHand+'</td>' +
-      '<td style="padding:8px 10px;font-size:11px;color:#64748b;">'+(r.lowStockThreshold||10)+'</td>' +
-      '<td style="padding:8px 10px;font-size:11px;color:'+(r.daysRemainingEstimate!=null&&r.daysRemainingEstimate<=3?'#dc2626':'#64748b')+';font-weight:'+(r.daysRemainingEstimate!=null&&r.daysRemainingEstimate<=3?'700':'400')+';">'+dl+'</td>' +
-      '<td style="padding:8px 10px;font-size:11px;color:#94a3b8;">'+(r.updatedAt?new Date(r.updatedAt).toLocaleDateString('en-IN'):'—')+'</td></tr>';
+      '<td style="padding:8px 10px;font-size:11px;color:#334155;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (r.sku || '') + '">' + (r.sku || '—') + '</td>' +
+      whCell +
+      '<td style="padding:8px 10px;font-size:13px;font-weight:700;color:' + qc + ';">' + r.quantityOnHand + '</td>' +
+      '<td style="padding:8px 10px;font-size:11px;color:#64748b;">' + (r.lowStockThreshold || 10) + '</td>' +
+      invLeadTimeCell(r) +
+      invBurnDownCell(r) +
+      '<td style="padding:8px 10px;font-size:11px;color:#94a3b8;">' + (r.updatedAt ? new Date(r.updatedAt).toLocaleDateString('en-IN') : '—') + '</td>' +
+    '</tr>';
   }).join('');
 }
 
 function sortStockTable(col) {
-  if (_invSortCol===col) _invSortDir*=-1; else { _invSortCol=col; _invSortDir=1; }
-  filterStockTable(document.getElementById('invStockSearch')?.value||'');
+  if (_invSortCol === col) _invSortDir *= -1; else { _invSortCol = col; _invSortDir = 1; }
+  filterStockTable(document.getElementById('invStockSearch')?.value || '');
 }
 
 async function loadStockLevels() {
   const { clientSlug } = state; if (!clientSlug) return;
-  const tbody=document.getElementById('stockLevelsTbody');
+  const tbody = document.getElementById('stockLevelsTbody');
   if (!tbody) return;
-  tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:20px 0;">Loading…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px 0;">Loading…</td></tr>';
   try {
-    const data=await apiFetch('/clients/'+clientSlug+'/inventory/stock');
-    _invAllStock=data||[];
-    const kpiEl=document.getElementById('invKpiSkus'); if(kpiEl) kpiEl.textContent=_invAllStock.length;
-    const whEl=document.getElementById('invKpiWarehouses'); if(whEl) whEl.textContent=new Set(_invAllStock.map(r=>r.warehouseId)).size||'—';
-    filterStockTable(document.getElementById('invStockSearch')?.value||'');
-  } catch(e) {
-    tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:#dc2626;padding:20px 0;">'+e.message+'</td></tr>';
+    const data = await apiFetch('/clients/' + clientSlug + '/inventory/stock');
+    _invAllStock = data || [];
+
+    // KPI strip
+    const kpiSkus = document.getElementById('invKpiSkus');
+    const kpiWh   = document.getElementById('invKpiWarehouses');
+    const kpiLow  = document.getElementById('invKpiLow');
+    const kpiOut  = document.getElementById('invKpiOut');
+    const kpiAvg  = document.getElementById('invKpiAvgDays');
+    const kpiAvgSub = document.getElementById('invKpiAvgDaysSub');
+
+    if (kpiSkus) kpiSkus.textContent = _invAllStock.length;
+    if (kpiWh)   kpiWh.textContent   = new Set(_invAllStock.map(r => r.warehouseId)).size || '—';
+    if (kpiLow)  kpiLow.textContent  = _invAllStock.filter(r => r.quantityOnHand > 0 && r.quantityOnHand <= r.lowStockThreshold).length;
+    if (kpiOut)  kpiOut.textContent  = _invAllStock.filter(r => r.quantityOnHand <= 0).length;
+
+    // Avg Days in Hand — only from rows that have a real velocity estimate
+    const withDays = _invAllStock.filter(r => r.daysRemainingEstimate != null);
+    if (kpiAvg) {
+      if (withDays.length) {
+        const avg = Math.round(withDays.reduce((s, r) => s + r.daysRemainingEstimate, 0) / withDays.length);
+        const avgColor = avg <= 7 ? '#dc2626' : avg <= 14 ? '#d97706' : '#059669';
+        kpiAvg.style.color = avgColor;
+        kpiAvg.textContent = avg + 'd';
+        if (kpiAvgSub) kpiAvgSub.textContent = 'across ' + withDays.length + ' SKU' + (withDays.length === 1 ? '' : 's') + ' with sales data';
+      } else {
+        kpiAvg.textContent = '—';
+        kpiAvg.style.color = '#0f172a';
+        if (kpiAvgSub) kpiAvgSub.textContent = 'Set warehouse cities to enable';
+      }
+    }
+
+    filterStockTable(document.getElementById('invStockSearch')?.value || '');
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#dc2626;padding:20px 0;">' + e.message + '</td></tr>';
   }
 }
 
@@ -9340,19 +9528,37 @@ async function loadWarehouses() {
     if (!_invWarehouses.length) {
       list.innerHTML = '<p style="font-size:12px;color:#94a3b8;padding:8px 0;">No warehouses yet — add one below.</p>';
     } else {
-      list.innerHTML = _invWarehouses.map(w =>
-        '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);margin-bottom:6px;">' +
-          '<div>' +
-            '<span style="font-size:13px;font-weight:600;color:#1e293b;">' + w.name + '</span>' +
-            (w.location ? '<span style="font-size:11px;color:#94a3b8;margin-left:8px;">' + w.location + '</span>' : '') +
-            (w.is_default ? '<span style="font-size:9px;font-weight:700;text-transform:uppercase;color:#059669;background:#f0fdf4;border:1px solid #bbf7d0;padding:2px 7px;border-radius:999px;margin-left:8px;">Default</span>' : '') +
-          '</div>' +
-          '<div style="display:flex;gap:6px;">' +
-            (!w.is_default ? '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;" onclick="setDefaultWarehouse(' + jsAttr(w.id) + ')">Make default</button>' : '') +
-            '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;color:#dc2626;" onclick="deleteWarehouse(' + jsAttr(w.id) + ')">Delete</button>' +
-          '</div>' +
-        '</div>'
-      ).join('');
+      list.innerHTML = _invWarehouses.map(w => {
+        const cityMissing = !w.city || !w.city.trim();
+        const cityInputId = 'whCity_' + w.id;
+        return (
+          '<div style="border:1.5px solid ' + (cityMissing ? '#fde68a' : 'var(--color-border)') + ';border-radius:var(--radius-sm);margin-bottom:6px;overflow:hidden;">' +
+            // Top row — name, default badge, action buttons
+            '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:' + (cityMissing ? '#fffbeb' : 'transparent') + ';">' +
+              '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+                '<span style="font-size:13px;font-weight:600;color:#1e293b;">' + w.name + '</span>' +
+                (w.location ? '<span style="font-size:11px;color:#94a3b8;">' + w.location + '</span>' : '') +
+                (w.is_default ? '<span style="font-size:9px;font-weight:700;text-transform:uppercase;color:#059669;background:#f0fdf4;border:1px solid #bbf7d0;padding:2px 7px;border-radius:999px;">Default</span>' : '') +
+                (cityMissing ? '<span style="font-size:10px;color:#d97706;font-weight:600;">⚠ City not set — Days in Hand will show —</span>' : '<span style="font-size:11px;color:#64748b;">📍 ' + w.city + '</span>') +
+              '</div>' +
+              '<div style="display:flex;gap:6px;flex-shrink:0;">' +
+                (!w.is_default ? '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;" onclick="setDefaultWarehouse(' + jsAttr(w.id) + ')">Make default</button>' : '') +
+                '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;color:#dc2626;" onclick="deleteWarehouse(' + jsAttr(w.id) + ')">Delete</button>' +
+              '</div>' +
+            '</div>' +
+            // City input row — always visible so it's easy to set
+            '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px 8px;border-top:1px solid ' + (cityMissing ? '#fde68a' : '#f1f5f9') + ';background:' + (cityMissing ? '#fffdf5' : '#fafafa') + ';">' +
+              '<span style="font-size:10px;font-weight:600;color:#94a3b8;white-space:nowrap;">City for velocity:</span>' +
+              '<input type="text" id="' + cityInputId + '" value="' + (w.city || '') + '" placeholder="e.g. Mumbai" ' +
+                'style="flex:1;max-width:200px;padding:4px 8px;border:1.5px solid ' + (cityMissing ? '#f59e0b' : 'var(--color-border)') + ';border-radius:var(--radius-sm);font-size:12px;" ' +
+                'title="Must match how this city appears in your order files (standard_city field)" ' +
+                'onblur="saveWarehouseCity(' + jsAttr(w.id) + ', this.value, this)" ' +
+                'onkeydown="if(event.key===\'Enter\')this.blur();" />' +
+              '<span style="font-size:10px;color:#94a3b8;">Press Enter or click away to save</span>' +
+            '</div>' +
+          '</div>'
+        );
+      }).join('');
     }
     // Populate the stock-level warehouse dropdown and the mapping grid
     // now that we have the current list.
@@ -9368,17 +9574,41 @@ async function loadWarehouses() {
 
 async function addWarehouse() {
   const nameInput = document.getElementById('newWarehouseName');
+  const cityInput = document.getElementById('newWarehouseCity');
   const locInput  = document.getElementById('newWarehouseLocation');
   const name = nameInput?.value.trim();
   if (!name) { alert('Enter a warehouse name.'); return; }
   try {
     await apiFetch('/clients/' + state.clientSlug + '/inventory/warehouses', {
       method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, location: locInput?.value.trim() || null }),
+      body: JSON.stringify({
+        name,
+        city: cityInput?.value.trim() || null,
+        location: locInput?.value.trim() || null,
+      }),
     });
-    nameInput.value = ''; if (locInput) locInput.value = '';
+    nameInput.value = '';
+    if (cityInput) cityInput.value = '';
+    if (locInput)  locInput.value  = '';
     loadWarehouses();
   } catch (e) { alert('Failed to add warehouse: ' + e.message); }
+}
+
+async function saveWarehouseCity(id, cityValue, inputEl) {
+  const city = (cityValue || '').trim() || null;
+  try {
+    await apiFetch('/clients/' + state.clientSlug + '/inventory/warehouses/' + id, {
+      method: 'PATCH', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ city }),
+    });
+    // Brief green flash to confirm save, then reload so the warning banner updates
+    if (inputEl) { inputEl.style.borderColor = '#059669'; }
+    setTimeout(() => { loadWarehouses(); loadStockLevels(); }, 400);
+  } catch (e) {
+    alert('Failed to save city: ' + e.message);
+    if (inputEl) inputEl.style.borderColor = '#dc2626';
+    setTimeout(() => { if (inputEl) inputEl.style.borderColor = ''; }, 2000);
+  }
 }
 
 async function setDefaultWarehouse(id) {
