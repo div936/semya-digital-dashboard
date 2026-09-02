@@ -4678,13 +4678,8 @@ async function applyBranding(cfg) {
   const isAdmin = !!cfg?.user?.isAdmin;
   state.isAdmin = isAdmin;
   updateViewAsToggleUI();
+  applyAdminVisibility(); // Apply immediately now that isAdmin is set
 
-  // This badge used to be static HTML that always said "Admin"
-  // regardless of who was actually logged in — meaning it never
-  // proved anything and was actively misleading while debugging the
-  // branding issue below (it looked like confirmation of admin status
-  // when it wasn't checking anything at all). Now genuinely reflects
-  // cfg.user.isAdmin from this request.
   const adminBadgeEl = document.getElementById('headerAdminBadge');
   if (adminBadgeEl) adminBadgeEl.style.display = isAdmin ? 'inline-block' : 'none';
 
@@ -9605,6 +9600,8 @@ async function saveWarehouseName(id, nameValue, inputEl) {
     setTimeout(() => { if (inputEl) inputEl.style.borderBottomColor = 'transparent'; }, 2000);
   }
 }
+
+async function saveWarehouseCity(id, cityValue, inputEl) {
   const city = (cityValue || '').trim() || null;
   try {
     await apiFetch('/clients/' + state.clientSlug + '/inventory/warehouses/' + id, {
