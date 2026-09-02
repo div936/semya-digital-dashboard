@@ -8160,50 +8160,9 @@ function fetchAndRenderUTM() {
   tabCache['utm_analytics'] = { data: true, timestamp: Date.now() };
 }
 
-async function loadUtmInventoryAlerts() {
-  const { clientSlug } = state; if (!clientSlug) return;
-  const el = document.getElementById('utmInventoryAlerts');
-  if (!el) return;
-  try {
-    const alerts = await apiFetch('/clients/' + clientSlug + '/inventory/alerts');
-    if (!alerts.length) {
-      el.innerHTML = '<div style="padding:16px 0;text-align:center;color:#94a3b8;font-size:12px;">No low-stock alerts right now — everything is above its threshold, or no warehouses/stock have been set up yet in Inventory Settings.</div>';
-      return;
-    }
-    // Render as a table matching the ALL STOCK section style —
-    // SKU, Warehouse, QTY ON HAND, ALERT BELOW, UPDATED columns.
-    el.innerHTML =
-      '<table style="width:100%;border-collapse:collapse;">' +
-        '<thead><tr>' +
-          '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">SKU</th>' +
-          '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">Warehouse · City</th>' +
-          '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">Qty on Hand</th>' +
-          '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">Alert Below</th>' +
-          '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;min-width:160px;">Days in Hand</th>' +
-        '</tr></thead>' +
-        '<tbody>' +
-        alerts.map(a => {
-          const urgent = a.quantityOnHand <= 0;
-          const qtyColour = urgent ? 'color:#dc2626;font-weight:700;' : 'color:#d97706;font-weight:700;';
-          const whCityCell = '<td style="padding:8px 10px;vertical-align:middle;">' +
-            '<div style="font-size:11px;font-weight:600;color:#1e293b;">' + (a.warehouseName || '—') + '</div>' +
-            (a.warehouseCity
-              ? '<div style="font-size:10px;color:#64748b;margin-top:1px;">📍 ' + a.warehouseCity + '</div>'
-              : '<div style="font-size:10px;color:#d97706;margin-top:1px;font-weight:600;">⚠ City not set</div>') +
-          '</td>';
-          return '<tr>' +
-            '<td style="padding:8px 10px;font-size:12px;font-weight:600;color:#1e293b;">' + a.sku + '</td>' +
-            whCityCell +
-            '<td style="padding:8px 10px;font-size:12px;' + qtyColour + '">' + a.quantityOnHand + '</td>' +
-            '<td style="padding:8px 10px;font-size:12px;color:#64748b;">' + a.lowStockThreshold + '</td>' +
-            invBurnDownCell(a) +
-          '</tr>';
-        }).join('') +
-        '</tbody></table>';
-  } catch (e) {
-    el.innerHTML = '<div style="padding:16px 0;text-align:center;color:#94a3b8;font-size:12px;">Failed to load inventory alerts: ' + e.message + '</div>';
-  }
-}
+// loadUtmInventoryAlerts was removed — inventory alerts now live
+// entirely on the Inventory tab (invAlertsTable / loadInventoryAlerts).
+// The utmInventoryAlerts element no longer exists in the UTM tab HTML.
 
 
 // ═══════════════════════════════════════════════════════════════════
@@ -8526,7 +8485,7 @@ async function loadStockLevels() {
     const kpiAvgSub = document.getElementById('invKpiAvgDaysSub');
 
     if (kpiSkus) kpiSkus.textContent = _invAllStock.length;
-    if (kpiWh)   kpiWh.textContent   = new Set(_invAllStock.map(r => r.warehouseId)).size || '—';
+    if (kpiWh)   kpiWh.textContent   = new Set(_invAllStock.map(r => r.warehouseId)).size;
     if (kpiLow)  kpiLow.textContent  = _invAllStock.filter(r => r.quantityOnHand > 0 && r.quantityOnHand <= r.lowStockThreshold).length;
     if (kpiOut)  kpiOut.textContent  = _invAllStock.filter(r => r.quantityOnHand <= 0).length;
 
@@ -9531,12 +9490,19 @@ async function loadWarehouses() {
       list.innerHTML = _invWarehouses.map(w => {
         const cityMissing = !w.city || !w.city.trim();
         const cityInputId = 'whCity_' + w.id;
+        const nameInputId = 'whName_' + w.id;
         return (
           '<div style="border:1.5px solid ' + (cityMissing ? '#fde68a' : 'var(--color-border)') + ';border-radius:var(--radius-sm);margin-bottom:6px;overflow:hidden;">' +
-            // Top row — name, default badge, action buttons
+            // Top row — editable name, default badge, action buttons
             '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:' + (cityMissing ? '#fffbeb' : 'transparent') + ';">' +
-              '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
-                '<span style="font-size:13px;font-weight:600;color:#1e293b;">' + w.name + '</span>' +
+              '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1;min-width:0;">' +
+                // Inline editable warehouse name
+                '<input type="text" id="' + nameInputId + '" value="' + w.name.replace(/"/g, '&quot;') + '" ' +
+                  'style="font-size:13px;font-weight:600;color:#1e293b;border:none;border-bottom:1.5px solid transparent;background:transparent;padding:2px 4px;border-radius:4px;min-width:120px;max-width:240px;" ' +
+                  'title="Click to rename this warehouse" ' +
+                  'onfocus="this.style.borderBottomColor=\'var(--theme-primary)\'" ' +
+                  'onblur="this.style.borderBottomColor=\'transparent\';saveWarehouseName(' + jsAttr(w.id) + ',this.value,this)" ' +
+                  'onkeydown="if(event.key===\'Enter\')this.blur();" />' +
                 (w.location ? '<span style="font-size:11px;color:#94a3b8;">' + w.location + '</span>' : '') +
                 (w.is_default ? '<span style="font-size:9px;font-weight:700;text-transform:uppercase;color:#059669;background:#f0fdf4;border:1px solid #bbf7d0;padding:2px 7px;border-radius:999px;">Default</span>' : '') +
                 (cityMissing ? '<span style="font-size:10px;color:#d97706;font-weight:600;">⚠ City not set — Days in Hand will show —</span>' : '<span style="font-size:11px;color:#64748b;">📍 ' + w.city + '</span>') +
@@ -9546,7 +9512,7 @@ async function loadWarehouses() {
                 '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;color:#dc2626;" onclick="deleteWarehouse(' + jsAttr(w.id) + ')">Delete</button>' +
               '</div>' +
             '</div>' +
-            // City input row — always visible so it's easy to set
+            // City input row
             '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px 8px;border-top:1px solid ' + (cityMissing ? '#fde68a' : '#f1f5f9') + ';background:' + (cityMissing ? '#fffdf5' : '#fafafa') + ';">' +
               '<span style="font-size:10px;font-weight:600;color:#94a3b8;white-space:nowrap;">City for velocity:</span>' +
               '<input type="text" id="' + cityInputId + '" value="' + (w.city || '') + '" placeholder="e.g. Mumbai" ' +
@@ -9594,7 +9560,26 @@ async function addWarehouse() {
   } catch (e) { alert('Failed to add warehouse: ' + e.message); }
 }
 
-async function saveWarehouseCity(id, cityValue, inputEl) {
+async function saveWarehouseName(id, nameValue, inputEl) {
+  const name = (nameValue || '').trim();
+  if (!name) {
+    if (inputEl) { inputEl.value = _invWarehouses.find(w => w.id === id)?.name || ''; }
+    return; // don't save blank name
+  }
+  try {
+    await apiFetch('/clients/' + state.clientSlug + '/inventory/warehouses/' + id, {
+      method: 'PATCH', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    if (inputEl) { inputEl.style.borderBottomColor = '#059669'; }
+    // Reload everything so the new name appears in the stock table and alerts too
+    setTimeout(() => { loadWarehouses(); loadStockLevels(); loadInventoryAlerts(); }, 300);
+  } catch (e) {
+    alert('Failed to rename warehouse: ' + e.message);
+    if (inputEl) { inputEl.style.borderBottomColor = '#dc2626'; }
+    setTimeout(() => { if (inputEl) inputEl.style.borderBottomColor = 'transparent'; }, 2000);
+  }
+}
   const city = (cityValue || '').trim() || null;
   try {
     await apiFetch('/clients/' + state.clientSlug + '/inventory/warehouses/' + id, {
@@ -9603,7 +9588,7 @@ async function saveWarehouseCity(id, cityValue, inputEl) {
     });
     // Brief green flash to confirm save, then reload so the warning banner updates
     if (inputEl) { inputEl.style.borderColor = '#059669'; }
-    setTimeout(() => { loadWarehouses(); loadStockLevels(); }, 400);
+    setTimeout(() => { loadWarehouses(); loadStockLevels(); loadInventoryAlerts(); }, 400);
   } catch (e) {
     alert('Failed to save city: ' + e.message);
     if (inputEl) inputEl.style.borderColor = '#dc2626';
@@ -9664,28 +9649,10 @@ async function savePlatformWarehouseMap(platform, warehouseId) {
   } catch (e) { alert('Failed to save mapping: ' + e.message); }
 }
 
-async function loadStockLevels() {
-  const tbody = document.getElementById('stockLevelsTbody');
-  if (!tbody) return;
-  try {
-    const rows = await apiFetch('/clients/' + state.clientSlug + '/inventory/stock');
-    if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:16px 0;">No stock records yet — add one above.</td></tr>';
-      return;
-    }
-    tbody.innerHTML = rows.map(r =>
-      '<tr>' +
-        '<td>' + r.standard_sku + '</td>' +
-        '<td>' + (r.warehouses?.name || '—') + '</td>' +
-        '<td style="' + (r.quantity_on_hand <= r.low_stock_threshold ? 'color:#dc2626;font-weight:700;' : '') + '">' + r.quantity_on_hand + '</td>' +
-        '<td>' + r.low_stock_threshold + '</td>' +
-        '<td style="color:#94a3b8;font-size:11px;">' + (r.updated_at ? new Date(r.updated_at).toLocaleDateString('en-IN') : '—') + '</td>' +
-      '</tr>'
-    ).join('');
-  } catch (e) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#dc2626;padding:16px 0;">Failed to load stock: ' + e.message + '</td></tr>';
-  }
-}
+// loadStockLevels is defined earlier in this file (search for
+// "async function loadStockLevels" above). The old version that
+// read raw DB field names (r.standard_sku, r.quantity_on_hand) was
+// removed here — the enriched version higher up is the only one.
 
 async function uploadStockBulkFile(input) {
   const file = input.files[0];
@@ -9728,7 +9695,7 @@ async function uploadStockBulkFile(input) {
     }
     input.value = '';
     loadStockLevels();
-    loadUtmInventoryAlerts();
+    loadInventoryAlerts();
   } catch (e) {
     if (statusEl) { statusEl.textContent = 'Failed: ' + e.message; statusEl.style.color = '#dc2626'; }
   }
@@ -9757,7 +9724,7 @@ async function saveStockLevel() {
     document.getElementById('stockQty').value = '';
     if (statusEl) { statusEl.textContent = '✓ Saved'; statusEl.style.color = '#059669'; setTimeout(() => { statusEl.textContent = ''; }, 2000); }
     loadStockLevels();
-    loadUtmInventoryAlerts();
+    loadInventoryAlerts();
   } catch (e) {
     if (statusEl) { statusEl.textContent = 'Failed: ' + e.message; statusEl.style.color = '#dc2626'; }
   }
