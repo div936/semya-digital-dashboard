@@ -16,6 +16,7 @@ export const ALL_TABS = [
   'ai_insights',
   'daily_targets',
   'utm_analytics',
+  'inventory',
   'projections_insights',
 ];
 
