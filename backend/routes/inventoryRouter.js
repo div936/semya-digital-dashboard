@@ -1,43 +1,41 @@
 // routes/inventoryRouter.js
 // ─────────────────────────────────────────────────────────────────
 // GET    /clients/:client_slug/inventory/warehouses
-// POST   /clients/:client_slug/inventory/warehouses          (admin)
-// PATCH  /clients/:client_slug/inventory/warehouses/:id      (admin)
-// DELETE /clients/:client_slug/inventory/warehouses/:id      (admin)
+// POST   /clients/:client_slug/inventory/warehouses
+// PATCH  /clients/:client_slug/inventory/warehouses/:id
+// DELETE /clients/:client_slug/inventory/warehouses/:id
 //
 // GET    /clients/:client_slug/inventory/platform-map
-// PUT    /clients/:client_slug/inventory/platform-map        (admin)
+// PUT    /clients/:client_slug/inventory/platform-map
 //
 // GET    /clients/:client_slug/inventory/stock
-// PATCH  /clients/:client_slug/inventory/stock                (admin)
-//   Body: { warehouseId, sku, quantityOnHand?, lowStockThreshold? }
-//   Setting quantityOnHand here always logs a 'manual_adjustment'
-//   movement for the delta — see recordMovement() below. This is the
-//   ONLY place a human directly changes quantity_on_hand; automatic
-//   deduction from sales goes through the same recordMovement() path
-//   but is triggered from fileIngestion.js, not this route.
+//   Now returns daysRemainingEstimate, reorderByDate, and
+//   leadTimeDays for every SKU row, not just alert-threshold ones.
+//   Velocity is computed per-warehouse using the warehouse's city
+//   field matched against standard_city in revenue_data (trailing
+//   14 days). A warehouse with no city set returns null velocity
+//   so the UI can show a "city not configured" warning.
+//
+// PATCH  /clients/:client_slug/inventory/stock
+// POST   /clients/:client_slug/inventory/stock/bulk-upload
+// PATCH  /clients/:client_slug/inventory/stock/lead-time   (new)
+//   Body: { warehouseId, sku, leadTimeDays }
 //
 // GET    /clients/:client_slug/inventory/alerts
-//   Computed low-stock view for the UTM Analytics tab — every SKU/
-//   warehouse combination at or below its threshold, plus a rough
-//   "days of stock remaining" estimate from recent sales velocity.
-//
-// Mount in app.js:
-//   import inventoryRouter from './routes/inventoryRouter.js';
-//   app.use('/clients', inventoryRouter);
+//   Simplified — now just filters the enriched /stock result.
 // ─────────────────────────────────────────────────────────────────
 import { Router } from 'express';
 import crypto from 'crypto';
 import multer from 'multer';
 import xlsx from 'xlsx';
 import { rbacMiddleware, requireTab } from '../middleware/rbac.js';
-import { supabaseAdmin }  from '../lib/supabase.js';
+import { supabaseAdmin } from '../lib/supabase.js';
 
 const router = Router({ mergeParams: true });
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits:  { fileSize: 10 * 1024 * 1024 }, // stock-count files are small; 10MB is generous
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const ext = file.originalname.split('.').pop().toLowerCase();
     if (['xlsx', 'xls', 'csv'].includes(ext)) return cb(null, true);
@@ -46,12 +44,74 @@ const upload = multer({
 });
 
 // ═══════════════════════════════════════════════════════════════════
+// VELOCITY HELPER
+// Computes trailing-14-day units sold per day for a set of SKUs,
+// grouped by city. Each warehouse's city field is used as the
+// lookup key against standard_city in revenue_data.
+//
+// Returns a Map keyed by "warehouseId||sku" → { unitsPerDay, city }
+// A warehouse with no city set maps to null (no velocity available).
+// ═══════════════════════════════════════════════════════════════════
+async function computeVelocity(clientId, warehouses, skus) {
+  const velocityMap = new Map(); // key: "warehouseId||sku" → unitsPerDay
+
+  // Warehouses without a city get null velocity immediately
+  const citiedWarehouses = warehouses.filter(w => w.city && w.city.trim());
+  if (!citiedWarehouses.length || !skus.length) return velocityMap;
+
+  const since = new Date(Date.now() - 14 * 86400000).toISOString().split('T')[0];
+  const cities = [...new Set(citiedWarehouses.map(w => w.city.trim()))];
+
+  // One query — all cities, all SKUs, trailing 14 days
+  const { data: salesRows } = await supabaseAdmin
+    .from('revenue_data')
+    .select('standard_city, standard_sku, standard_units, standard_status')
+    .eq('client_id', clientId)
+    .in('standard_city', cities)
+    .in('standard_sku', skus)
+    .gte('order_date', since)
+    .neq('standard_status', 'Cancelled')
+    .neq('standard_status', 'Returned');
+
+  // Aggregate units sold per city+sku
+  const citySkuUnits = new Map(); // "city||sku" → totalUnits
+  for (const row of (salesRows || [])) {
+    const city = (row.standard_city || '').trim();
+    const sku  = row.standard_sku;
+    if (!city || !sku) continue;
+    const key = city + '||' + sku;
+    citySkuUnits.set(key, (citySkuUnits.get(key) || 0) + (Number(row.standard_units) || 0));
+  }
+
+  // Map back to warehouseId||sku
+  for (const w of citiedWarehouses) {
+    const city = w.city.trim();
+    for (const sku of skus) {
+      const units = citySkuUnits.get(city + '||' + sku) || 0;
+      velocityMap.set(w.id + '||' + sku, units / 14); // units per day
+    }
+  }
+
+  return velocityMap;
+}
+
+// Compute reorder-by date: today + daysRemaining - leadTimeDays
+function reorderByDate(daysRemaining, leadTimeDays) {
+  if (daysRemaining == null || leadTimeDays == null) return null;
+  const daysUntilReorder = daysRemaining - leadTimeDays;
+  if (daysUntilReorder <= 0) return 'today'; // already past reorder point
+  const d = new Date();
+  d.setDate(d.getDate() + daysUntilReorder);
+  return d.toISOString().split('T')[0]; // YYYY-MM-DD
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // WAREHOUSES
 // ═══════════════════════════════════════════════════════════════════
 router.get('/:client_slug/inventory/warehouses', rbacMiddleware, requireTab('inventory'), async (req, res) => {
   const { data, error } = await supabaseAdmin
     .from('warehouses')
-    .select('id, name, location, is_default, is_active, created_at')
+    .select('id, name, location, city, is_default, is_active, created_at')
     .eq('client_id', req.semya.client.id)
     .order('is_default', { ascending: false })
     .order('name');
@@ -61,13 +121,18 @@ router.get('/:client_slug/inventory/warehouses', rbacMiddleware, requireTab('inv
 
 router.post('/:client_slug/inventory/warehouses', rbacMiddleware, async (req, res) => {
   if (!req.semya.isAdmin) return res.status(403).json({ error: 'Admin access required.' });
-  const { name, location } = req.body || {};
+  const { name, location, city } = req.body || {};
   if (!name || !name.trim()) return res.status(400).json({ error: 'Warehouse name is required.' });
 
   const { data, error } = await supabaseAdmin
     .from('warehouses')
-    .insert({ client_id: req.semya.client.id, name: name.trim(), location: location || null })
-    .select('id, name, location, is_default, is_active')
+    .insert({
+      client_id: req.semya.client.id,
+      name: name.trim(),
+      location: location || null,
+      city: city ? city.trim() : null,
+    })
+    .select('id, name, location, city, is_default, is_active')
     .single();
   if (error) return res.status(500).json({ error: 'Failed to create warehouse: ' + error.message });
   return res.json(data);
@@ -75,12 +140,9 @@ router.post('/:client_slug/inventory/warehouses', rbacMiddleware, async (req, re
 
 router.patch('/:client_slug/inventory/warehouses/:id', rbacMiddleware, async (req, res) => {
   if (!req.semya.isAdmin) return res.status(403).json({ error: 'Admin access required.' });
-  const { name, location, isActive, isDefault } = req.body || {};
+  const { name, location, city, isActive, isDefault } = req.body || {};
   const { client } = req.semya;
 
-  // Setting a new default has to unset the old one first — the
-  // partial unique index (one default per client) would otherwise
-  // reject the update outright rather than silently swapping it.
   if (isDefault === true) {
     const { error: clearErr } = await supabaseAdmin
       .from('warehouses').update({ is_default: false })
@@ -91,13 +153,14 @@ router.patch('/:client_slug/inventory/warehouses/:id', rbacMiddleware, async (re
   const update = {};
   if (name !== undefined)      update.name = name.trim();
   if (location !== undefined)  update.location = location;
+  if (city !== undefined)      update.city = city ? city.trim() : null;
   if (isActive !== undefined)  update.is_active = !!isActive;
   if (isDefault !== undefined) update.is_default = !!isDefault;
 
   const { data, error } = await supabaseAdmin
     .from('warehouses').update(update)
     .eq('id', req.params.id).eq('client_id', client.id)
-    .select('id, name, location, is_default, is_active').single();
+    .select('id, name, location, city, is_default, is_active').single();
   if (error) return res.status(500).json({ error: 'Failed to update warehouse: ' + error.message });
   return res.json(data);
 });
@@ -106,10 +169,6 @@ router.delete('/:client_slug/inventory/warehouses/:id', rbacMiddleware, async (r
   if (!req.semya.isAdmin) return res.status(403).json({ error: 'Admin access required.' });
   const { client } = req.semya;
 
-  // Refuse to delete a warehouse that's still mapped to a platform or
-  // still has any stock rows — force clearing those first, rather
-  // than silently orphaning platform_warehouse_map rows or losing
-  // stock history via cascade.
   const [{ count: mapCount }, { count: stockCount }] = await Promise.all([
     supabaseAdmin.from('platform_warehouse_map').select('id', { count: 'exact', head: true }).eq('warehouse_id', req.params.id),
     supabaseAdmin.from('inventory_stock').select('id', { count: 'exact', head: true }).eq('warehouse_id', req.params.id),
@@ -141,8 +200,6 @@ router.put('/:client_slug/inventory/platform-map', rbacMiddleware, async (req, r
   if (!platform) return res.status(400).json({ error: 'platform is required.' });
   const { client } = req.semya;
 
-  // warehouseId === null means "clear this mapping, fall back to the
-  // default warehouse" — a real, valid state, not an error.
   if (warehouseId === null) {
     const { error } = await supabaseAdmin.from('platform_warehouse_map')
       .delete().eq('client_id', client.id).eq('platform', platform);
@@ -158,21 +215,82 @@ router.put('/:client_slug/inventory/platform-map', rbacMiddleware, async (req, r
 
 
 // ═══════════════════════════════════════════════════════════════════
-// STOCK LEVELS
+// STOCK LEVELS — enriched with per-city velocity + Days in Hand
+//
+// Returns every SKU row with:
+//   daysRemainingEstimate  — null if warehouse has no city or no
+//                            recent sales history for this SKU
+//   reorderByDate          — YYYY-MM-DD or 'today' or null
+//   leadTimeDays           — from inventory_stock.lead_time_days
+//   warehouseCity          — from warehouses.city (for display)
+//   cityConfigured         — false if warehouse has no city set
+//                            (UI shows yellow warning)
 // ═══════════════════════════════════════════════════════════════════
 router.get('/:client_slug/inventory/stock', rbacMiddleware, requireTab('inventory'), async (req, res) => {
   const { warehouseId, sku } = req.query;
+  const { client } = req.semya;
+
   let q = supabaseAdmin
     .from('inventory_stock')
-    .select('id, warehouse_id, standard_sku, quantity_on_hand, low_stock_threshold, updated_at, warehouses(name)')
-    .eq('client_id', req.semya.client.id)
+    .select('id, warehouse_id, standard_sku, quantity_on_hand, low_stock_threshold, lead_time_days, updated_at, warehouses(id, name, city)')
+    .eq('client_id', client.id)
     .order('standard_sku');
   if (warehouseId) q = q.eq('warehouse_id', warehouseId);
   if (sku)         q = q.eq('standard_sku', sku);
 
   const { data, error } = await q;
   if (error) return res.status(500).json({ error: 'Failed to load stock: ' + error.message });
-  return res.json(data || []);
+  if (!data?.length) return res.json([]);
+
+  // Fetch all warehouses for this client so velocity covers all of them
+  const { data: allWarehouses } = await supabaseAdmin
+    .from('warehouses')
+    .select('id, name, city')
+    .eq('client_id', client.id);
+
+  const skus = [...new Set(data.map(r => r.standard_sku))];
+  const velocityMap = await computeVelocity(client.id, allWarehouses || [], skus);
+
+  const today = new Date().toISOString().split('T')[0];
+
+  const enriched = data.map(row => {
+    const wh = row.warehouses || {};
+    const cityConfigured = !!(wh.city && wh.city.trim());
+    const velKey = row.warehouse_id + '||' + row.standard_sku;
+    const unitsPerDay = velocityMap.has(velKey) ? velocityMap.get(velKey) : null;
+
+    let daysRemainingEstimate = null;
+    let reorderBy = null;
+
+    if (cityConfigured && unitsPerDay != null) {
+      if (unitsPerDay > 0) {
+        daysRemainingEstimate = Math.round(row.quantity_on_hand / unitsPerDay);
+        reorderBy = reorderByDate(daysRemainingEstimate, row.lead_time_days || 0);
+      } else {
+        // City is set, no sales in last 14 days — stock exists but no
+        // demand signal. Show null days (—) rather than "infinity".
+        daysRemainingEstimate = null;
+        reorderBy = null;
+      }
+    }
+
+    return {
+      id:                    row.id,
+      warehouseId:           row.warehouse_id,
+      warehouseName:         wh.name || '—',
+      warehouseCity:         wh.city || null,
+      cityConfigured,
+      sku:                   row.standard_sku,
+      quantityOnHand:        row.quantity_on_hand,
+      lowStockThreshold:     row.low_stock_threshold,
+      leadTimeDays:          row.lead_time_days || 0,
+      daysRemainingEstimate,
+      reorderByDate:         reorderBy,
+      updatedAt:             row.updated_at,
+    };
+  });
+
+  return res.json(enriched);
 });
 
 router.patch('/:client_slug/inventory/stock', rbacMiddleware, async (req, res) => {
@@ -195,11 +313,6 @@ router.patch('/:client_slug/inventory/stock', rbacMiddleware, async (req, res) =
     const previousQty = existing?.quantity_on_hand ?? 0;
     const delta = update.quantity_on_hand - previousQty;
     if (delta !== 0) {
-      // Log this manual change to the ledger too, same as an
-      // automatic sale-driven deduction — keeps the movement history
-      // complete regardless of how a quantity changed. Uses a random
-      // key since a manual edit has no natural idempotency key to
-      // reuse (unlike a sale, which reuses revenue_data's row_hash).
       await recordMovement({
         clientId: client.id, warehouseId, sku,
         qtyDelta: delta, reason: 'manual_adjustment',
@@ -211,39 +324,34 @@ router.patch('/:client_slug/inventory/stock', rbacMiddleware, async (req, res) =
   const { data, error } = await supabaseAdmin
     .from('inventory_stock')
     .upsert(update, { onConflict: 'client_id,warehouse_id,standard_sku' })
-    .select('id, warehouse_id, standard_sku, quantity_on_hand, low_stock_threshold, updated_at')
+    .select('id, warehouse_id, standard_sku, quantity_on_hand, low_stock_threshold, lead_time_days, updated_at')
     .single();
   if (error) return res.status(500).json({ error: 'Failed to update stock: ' + error.message });
   return res.json(data);
 });
 
+// ── Lead time per SKU per warehouse — separate PATCH so the inline
+// table input can save without touching quantity or threshold.
+router.patch('/:client_slug/inventory/stock/lead-time', rbacMiddleware, async (req, res) => {
+  if (!req.semya.isAdmin) return res.status(403).json({ error: 'Admin access required.' });
+  const { warehouseId, sku, leadTimeDays } = req.body || {};
+  if (!warehouseId || !sku) return res.status(400).json({ error: 'warehouseId and sku are required.' });
+  if (leadTimeDays === undefined || isNaN(Number(leadTimeDays))) {
+    return res.status(400).json({ error: 'leadTimeDays must be a number.' });
+  }
+  const { client } = req.semya;
+
+  const { error } = await supabaseAdmin
+    .from('inventory_stock')
+    .update({ lead_time_days: Math.max(0, Number(leadTimeDays)), updated_at: new Date().toISOString() })
+    .eq('client_id', client.id).eq('warehouse_id', warehouseId).eq('standard_sku', sku);
+  if (error) return res.status(500).json({ error: 'Failed to save lead time: ' + error.message });
+  return res.json({ ok: true });
+});
+
 
 // ═══════════════════════════════════════════════════════════════════
-// BULK STOCK UPLOAD — Excel/CSV with SKU, Warehouse, Quantity,
-// optionally Low Stock Threshold columns. Matches "Warehouse" against
-// existing warehouse names for this client (case-insensitive, exact
-// match on the trimmed name) — a row whose warehouse name doesn't
-// match anything gets skipped and reported back, never guessed at or
-// silently dropped into the wrong warehouse. Warehouse itself is
-// OPTIONAL — a client that tracks one overall stock pool rather than
-// separate warehouses can upload a file with no Warehouse column at
-// all, and every row lands in that client's default warehouse
-// instead.
-//
-// BRAND column, if present, is validated against the target client's
-// registered brand name(s) (clients.registered_brands) BEFORE any
-// row is processed — confirmed directly with the business that this
-// is a real safety requirement: uploading one client's inventory
-// file into a different client's account by mistake needs to be
-// impossible, not just unlikely. A client with no registered brands
-// configured skips this check entirely (fails open, not closed,
-// until an admin sets it up) rather than blocking every upload for
-// clients nobody's configured this for yet.
-//
-// Column names are matched loosely (case/spacing-insensitive) against
-// a few common variants, same spirit as columnMapper.js's approach
-// for revenue files, but far simpler since this only needs to
-// recognise five possible columns, not hundreds of platform variants.
+// BULK STOCK UPLOAD
 // ═══════════════════════════════════════════════════════════════════
 const STOCK_COLUMN_ALIASES = {
   sku:       ['sku', 'product sku', 'item sku'],
@@ -285,7 +393,6 @@ router.post(
     }
     if (!rawRows.length) return res.status(400).json({ error: 'File has no data rows.' });
 
-    // Map this file's actual column headers to our known fields, once.
     const headers = Object.keys(rawRows[0]);
     const colMap = {};
     for (const field of Object.keys(STOCK_COLUMN_ALIASES)) {
@@ -295,31 +402,17 @@ router.post(
       return res.status(400).json({ error: 'Could not find SKU and Quantity columns in this file. Found headers: ' + headers.join(', ') });
     }
 
-    // ── Brand validation — reject the WHOLE upload, not per-row, if
-    // this file's brand doesn't match this client.
-    //
-    // Brand name = client name (e.g. "Daluci" file → Daluci client).
-    // Valid brands for a client are built from two sources, in priority:
-    //   1. clients.registered_brands — explicit overrides set in admin
-    //   2. clients.name — the client's own name, always valid as a brand
-    // This means brand→client mapping is automatic with zero config:
-    // uploading a "Daluci" branded file into the Neat Everyday client
-    // is rejected outright because "Daluci" ≠ "Neat Everyday".
+    // Brand validation
     const { data: clientRow } = await supabaseAdmin
       .from('clients').select('name, registered_brands').eq('id', client.id).single();
-    // Build the allowed brand list: explicit overrides + client name itself
     const explicitBrands = (clientRow?.registered_brands || []).map(b => b.trim().toLowerCase()).filter(Boolean);
     const clientNameBrand = (clientRow?.name || '').trim().toLowerCase();
-    const registeredBrands = explicitBrands.length
-      ? explicitBrands
-      : clientNameBrand ? [clientNameBrand] : [];
+    const registeredBrands = explicitBrands.length ? explicitBrands : clientNameBrand ? [clientNameBrand] : [];
 
     if (colMap.brand && registeredBrands.length) {
       const fileBrands = [...new Set(rawRows.map(r => String(r[colMap.brand] || '').trim()).filter(Boolean))];
       const mismatched = fileBrands.filter(b => !registeredBrands.includes(b.toLowerCase()));
       if (mismatched.length) {
-        // Check if this brand belongs to a different client — give a
-        // helpful error pointing to the right client if so.
         const { data: brandOwner } = await supabaseAdmin
           .from('clients')
           .select('name, slug')
@@ -335,31 +428,21 @@ router.post(
           ? ` This file looks like it belongs to the "${brandOwner.name}" client instead.`
           : '';
         return res.status(400).json({
-          error: `This file's brand (${mismatched.join(', ')}) doesn't match this client ("${clientRow.name}").${suggestion} ` +
-                 `Please upload this file under the correct client account.`,
+          error: `This file's brand (${mismatched.join(', ')}) doesn't match this client ("${clientRow.name}").${suggestion} Please upload this file under the correct client account.`,
         });
       }
     }
 
-    // ── Warehouse resolution — explicit column if present, otherwise
-    // fall back to this client's default warehouse for every row.
+    // Warehouse resolution
     const { data: warehouses } = await supabaseAdmin
       .from('warehouses').select('id, name, is_default').eq('client_id', client.id);
     const warehouseByName = new Map((warehouses || []).map(w => [w.name.trim().toLowerCase(), w.id]));
     const defaultWarehouseId = (warehouses || []).find(w => w.is_default)?.id || null;
 
     if (!colMap.warehouse && !defaultWarehouseId) {
-      return res.status(400).json({ error: 'This file has no Warehouse column and no default warehouse is configured. Add a Warehouse column to your file with the warehouse name (e.g. the state/location name), then add that warehouse under UTM Analytics first.' });
+      return res.status(400).json({ error: 'This file has no Warehouse column and no default warehouse is configured.' });
     }
 
-    // ── Existing SKUs — fetched once, up front, so a re-upload never
-    // overwrites stock that's already being tracked and automatically
-    // adjusted by real sales. Confirmed directly with the business:
-    // this file only gets re-uploaded to add NEW SKUs to the catalog,
-    // not as a fresh full snapshot — so any SKU already present here
-    // must be left alone. Overwriting it would silently undo every
-    // automatic deduction that's happened since the last upload,
-    // resetting stock back to a stale number.
     const { data: existingStock } = await supabaseAdmin
       .from('inventory_stock').select('warehouse_id, standard_sku').eq('client_id', client.id);
     const existingKeys = new Set((existingStock || []).map(r => r.warehouse_id + '||' + r.standard_sku));
@@ -388,14 +471,18 @@ router.post(
         skipped.push({ row: i + 2, warehouse: warehouseName, reason: 'quantity is not a number' });
         continue;
       }
-
-      // Already tracked — leave it alone, don't reset it.
       if (existingKeys.has(warehouseId + '||' + sku)) {
         skippedAsExisting++;
         continue;
       }
 
-      const insertRow = { client_id: client.id, warehouse_id: warehouseId, standard_sku: sku, quantity_on_hand: qty, updated_at: new Date().toISOString() };
+      const insertRow = {
+        client_id: client.id,
+        warehouse_id: warehouseId,
+        standard_sku: sku,
+        quantity_on_hand: qty,
+        updated_at: new Date().toISOString(),
+      };
       if (thresholdRaw !== undefined && thresholdRaw !== '' && !isNaN(Number(thresholdRaw))) {
         insertRow.low_stock_threshold = Number(thresholdRaw);
       }
@@ -407,18 +494,15 @@ router.post(
         continue;
       }
 
-      // Log the starting quantity for a brand-new SKU as a manual
-      // adjustment too, same as every other stock change — keeps the
-      // movement ledger complete.
       if (qty !== 0) {
         await recordMovement({
           clientId: client.id, warehouseId, sku,
           qtyDelta: qty, reason: 'manual_adjustment',
           sourceRowHash: crypto.randomUUID(),
-        }).catch(() => {}); // best-effort — the stock value itself is already saved above regardless
+        }).catch(() => {});
       }
 
-      existingKeys.add(warehouseId + '||' + sku); // so a duplicate row later in the SAME file doesn't double-insert
+      existingKeys.add(warehouseId + '||' + sku);
       inserted++;
     }
 
@@ -427,53 +511,55 @@ router.post(
 );
 
 
-
-//
-// Combines current stock against its threshold with a rough sales-
-// velocity estimate (units sold per day, trailing 14 days, for that
-// SKU across all platforms currently mapped to this warehouse) to
-// project days-of-stock-remaining. This is intentionally an estimate,
-// not a promise — flagged as such in the response — since real
-// demand fluctuates and this has no visibility into pending
-// restocks or seasonal spikes.
+// ═══════════════════════════════════════════════════════════════════
+// ALERTS — filters the enriched /stock response, no separate velocity
+// calc needed since /stock already computes everything.
 // ═══════════════════════════════════════════════════════════════════
 router.get('/:client_slug/inventory/alerts', rbacMiddleware, requireTab('inventory'), async (req, res) => {
   const { client } = req.semya;
 
-  const { data: stock, error: stockErr } = await supabaseAdmin
+  // Re-use the same enrichment logic as /stock by fetching directly
+  const { data: stockRows, error: stockErr } = await supabaseAdmin
     .from('inventory_stock')
-    .select('warehouse_id, standard_sku, quantity_on_hand, low_stock_threshold, warehouses(name)')
-    .eq('client_id', client.id)
-    .filter('quantity_on_hand', 'lte', 'low_stock_threshold'); // Postgres column-vs-column compare via filter()
-  if (stockErr) return res.status(500).json({ error: 'Failed to load stock alerts: ' + stockErr.message });
+    .select('id, warehouse_id, standard_sku, quantity_on_hand, low_stock_threshold, lead_time_days, updated_at, warehouses(id, name, city)')
+    .eq('client_id', client.id);
+  if (stockErr) return res.status(500).json({ error: 'Failed to load stock: ' + stockErr.message });
+  if (!stockRows?.length) return res.json([]);
 
-  if (!stock?.length) return res.json([]);
+  // Only process rows at or below threshold
+  const alertRows = stockRows.filter(r => r.quantity_on_hand <= r.low_stock_threshold);
+  if (!alertRows.length) return res.json([]);
 
-  // Trailing-14-day sales velocity per SKU, for the days-remaining estimate.
-  const since = new Date(Date.now() - 14 * 86400000).toISOString().split('T')[0];
-  const skus = [...new Set(stock.map(s => s.standard_sku))];
-  const { data: recentSales } = await supabaseAdmin
-    .from('revenue_data')
-    .select('standard_sku, standard_units')
-    .eq('client_id', client.id)
-    .in('standard_sku', skus)
-    .gte('order_date', since);
+  const { data: allWarehouses } = await supabaseAdmin
+    .from('warehouses').select('id, name, city').eq('client_id', client.id);
 
-  const velocityBySku = {};
-  for (const row of (recentSales || [])) {
-    velocityBySku[row.standard_sku] = (velocityBySku[row.standard_sku] || 0) + (Number(row.standard_units) || 0);
-  }
+  const skus = [...new Set(alertRows.map(r => r.standard_sku))];
+  const velocityMap = await computeVelocity(client.id, allWarehouses || [], skus);
 
-  const alerts = stock.map(s => {
-    const unitsPerDay = (velocityBySku[s.standard_sku] || 0) / 14;
-    const daysRemaining = unitsPerDay > 0 ? Math.round(s.quantity_on_hand / unitsPerDay) : null;
+  const alerts = alertRows.map(row => {
+    const wh = row.warehouses || {};
+    const cityConfigured = !!(wh.city && wh.city.trim());
+    const velKey = row.warehouse_id + '||' + row.standard_sku;
+    const unitsPerDay = velocityMap.has(velKey) ? velocityMap.get(velKey) : null;
+
+    let daysRemainingEstimate = null;
+    let reorderBy = null;
+    if (cityConfigured && unitsPerDay != null && unitsPerDay > 0) {
+      daysRemainingEstimate = Math.round(row.quantity_on_hand / unitsPerDay);
+      reorderBy = reorderByDate(daysRemainingEstimate, row.lead_time_days || 0);
+    }
+
     return {
-      warehouseId: s.warehouse_id,
-      warehouseName: s.warehouses?.name || 'Unknown',
-      sku: s.standard_sku,
-      quantityOnHand: s.quantity_on_hand,
-      lowStockThreshold: s.low_stock_threshold,
-      daysRemainingEstimate: daysRemaining, // null = not enough recent sales data to estimate
+      warehouseId:           row.warehouse_id,
+      warehouseName:         wh.name || 'Unknown',
+      warehouseCity:         wh.city || null,
+      cityConfigured,
+      sku:                   row.standard_sku,
+      quantityOnHand:        row.quantity_on_hand,
+      lowStockThreshold:     row.low_stock_threshold,
+      leadTimeDays:          row.lead_time_days || 0,
+      daysRemainingEstimate,
+      reorderByDate:         reorderBy,
     };
   }).sort((a, b) => (a.daysRemainingEstimate ?? Infinity) - (b.daysRemainingEstimate ?? Infinity));
 
@@ -483,15 +569,6 @@ router.get('/:client_slug/inventory/alerts', rbacMiddleware, requireTab('invento
 
 // ═══════════════════════════════════════════════════════════════════
 // SHARED — records a stock movement AND applies it to quantity_on_hand
-// in one call. Exported so fileIngestion.js can call this for
-// automatic sale-driven deduction, using the exact same idempotency
-// guarantee (source_row_hash) as manual adjustments above.
-//
-// Returns true if the movement was newly recorded (and stock actually
-// changed), false if it was a duplicate (already-recorded row_hash —
-// the unique constraint rejected it, meaning this exact sale was
-// already deducted before, most likely from a prior upload of the
-// same file) and nothing happened this time.
 // ═══════════════════════════════════════════════════════════════════
 export async function recordMovement({ clientId, warehouseId, sku, qtyDelta, reason, platform = null, sourceRowHash }) {
   const { error: insertErr } = await supabaseAdmin
@@ -502,20 +579,10 @@ export async function recordMovement({ clientId, warehouseId, sku, qtyDelta, rea
     });
 
   if (insertErr) {
-    // 23505 = unique_violation — this exact movement was already
-    // recorded (duplicate source_row_hash). Not a real error: it's
-    // the idempotency guarantee working as intended, silently
-    // refusing to deduct the same sale twice.
     if (insertErr.code === '23505') return false;
     throw new Error('Failed to record inventory movement: ' + insertErr.message);
   }
 
-  // Ensure a stock row exists for this warehouse+SKU before adjusting
-  // it — a sale for a SKU with no stock record yet still gets logged
-  // in the ledger above, but starts its on-hand count from zero
-  // (going negative is allowed and meaningful: it's a visible signal
-  // that sales are outpacing recorded stock, worth an admin's
-  // attention, not something to silently clamp to zero and hide).
   const { data: existing } = await supabaseAdmin
     .from('inventory_stock')
     .select('quantity_on_hand')
@@ -525,8 +592,10 @@ export async function recordMovement({ clientId, warehouseId, sku, qtyDelta, rea
   const newQty = (existing?.quantity_on_hand ?? 0) + qtyDelta;
   const { error: upsertErr } = await supabaseAdmin
     .from('inventory_stock')
-    .upsert({ client_id: clientId, warehouse_id: warehouseId, standard_sku: sku, quantity_on_hand: newQty, updated_at: new Date().toISOString() },
-      { onConflict: 'client_id,warehouse_id,standard_sku', ignoreDuplicates: false });
+    .upsert(
+      { client_id: clientId, warehouse_id: warehouseId, standard_sku: sku, quantity_on_hand: newQty, updated_at: new Date().toISOString() },
+      { onConflict: 'client_id,warehouse_id,standard_sku', ignoreDuplicates: false }
+    );
   if (upsertErr) throw new Error('Failed to update stock after movement: ' + upsertErr.message);
 
   return true;

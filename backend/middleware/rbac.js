@@ -16,7 +16,6 @@ export const ALL_TABS = [
   'ai_insights',
   'daily_targets',
   'utm_analytics',
-  'inventory',            // added — was missing, causing 403 on all inventory endpoints
   'projections_insights',
 ];
 
