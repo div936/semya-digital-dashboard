@@ -9490,12 +9490,19 @@ async function loadWarehouses() {
       list.innerHTML = _invWarehouses.map(w => {
         const cityMissing = !w.city || !w.city.trim();
         const cityInputId = 'whCity_' + w.id;
+        const nameInputId = 'whName_' + w.id;
         return (
           '<div style="border:1.5px solid ' + (cityMissing ? '#fde68a' : 'var(--color-border)') + ';border-radius:var(--radius-sm);margin-bottom:6px;overflow:hidden;">' +
-            // Top row — name, default badge, action buttons
+            // Top row — editable name, default badge, action buttons
             '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:' + (cityMissing ? '#fffbeb' : 'transparent') + ';">' +
-              '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
-                '<span style="font-size:13px;font-weight:600;color:#1e293b;">' + w.name + '</span>' +
+              '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1;min-width:0;">' +
+                // Inline editable warehouse name
+                '<input type="text" id="' + nameInputId + '" value="' + w.name.replace(/"/g, '&quot;') + '" ' +
+                  'style="font-size:13px;font-weight:600;color:#1e293b;border:none;border-bottom:1.5px solid transparent;background:transparent;padding:2px 4px;border-radius:4px;min-width:120px;max-width:240px;" ' +
+                  'title="Click to rename this warehouse" ' +
+                  'onfocus="this.style.borderBottomColor=\'var(--theme-primary)\'" ' +
+                  'onblur="this.style.borderBottomColor=\'transparent\';saveWarehouseName(' + jsAttr(w.id) + ',this.value,this)" ' +
+                  'onkeydown="if(event.key===\'Enter\')this.blur();" />' +
                 (w.location ? '<span style="font-size:11px;color:#94a3b8;">' + w.location + '</span>' : '') +
                 (w.is_default ? '<span style="font-size:9px;font-weight:700;text-transform:uppercase;color:#059669;background:#f0fdf4;border:1px solid #bbf7d0;padding:2px 7px;border-radius:999px;">Default</span>' : '') +
                 (cityMissing ? '<span style="font-size:10px;color:#d97706;font-weight:600;">⚠ City not set — Days in Hand will show —</span>' : '<span style="font-size:11px;color:#64748b;">📍 ' + w.city + '</span>') +
@@ -9505,7 +9512,7 @@ async function loadWarehouses() {
                 '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;color:#dc2626;" onclick="deleteWarehouse(' + jsAttr(w.id) + ')">Delete</button>' +
               '</div>' +
             '</div>' +
-            // City input row — always visible so it's easy to set
+            // City input row
             '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px 8px;border-top:1px solid ' + (cityMissing ? '#fde68a' : '#f1f5f9') + ';background:' + (cityMissing ? '#fffdf5' : '#fafafa') + ';">' +
               '<span style="font-size:10px;font-weight:600;color:#94a3b8;white-space:nowrap;">City for velocity:</span>' +
               '<input type="text" id="' + cityInputId + '" value="' + (w.city || '') + '" placeholder="e.g. Mumbai" ' +
@@ -9553,7 +9560,26 @@ async function addWarehouse() {
   } catch (e) { alert('Failed to add warehouse: ' + e.message); }
 }
 
-async function saveWarehouseCity(id, cityValue, inputEl) {
+async function saveWarehouseName(id, nameValue, inputEl) {
+  const name = (nameValue || '').trim();
+  if (!name) {
+    if (inputEl) { inputEl.value = _invWarehouses.find(w => w.id === id)?.name || ''; }
+    return; // don't save blank name
+  }
+  try {
+    await apiFetch('/clients/' + state.clientSlug + '/inventory/warehouses/' + id, {
+      method: 'PATCH', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    if (inputEl) { inputEl.style.borderBottomColor = '#059669'; }
+    // Reload everything so the new name appears in the stock table and alerts too
+    setTimeout(() => { loadWarehouses(); loadStockLevels(); loadInventoryAlerts(); }, 300);
+  } catch (e) {
+    alert('Failed to rename warehouse: ' + e.message);
+    if (inputEl) { inputEl.style.borderBottomColor = '#dc2626'; }
+    setTimeout(() => { if (inputEl) inputEl.style.borderBottomColor = 'transparent'; }, 2000);
+  }
+}
   const city = (cityValue || '').trim() || null;
   try {
     await apiFetch('/clients/' + state.clientSlug + '/inventory/warehouses/' + id, {

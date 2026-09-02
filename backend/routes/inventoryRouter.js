@@ -61,24 +61,34 @@ async function computeVelocity(clientId, warehouses, skus) {
 
   const since = new Date(Date.now() - 14 * 86400000).toISOString().split('T')[0];
   const cities = [...new Set(citiedWarehouses.map(w => w.city.trim()))];
+  const skuSet = new Set(skus); // for fast membership check
 
-  // One query — all cities, all SKUs, trailing 14 days
-  const { data: salesRows } = await supabaseAdmin
+  // Fetch all revenue rows for these cities in the last 14 days.
+  // Deliberately NOT filtering by SKU here — passing 400+ SKUs in
+  // a Supabase .in() filter blows the URL length limit (PostgREST
+  // encodes each value into the query string). Fetching by city only
+  // is safe because the city index keeps it fast, and we filter to
+  // the SKUs we care about in-memory below.
+  const { data: salesRows, error } = await supabaseAdmin
     .from('revenue_data')
     .select('standard_city, standard_sku, standard_units, standard_status')
     .eq('client_id', clientId)
     .in('standard_city', cities)
-    .in('standard_sku', skus)
     .gte('order_date', since)
     .neq('standard_status', 'Cancelled')
     .neq('standard_status', 'Returned');
 
-  // Aggregate units sold per city+sku
+  if (error) {
+    console.error('[computeVelocity] revenue_data query failed:', error.message);
+    return velocityMap; // return empty map — callers treat missing keys as null velocity
+  }
+
+  // Aggregate units sold per city+sku (only SKUs we actually care about)
   const citySkuUnits = new Map(); // "city||sku" → totalUnits
   for (const row of (salesRows || [])) {
     const city = (row.standard_city || '').trim();
     const sku  = row.standard_sku;
-    if (!city || !sku) continue;
+    if (!city || !sku || !skuSet.has(sku)) continue;
     const key = city + '||' + sku;
     citySkuUnits.set(key, (citySkuUnits.get(key) || 0) + (Number(row.standard_units) || 0));
   }
