@@ -4701,11 +4701,19 @@ async function applyBranding(cfg) {
     try {
       const settings = await apiFetch('/platform-settings');
       console.log('[branding] /platform-settings response:', settings);
+      // Admin dashboard view: apply Semya's brand name and logo from
+      // platform-settings, but deliberately do NOT apply the theme
+      // colour stored there. That theme is for the LOGIN PAGE
+      // (index.html), not for the dashboard itself — applying it here
+      // is what was turning the entire admin dashboard black whenever
+      // the login-page theme was set to the Noir preset.
+      // The dashboard always keeps its own CSS default blue theme for
+      // the admin view; only client branding below changes it.
       setHeaderBranding(
         settings.brandName || 'Semya Digital',
         settings.brandTagline || 'Analytics Platform',
         settings.logoUrl,
-        settings.theme
+        null   // ← never apply login-page theme to the dashboard
       );
     } catch (e) {
       console.warn('[branding] failed to load admin/platform branding — header will keep showing whatever it last had (likely the static "Neat Everyday" fallback baked into the page):', e.message);
@@ -8837,6 +8845,13 @@ const FRONTEND_BUILD = 'V38-onclick-quote-fix'; // bump alongside backend health
 console.log('[Semya] Frontend build:', FRONTEND_BUILD);
 
 async function boot(user) {
+  // Always reset to the dashboard's own default blue theme at boot.
+  // This prevents the login-page's Noir/black theme (stored in
+  // platform_settings and previously incorrectly applied to the
+  // admin dashboard too) from persisting across sessions via cached
+  // CSS variables. The correct theme for this client's data view
+  // will be applied once loadTabPermissions() resolves below.
+  applyThemeColour('#0284c7', '#075985', '#0ea5e9');
   state.token      = user && user.token ? user.token : getToken();
   state.clientSlug = (user && user.clientSlug) || (window.location.pathname.match(/\/clients\/([^/]+)/)||[])[1] || 'neat-everyday';
   initDates();
@@ -8894,6 +8909,11 @@ if (window.semyaUser) {
 function toggleAvatarMenu(e) {
   if (e) e.stopPropagation();
   document.getElementById('avatarWrap').classList.toggle('open');
+  // Re-apply admin visibility every time the menu opens — this
+  // ensures settings items are never hidden for admins even if
+  // applyAdminVisibility() ran before state.isAdmin was set
+  // (e.g. the menu was opened during the initial page load race).
+  applyAdminVisibility();
 }
 function closeAvatarMenu() {
   document.getElementById('avatarWrap').classList.remove('open');
