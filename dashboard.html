@@ -8845,13 +8845,18 @@ const FRONTEND_BUILD = 'V38-onclick-quote-fix'; // bump alongside backend health
 console.log('[Semya] Frontend build:', FRONTEND_BUILD);
 
 async function boot(user) {
-  // Always reset to the dashboard's own default blue theme at boot.
-  // This prevents the login-page's Noir/black theme (stored in
-  // platform_settings and previously incorrectly applied to the
-  // admin dashboard too) from persisting across sessions via cached
-  // CSS variables. The correct theme for this client's data view
-  // will be applied once loadTabPermissions() resolves below.
-  applyThemeColour('#0284c7', '#075985', '#0ea5e9');
+  // Reset dashboard to its own default blue theme at boot so the
+  // login-page's Noir theme never bleeds into the admin dashboard.
+  // Done with direct CSS variable writes (not applyThemeColour) to
+  // avoid a ReferenceError: caAppearanceScope is declared with `let`
+  // further down in this file and isn't accessible here at call time.
+  const _r = document.documentElement;
+  _r.style.setProperty('--theme-primary',      '#0284c7');
+  _r.style.setProperty('--theme-primary-glow', 'rgba(2,132,199,0.12)');
+  _r.style.setProperty('--theme-deep',         '#075985');
+  _r.style.setProperty('--theme-accent',       '#0ea5e9');
+  _r.style.setProperty('--theme-accent-soft',  'rgba(14,165,233,0.09)');
+  _r.style.setProperty('--color-border-glow',  'rgba(14,165,233,0.18)');
   state.token      = user && user.token ? user.token : getToken();
   state.clientSlug = (user && user.clientSlug) || (window.location.pathname.match(/\/clients\/([^/]+)/)||[])[1] || 'neat-everyday';
   initDates();
