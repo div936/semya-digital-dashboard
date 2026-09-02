@@ -1223,6 +1223,11 @@
             <svg id="settingsArrow" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-left:auto;transition:transform .2s;"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
           <div id="settingsSubmenu" style="display:none;background:#f8fafd;border-top:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9;">
+            <div style="padding:6px 14px 4px;display:flex;align-items:center;gap:6px;">
+              <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;">Dashboard Theme</span>
+              <span id="settingsThemeDot" style="width:10px;height:10px;border-radius:50%;background:var(--theme-primary);display:inline-block;border:1px solid rgba(0,0,0,.1);"></span>
+              <span id="settingsThemeHex" style="font-size:10px;font-family:monospace;color:#64748b;"></span>
+            </div>
             <button class="avatar-dropdown-item" style="padding-left:28px;font-size:11px;" data-role="admin" onclick="closeAvatarMenu(); openClientAdminModal();">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
               Client Administration
@@ -8929,6 +8934,14 @@ function toggleSettingsSubmenu() {
   const open = sub.style.display === 'block';
   sub.style.display = open ? 'none' : 'block';
   if (arrow) arrow.style.transform = open ? '' : 'rotate(180deg)';
+  // Update the theme colour indicator when opening
+  if (!open) {
+    const hex = getComputedStyle(document.documentElement).getPropertyValue('--theme-primary').trim();
+    const dot = document.getElementById('settingsThemeDot');
+    const label = document.getElementById('settingsThemeHex');
+    if (dot) dot.style.background = hex || 'var(--theme-primary)';
+    if (label) label.textContent = hex || '';
+  }
 }
 // Close when clicking outside
 document.addEventListener('click', function(e) {
@@ -9107,7 +9120,6 @@ function setCaAppearanceScope(scope) {
     if (nameLabel)  nameLabel.textContent  = 'Sign-In Page Branding';
     if (fieldLabel) fieldLabel.textContent = 'Platform Name';
     if (hint) hint.innerHTML = '⚠️ You are editing the <strong>sign-in page only</strong> — this has <strong>no effect on the dashboard</strong> appearance. The dashboard always uses the blue theme regardless of what is set here.';
-  } else {
   } else {
     const label = caState.clientSlug ? (document.querySelector('#clientSwitcher option[value="' + caState.clientSlug + '"]')?.textContent || 'this client') : 'this client';
     if (logoLabel)  logoLabel.textContent  = 'Client Logo';
