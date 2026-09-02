@@ -9106,7 +9106,8 @@ function setCaAppearanceScope(scope) {
     if (logoLabel)  logoLabel.textContent  = 'Admin Login Page Logo';
     if (nameLabel)  nameLabel.textContent  = 'Sign-In Page Branding';
     if (fieldLabel) fieldLabel.textContent = 'Platform Name';
-    if (hint) hint.innerHTML = 'Editing the <strong>shared sign-in page</strong> — this changes what everyone sees before logging in, across all clients.';
+    if (hint) hint.innerHTML = '⚠️ You are editing the <strong>sign-in page only</strong> — this has <strong>no effect on the dashboard</strong> appearance. The dashboard always uses the blue theme regardless of what is set here.';
+  } else {
   } else {
     const label = caState.clientSlug ? (document.querySelector('#clientSwitcher option[value="' + caState.clientSlug + '"]')?.textContent || 'this client') : 'this client';
     if (logoLabel)  logoLabel.textContent  = 'Client Logo';
@@ -9131,7 +9132,7 @@ async function prefillAppearanceTab() {
       const tagEl  = document.getElementById('brandTaglineInput');
       if (nameEl) nameEl.value = settings.brandName || 'Semya Digital';
       if (tagEl)  tagEl.value  = settings.brandTagline || 'Analytics Platform';
-      _caAdminThemeSnapshot = settings.theme || { primary: '#111111', deep: '#000000', accent: '#3f3f46' };
+      _caAdminThemeSnapshot = settings.theme || { primary: '#0284c7', deep: '#075985', accent: '#0ea5e9' };
       applyLogoPreview(settings.logoUrl);
       _caAdminLogoDataUrl = null; // no pending upload yet
       const themeIdx = THEME_PRESETS.findIndex(t => t.primary === _caAdminThemeSnapshot.primary);
