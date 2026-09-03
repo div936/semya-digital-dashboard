@@ -457,6 +457,8 @@
       height: 3px;
       background: linear-gradient(90deg, var(--theme-primary), var(--theme-accent));
     }
+    .kpi-card--warn::before  { background: #d97706; }
+    .kpi-card--danger::before { background: #dc2626; }
     .kpi-label {
       font-size: 10px;
       font-weight: 700;
@@ -2332,35 +2334,30 @@
     <!-- Inventory Tab -->
     <div class="tab-panel" id="tab-inventory">
       <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px;" id="invKpiStrip">
-        <div class="card" style="padding:14px 16px;position:relative;overflow:hidden;">
-          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--theme-primary),var(--theme-accent));"></div>
+        <div class="kpi-card">
           <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;">Total SKUs</div>
           <div id="invKpiSkus" style="font-size:22px;font-weight:800;color:#0f172a;">—</div>
-          <div style="font-size:9px;color:#94a3b8;margin-top:3px;">across all warehouses</div>
+          <div class="kpi-sub">across all warehouses</div>
         </div>
-        <div class="card" style="padding:14px 16px;position:relative;overflow:hidden;">
-          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:#d97706;"></div>
+        <div class="kpi-card kpi-card--warn">
           <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;">Low Stock</div>
           <div id="invKpiLow" style="font-size:22px;font-weight:800;color:#d97706;">—</div>
-          <div style="font-size:9px;color:#94a3b8;margin-top:3px;">at or below alert threshold</div>
+          <div class="kpi-sub">at or below alert threshold</div>
         </div>
-        <div class="card" style="padding:14px 16px;position:relative;overflow:hidden;">
-          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:#dc2626;"></div>
+        <div class="kpi-card kpi-card--danger">
           <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;">Out of Stock</div>
           <div id="invKpiOut" style="font-size:22px;font-weight:800;color:#dc2626;">—</div>
-          <div style="font-size:9px;color:#94a3b8;margin-top:3px;">quantity at zero or below</div>
+          <div class="kpi-sub">quantity at zero or below</div>
         </div>
-        <div class="card" style="padding:14px 16px;position:relative;overflow:hidden;">
-          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--theme-primary),var(--theme-accent));"></div>
+        <div class="kpi-card">
           <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;">Warehouses</div>
           <div id="invKpiWarehouses" style="font-size:22px;font-weight:800;color:#0f172a;">—</div>
-          <div style="font-size:9px;color:#94a3b8;margin-top:3px;">active locations</div>
+          <div class="kpi-sub">active locations</div>
         </div>
-        <div class="card" style="padding:14px 16px;position:relative;overflow:hidden;">
-          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--theme-primary),var(--theme-accent));"></div>
+        <div class="kpi-card">
           <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;">Avg. Days in Hand</div>
           <div id="invKpiAvgDays" style="font-size:22px;font-weight:800;color:#0f172a;">—</div>
-          <div id="invKpiAvgDaysSub" style="font-size:9px;color:#94a3b8;margin-top:3px;"></div>
+          <div id="invKpiAvgDaysSub" class="kpi-sub"></div>
         </div>
       </div>
       <div class="card" style="margin-bottom:16px;">
