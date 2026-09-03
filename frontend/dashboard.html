@@ -2537,7 +2537,7 @@
         </button>
         <button type="button" class="ca-appearance-scope-btn" id="caScopeBtn-admin" onclick="setCaAppearanceScope('admin')"
           style="padding:7px 16px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;background:transparent;color:#64748b;">
-          Admin Login Page
+          Admin View
         </button>
       </div>
       <p id="caAppearanceScopeHint" style="font-size:11px;color:#94a3b8;margin:-12px 0 20px;">
@@ -4701,22 +4701,15 @@ async function applyBranding(cfg) {
     try {
       const settings = await apiFetch('/platform-settings');
       console.log('[branding] /platform-settings response:', settings);
-      // Admin dashboard view: apply Semya's brand name and logo from
-      // platform-settings, but deliberately do NOT apply the theme
-      // colour stored there. That theme is for the LOGIN PAGE
-      // (index.html), not for the dashboard itself — applying it here
-      // is what was turning the entire admin dashboard black whenever
-      // the login-page theme was set to the Noir preset.
-      // The dashboard always keeps its own CSS default blue theme for
-      // the admin view; only client branding below changes it.
+      // Admin dashboard: apply platform-wide branding + theme from platform_settings.
       setHeaderBranding(
         settings.brandName || 'Semya Digital',
         settings.brandTagline || 'Analytics Platform',
         settings.logoUrl,
-        null   // ← never apply login-page theme to the dashboard
+        settings.theme   // ← apply admin dashboard theme from platform_settings
       );
     } catch (e) {
-      console.warn('[branding] failed to load admin/platform branding — header will keep showing whatever it last had (likely the static "Neat Everyday" fallback baked into the page):', e.message);
+      console.warn('[branding] failed to load admin/platform branding:', e.message);
     }
     return;
   }
@@ -9116,10 +9109,10 @@ function setCaAppearanceScope(scope) {
   const fieldLabel = document.getElementById('caBrandNameFieldLabel');
   const hint       = document.getElementById('caAppearanceScopeHint');
   if (scope === 'admin') {
-    if (logoLabel)  logoLabel.textContent  = 'Admin Login Page Logo';
-    if (nameLabel)  nameLabel.textContent  = 'Sign-In Page Branding';
+    if (logoLabel)  logoLabel.textContent  = 'Admin Dashboard & Login Page Logo';
+    if (nameLabel)  nameLabel.textContent  = 'Admin Dashboard & Sign-In Branding';
     if (fieldLabel) fieldLabel.textContent = 'Platform Name';
-    if (hint) hint.innerHTML = '⚠️ You are editing the <strong>sign-in page only</strong> — this has <strong>no effect on the dashboard</strong> appearance. The dashboard always uses the blue theme regardless of what is set here.';
+    if (hint) hint.innerHTML = 'Editing <strong>Admin Dashboard &amp; Sign-In Page</strong> — theme, logo and name here apply to what <em>you</em> (admin) see on the dashboard, and to the shared sign-in page all users see before logging in.';
   } else {
     const label = caState.clientSlug ? (document.querySelector('#clientSwitcher option[value="' + caState.clientSlug + '"]')?.textContent || 'this client') : 'this client';
     if (logoLabel)  logoLabel.textContent  = 'Client Logo';
