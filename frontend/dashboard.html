@@ -8064,14 +8064,16 @@ async function handleUploadAll() {
 
   if (successCount > 0) {
     setTimeout(() => {
-      tabCache['platform_sales']      = null;
-      tabCache['sku_performance']     = null;
-      tabCache['campaign_insights']   = null;
-      tabCache['geographic_analysis'] = null;
-      tabCache['ai_insights']         = null;
+      // Clear ALL tab caches so every tab re-fetches fresh data
+      Object.keys(tabCache).forEach(k => tabCache[k] = null);
       _sidebarCache = {};
-      fetchAndRender();
+      psState._lastData = null;
+      if (typeof ciState !== 'undefined') ciState._lastData = null;
       closeDrawer();
+      // Refresh whichever tab is currently visible so the user
+      // immediately sees updated numbers without switching tabs
+      const activeTab = document.querySelector('.nav-tab.active')?.dataset?.tab || 'platform_sales';
+      showTab(activeTab, true);
     }, 2000);
   }
 }
@@ -8114,6 +8116,21 @@ let _fetchGeneration = 0;
 
 async function switchClient(newSlug) {
   if (!newSlug || newSlug === state.clientSlug) return;
+
+  // ── All Clients overview ────────────────────────────────────────
+  if (newSlug === '__all__') {
+    state.clientSlug = '__all__';
+    _fetchGeneration++;
+    tabCache = {};
+    _sidebarCache = {};
+    showAllClientsPanel(true);
+    fetchAndRenderAllClients();
+    return;
+  }
+
+  // ── Regular client — hide All Clients panel if it was showing ──
+  showAllClientsPanel(false);
+
   state.clientSlug = newSlug;
   _fetchGeneration++;
   tabCache = {};
@@ -8127,17 +8144,13 @@ async function switchClient(newSlug) {
   try {
     const cfg = await apiFetch('/clients/' + newSlug + '/dashboard-config');
     _lastDashboardConfig = cfg;
-    // Switching which client's DATA is shown is NOT the same as
-    // switching branding — an admin browsing a different client's
-    // numbers should keep seeing Semya's own look unless they've
-    // explicitly turned on "View as Client" (see applyBranding above).
-    // A client-role user can't reach this switcher at all, so this
-    // path is admin-only in practice.
     applyBranding(cfg);
   } catch (e) {
     console.warn('[client-switch] failed to load new client config:', e.message);
   }
-  fetchAndRender();
+  // Re-render whichever tab is currently active for the new client
+  const activeTab = document.querySelector('.nav-tab.active')?.dataset?.tab || 'platform_sales';
+  showTab(activeTab, true);
 }
 
 document.getElementById('clientSwitcher')?.addEventListener('change', (e) => switchClient(e.target.value));
