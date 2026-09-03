@@ -464,15 +464,19 @@
     .export-wrap { position: relative; display: inline-flex; }
     .export-btn {
       display: inline-flex; align-items: center; gap: 5px;
-      font-size: 11px; font-weight: 600; padding: 5px 11px;
-      border-radius: 6px; border: 1px solid var(--color-border);
-      background: var(--color-surface); color: #64748b;
-      cursor: pointer; white-space: nowrap; transition: border-color .15s, color .15s;
+      font-size: 11px; font-weight: 600; padding: 5px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--theme-primary);
+      background: var(--color-surface);
+      color: var(--theme-primary);
+      cursor: pointer; white-space: nowrap;
+      transition: background .15s, color .15s;
+      min-width: 86px; justify-content: center;
     }
-    .export-btn:hover { border-color: var(--theme-primary); color: var(--theme-primary); }
+    .export-btn:hover { background: var(--theme-primary); color: #fff; }
     .export-btn svg { flex-shrink: 0; }
     .export-menu {
-      display: none; position: absolute; top: calc(100% + 4px); right: 0;
+      display: none; position: absolute; top: calc(100% + 4px); left: 0;
       min-width: 200px; background: var(--color-surface);
       border: 1px solid var(--color-border); border-radius: var(--radius-sm);
       box-shadow: 0 4px 16px rgba(0,0,0,.1); z-index: 200; overflow: hidden;
@@ -1330,6 +1334,18 @@
       <div class="card card-sm">
         <div class="tab-toolbar">
           <span class="tab-title">Platform Sales Overview</span>
+          <div class="export-wrap" id="psExportWrap">
+            <button class="export-btn" onclick="toggleExportMenu('ps')">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export
+            </button>
+            <div class="export-menu" id="psExportMenu">
+              <div class="export-menu-header">Download as CSV</div>
+              <div class="export-menu-item all" onclick="exportTable('ps','all')">↓ All tables</div>
+              <div class="export-menu-item" onclick="exportTable('ps','platforms')">Platform Split</div>
+              <div class="export-menu-item" onclick="exportTable('ps','products')">Top Products</div>
+            </div>
+          </div>
           <div class="date-range-wrap" style="margin-left:0;">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
             <input type="date" class="date-input" id="psDateFrom" />
@@ -1431,18 +1447,6 @@
           <span class="fetch-badge loading" id="psFetchBadge" style="margin-left:auto;">
             <span class="fetch-dot"></span><span id="psFetchText">Loading</span>
           </span>
-          <div class="export-wrap" id="psExportWrap">
-            <button class="export-btn" onclick="toggleExportMenu('ps')">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Export
-            </button>
-            <div class="export-menu" id="psExportMenu">
-              <div class="export-menu-header">Download as CSV</div>
-              <div class="export-menu-item all" onclick="exportTable('ps','all')">↓ All tables</div>
-              <div class="export-menu-item" onclick="exportTable('ps','platforms')">Platform Split</div>
-              <div class="export-menu-item" onclick="exportTable('ps','products')">Top Products</div>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -1554,8 +1558,15 @@
     <!-- ── SKU PERFORMANCE TAB ─────────────────────────────────── -->
     <div class="tab-panel" id="tab-sku_performance">
 
+    <!-- SKU Toolbar -->
+    <div class="card card-sm" style="margin-bottom:0;border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom:none;">
+      <div class="tab-toolbar">
+        <span class="tab-title">SKU Performance</span>
+      </div>
+    </div>
+
     <!-- SKU Selector -->
-    <div class="card card-sm">
+    <div class="card card-sm" style="margin-bottom:16px;border-top-left-radius:0;border-top-right-radius:0;">
       <div class="sku-selector-bar">
         <span class="sku-label">Product Name</span>
         <div class="sku-custom-wrap" id="skuCustomWrap">
@@ -1716,6 +1727,17 @@
       <div class="card card-sm">
         <div class="tab-toolbar">
           <span class="tab-title">Campaign Insights</span>
+          <div class="export-wrap" id="ciExportWrap">
+            <button class="export-btn" onclick="toggleExportMenu('ci')">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export
+            </button>
+            <div class="export-menu" id="ciExportMenu">
+              <div class="export-menu-header">Download as CSV</div>
+              <div class="export-menu-item all" onclick="exportTable('ci','all')">↓ All tables</div>
+              <div class="export-menu-item" onclick="exportTable('ci','campaigns')">Campaign Table</div>
+            </div>
+          </div>
           <div class="date-range-wrap" style="margin-left:0;">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
             <input type="date" class="date-input" id="ciDateFrom" />
@@ -1732,17 +1754,6 @@
           <span class="fetch-badge loading" id="ciFetchBadge" style="margin-left:auto;">
             <span class="fetch-dot"></span><span id="ciFetchText">Loading</span>
           </span>
-          <div class="export-wrap" id="ciExportWrap">
-            <button class="export-btn" onclick="toggleExportMenu('ci')">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Export
-            </button>
-            <div class="export-menu" id="ciExportMenu">
-              <div class="export-menu-header">Download as CSV</div>
-              <div class="export-menu-item all" onclick="exportTable('ci','all')">↓ All tables</div>
-              <div class="export-menu-item" onclick="exportTable('ci','campaigns')">Campaign Table</div>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -1888,6 +1899,18 @@
       <div class="card card-sm">
         <div class="tab-toolbar">
           <span class="tab-title">Geographic Analysis</span>
+          <div class="export-wrap" id="geoExportWrap">
+            <button class="export-btn" onclick="toggleExportMenu('geo')">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export
+            </button>
+            <div class="export-menu" id="geoExportMenu">
+              <div class="export-menu-header">Download as CSV</div>
+              <div class="export-menu-item all" onclick="exportTable('geo','all')">↓ All tables</div>
+              <div class="export-menu-item" onclick="exportTable('geo','cities')">City Revenue</div>
+              <div class="export-menu-item" onclick="exportTable('geo','states')">State Revenue</div>
+            </div>
+          </div>
           <div class="date-range-wrap" style="margin-left:0;">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
             <input type="date" class="date-input" id="geoDateFrom" />
@@ -1904,18 +1927,6 @@
           <span class="fetch-badge loading" id="geoFetchBadge" style="margin-left:auto;">
             <span class="fetch-dot"></span><span id="geoFetchText">Loading</span>
           </span>
-          <div class="export-wrap" id="geoExportWrap">
-            <button class="export-btn" onclick="toggleExportMenu('geo')">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Export
-            </button>
-            <div class="export-menu" id="geoExportMenu">
-              <div class="export-menu-header">Download as CSV</div>
-              <div class="export-menu-item all" onclick="exportTable('geo','all')">↓ All tables</div>
-              <div class="export-menu-item" onclick="exportTable('geo','cities')">City Revenue</div>
-              <div class="export-menu-item" onclick="exportTable('geo','states')">State Revenue</div>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -2004,13 +2015,6 @@
       <div class="card card-sm">
         <div class="tab-toolbar">
           <span class="tab-title">Daily Targets</span>
-          <div class="date-range-wrap" style="margin-left:0;">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            <input type="date" class="date-input" id="dtDate" />
-          </div>
-          <span class="fetch-badge loading" id="dtFetchBadge" style="margin-left:auto;">
-            <span class="fetch-dot"></span><span id="dtFetchText">Loading</span>
-          </span>
           <div class="export-wrap" id="dtExportWrap">
             <button class="export-btn" onclick="toggleExportMenu('dt')">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -2023,6 +2027,13 @@
               <div class="export-menu-item" onclick="exportTable('dt','campaigns')">Campaign Ranking</div>
             </div>
           </div>
+          <div class="date-range-wrap" style="margin-left:0;">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <input type="date" class="date-input" id="dtDate" />
+          </div>
+          <span class="fetch-badge loading" id="dtFetchBadge" style="margin-left:auto;">
+            <span class="fetch-dot"></span><span id="dtFetchText">Loading</span>
+          </span>
         </div>
       </div>
 
@@ -2148,10 +2159,6 @@
               <div class="insight-filter-pill" data-ai-filter="positive">&#10003; Opportunities</div>
               <div class="insight-filter-pill" data-ai-filter="neutral">&#9679; Signals</div>
             </div>
-            <button class="btn btn-primary" id="aiRegenBtn" data-role="admin" onclick="regenerateInsights()" style="font-size:11px;padding:6px 12px;">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-              Regenerate
-            </button>
             <div class="export-wrap" id="aiExportWrap">
               <button class="export-btn" onclick="toggleExportMenu('ai')">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -2165,6 +2172,10 @@
                 <div class="export-menu-item" onclick="exportTable('ai','fraud')">Fraud Patterns</div>
               </div>
             </div>
+            <button class="btn btn-primary" id="aiRegenBtn" data-role="admin" onclick="regenerateInsights()" style="font-size:11px;padding:6px 12px;">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+              Regenerate
+            </button>
             <span class="fetch-badge loading" id="aiFetchBadge">
               <span class="fetch-dot"></span><span id="aiFetchText">Loading</span>
             </span>
@@ -2310,7 +2321,7 @@
       <div class="card card-sm" style="margin-bottom:16px;">
         <div class="tab-toolbar">
           <span class="tab-title">UTM Analytics</span>
-          <div class="export-wrap" id="utmExportWrap" style="margin-left:auto;">
+          <div class="export-wrap" id="utmExportWrap">
             <button class="export-btn" onclick="toggleExportMenu('utm')">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               Export
@@ -2372,12 +2383,6 @@
         <div class="card-header">
           <span class="card-title">PROJECTIONS INSIGHTS</span>
           <div style="display:flex;gap:6px;align-items:center;">
-            <select id="projBucket" onchange="fetchAndRenderProjections()" style="font-size:11px;padding:5px 8px;border:1px solid var(--color-border);border-radius:6px;">
-              <option value="week" selected>Weekly</option>
-              <option value="month">Monthly</option>
-              <option value="day">Daily</option>
-            </select>
-            <span class="fetch-badge" id="projFetchBadge"><span id="projFetchText">Loading…</span></span>
             <div class="export-wrap" id="projExportWrap">
               <button class="export-btn" onclick="toggleExportMenu('proj')">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -2389,6 +2394,12 @@
                 <div class="export-menu-item" onclick="exportTable('proj','summary')">Projections Summary</div>
               </div>
             </div>
+            <select id="projBucket" onchange="fetchAndRenderProjections()" style="font-size:11px;padding:5px 8px;border:1px solid var(--color-border);border-radius:6px;">
+              <option value="week" selected>Weekly</option>
+              <option value="month">Monthly</option>
+              <option value="day">Daily</option>
+            </select>
+            <span class="fetch-badge" id="projFetchBadge"><span id="projFetchText">Loading…</span></span>
           </div>
         </div>
         <div id="projUnpricedNote" style="display:none;margin-top:8px;padding:10px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:var(--radius-sm);font-size:12px;color:#92400e;"></div>
@@ -2460,7 +2471,7 @@
         <div class="tab-toolbar">
           <span class="tab-title">Inventory</span>
           <span style="font-size:11px;color:#94a3b8;margin-left:4px;">Current stock — as of today</span>
-          <div class="export-wrap" id="invExportWrap" style="margin-left:auto;">
+          <div class="export-wrap" id="invExportWrap">
             <button class="export-btn" onclick="toggleExportMenu('inv')">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               Export
