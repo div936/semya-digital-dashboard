@@ -720,9 +720,19 @@ function aggregateCampaignInsights(campaignRows, revenueRows) {
     const nameVal = row.standard_product_name && row.standard_product_name.trim();
     const displayKey = skuVal || nameVal || '(Ad platform revenue — no product data)';
     const key = row.platform + '|' + displayKey;
-    if (!byProduct[key]) byProduct[key] = { sku: displayKey, platform: row.platform, revenue: 0, units: 0 };
+    if (!byProduct[key]) byProduct[key] = { sku: displayKey, platform: row.platform, revenue: 0, units: 0, orders: 0, _orderIds: new Set() };
     byProduct[key].revenue += Number(row.standard_revenue) || 0;
     byProduct[key].units   += Number(row.standard_units)   || 0;
+    if (row.standard_order_id) {
+      byProduct[key]._orderIds.add(row.standard_order_id);
+    } else {
+      byProduct[key].orders += 1; // no order ID — count the row itself
+    }
+  }
+  // Resolve distinct order counts from Sets
+  for (const p of Object.values(byProduct)) {
+    p.orders += p._orderIds.size;
+    delete p._orderIds;
   }
   const topProducts = Object.values(byProduct)
     .sort((a, b) => b.revenue - a.revenue)
@@ -1121,9 +1131,13 @@ async function aggregatePlatformSales(rows, excludeStatuses = new Set(), exclude
         ? row.standard_product_name.trim()
         : '(Ad platform revenue — no product data)';
     const prodKey = p + '|' + displaySku;
-    if (!byProduct[prodKey]) byProduct[prodKey] = { sku: displaySku, platform: p, revenue: 0, units: 0 };
+    if (!byProduct[prodKey]) byProduct[prodKey] = { sku: displaySku, platform: p, revenue: 0, units: 0, orders: 0, _orderIds: new Set() };
     byProduct[prodKey].revenue += isCancelled ? 0 : rev;
     byProduct[prodKey].units   += (!isMainRow || isCancelled) ? 0 : u;
+    if (!isCancelled) {
+      if (row.standard_order_id) byProduct[prodKey]._orderIds.add(row.standard_order_id);
+      else byProduct[prodKey].orders += 1;
+    }
 
     // Category — ported keyword inference from the old dashboard, run
     // against the product name (falls back to SKU internally if the
@@ -1232,6 +1246,11 @@ async function aggregatePlatformSales(rows, excludeStatuses = new Set(), exclude
     .map(([week, v]) => ({ week, revenue: v.rev }));
   const monthly = bucketToArr(byMonth, 'month').map(d => ({ ...d, week: d.month }));
   const yearly  = bucketToArr(byYear,  'year').map(d => ({ ...d, week: d.year }));
+
+  // Resolve distinct order counts from Sets
+  for (const p of Object.values(byProduct)) {
+    if (p._orderIds) { p.orders += p._orderIds.size; delete p._orderIds; }
+  }
 
   const topProducts = Object.values(byProduct)
     .sort((a, b) => b.revenue - a.revenue)
