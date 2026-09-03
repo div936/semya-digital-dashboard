@@ -5225,8 +5225,8 @@ async function fetchAndRenderPS() {
           gt += rev; gu += units;
           const sku = r.standard_sku || 'Unknown';
           const prodKey = plat + '|' + sku;
-          if (!byProd[prodKey]) byProd[prodKey] = { sku, platform: plat, units: 0, revenue: 0 };
-          byProd[prodKey].revenue += rev; byProd[prodKey].units += units;
+          if (!byProd[prodKey]) byProd[prodKey] = { sku, platform: plat, units: 0, revenue: 0, orders: 0 };
+          byProd[prodKey].revenue += rev; byProd[prodKey].units += units; byProd[prodKey].orders += 1;
           if (r.order_date) {
             const d = new Date(r.order_date);
             const yr = d.getFullYear(), mo = d.getMonth();
@@ -7719,21 +7719,22 @@ async function exportFraudPatterns() {
     return;
   }
 
-  // Header row — matches what's visible on the Cancellation Pattern Watch card
+  // Header row — each sample order split into 4 dedicated columns
   const rows = [[
+    'S.No.',
     'Contact / Names Linked',
     'Platform',
     'Signal Type',
     'Total Orders',
     'Cancelled Orders',
     'Cancel Rate (%)',
-    'Revenue at Risk (₹)',
+    'Revenue at Risk (INR)',
     'Reason',
-    'Sample Order 1',
-    'Sample Order 2',
-    'Sample Order 3',
-    'Sample Order 4',
-    'Sample Order 5',
+    'Sample 1 - Order ID', 'Sample 1 - Date', 'Sample 1 - Amount (INR)', 'Sample 1 - Status',
+    'Sample 2 - Order ID', 'Sample 2 - Date', 'Sample 2 - Amount (INR)', 'Sample 2 - Status',
+    'Sample 3 - Order ID', 'Sample 3 - Date', 'Sample 3 - Amount (INR)', 'Sample 3 - Status',
+    'Sample 4 - Order ID', 'Sample 4 - Date', 'Sample 4 - Amount (INR)', 'Sample 4 - Status',
+    'Sample 5 - Order ID', 'Sample 5 - Date', 'Sample 5 - Amount (INR)', 'Sample 5 - Status',
   ]];
 
   // Sort: multiple-name contacts first (highest risk), then by revenue at risk
@@ -7744,16 +7745,18 @@ async function exportFraudPatterns() {
   });
 
   sorted.forEach(f => {
-    // Format sample orders: "NEAT-16307 | 2026-08-07 | ₹535 | Cancelled"
-    const sampleOrders = (f.sampleOrders || []).map(o =>
-      [o.orderId || o.order_id || '-',
-       o.date || o.order_date || '-',
-       '₹' + (o.revenue || 0),
-       o.cancelled ? 'Cancelled' : 'Active'
-      ].join(' | ')
-    );
+    // Each sample order expands into 4 separate columns: Order ID, Date, Amount, Status
+    const sampleFields = (f.sampleOrders || []).slice(0, 5).map(o => [
+      o.orderId || o.order_id || '—',
+      o.date || o.order_date || '—',
+      String(o.revenue || 0),
+      o.cancelled ? 'Cancelled' : 'Active',
+    ]);
+    // Pad to 5 samples × 4 cols = 20 cells
+    while (sampleFields.length < 5) sampleFields.push(['', '', '', '']);
 
     rows.push([
+      rows.length,
       f.identities.join(' / '),
       (f.platform || '').charAt(0).toUpperCase() + (f.platform || '').slice(1),
       f.signal === 'phone' ? 'Same phone number' : 'Same name + pincode',
@@ -7762,11 +7765,8 @@ async function exportFraudPatterns() {
       f.cancelRate,
       f.totalRevenueAtRisk,
       f.reason,
-      sampleOrders[0] || '',
-      sampleOrders[1] || '',
-      sampleOrders[2] || '',
-      sampleOrders[3] || '',
-      sampleOrders[4] || '',
+      ...sampleFields[0], ...sampleFields[1], ...sampleFields[2],
+      ...sampleFields[3], ...sampleFields[4],
     ]);
   });
 
@@ -9149,20 +9149,23 @@ function _exportPS(table, client, date) {
   const data = psState._lastData;
   if (!data) { alert('No Platform Sales data loaded yet.'); return; }
   const grand = data.grandTotal || 1;
-  const platHdr = ['Platform','Revenue (INR)','Units','Orders','% Share'];
-  const platRows = (data.platforms||[]).map(p=>[p.platform||'—',_fmtN(p.totalRevenue),_fmtI(p.totalUnits),_fmtI(p.orderCount),(p.totalRevenue/grand*100).toFixed(1)+'%']);
-  const prodHdr = ['Product / SKU','Revenue (INR)','Units','Orders'];
-  const prodRows = (data.topProducts||[]).map(p=>[p.sku||p.category||'—',_fmtN(p.revenue),_fmtI(p.units),_fmtI(p.orders)]);
-  if (table==='platforms') return _downloadCsv([platHdr,...platRows], client+'_platform_split_'+date+'.csv');
-  if (table==='products')  return _downloadCsv([prodHdr,...prodRows], client+'_top_products_'+date+'.csv');
-  _downloadCsv([['Platform Split'],[platHdr],...platRows,[''],['Top Products'],[prodHdr],...prodRows], client+'_platform_sales_'+date+'.csv');
+  const dateFrom = psState.dateFrom || '';
+  const dateTo   = psState.dateTo   || '';
+  const periodLabel = dateFrom && dateTo ? 'Period: ' + dateFrom + ' to ' + dateTo : 'Period: all dates';
+  const platHdr = ['S.No.','Platform','Revenue (INR)','Units','Orders','% Share'];
+  const platRows = (data.platforms||[]).map((p,i)=>[i+1,p.platform||'—',_fmtN(p.totalRevenue),_fmtI(p.totalUnits),_fmtI(p.orderCount),(p.totalRevenue/grand*100).toFixed(1)+'%']);
+  const prodHdr = ['S.No.','Product / SKU','Platform','Revenue (INR)','Units','Orders','% of Total'];
+  const prodRows = (data.topProducts||[]).map((p,i)=>[i+1,p.sku||p.category||'—',p.platform||'—',_fmtN(p.revenue),_fmtI(p.units),_fmtI(p.orders||0),(p.revenue/grand*100).toFixed(1)+'%']);
+  if (table==='platforms') return _downloadCsv([[periodLabel],[],platHdr,...platRows], client+'_platform_split_'+date+'.csv');
+  if (table==='products')  return _downloadCsv([[periodLabel],[],prodHdr,...prodRows], client+'_top_products_'+date+'.csv');
+  _downloadCsv([[periodLabel],[],['Platform Split'],[platHdr],...platRows,[''],['Top Products'],[prodHdr],...prodRows], client+'_platform_sales_'+date+'.csv');
 }
 
 function _exportSKU(table, client, date) {
-  const skuHdr = ['SKU','Platform','Revenue (INR)','Units','City','State'];
-  const skuRows = _skuLastData.map(r=>[r.standard_sku||'—',r.platform||'—',_fmtN(r.standard_revenue),_fmtI(r.standard_units),r.standard_city||'—',r.standard_state||'—']);
-  const cityHdr = ['City','State','Revenue (INR)','Units','Orders'];
-  const cityRows = _geoLastData.map(c=>[c.city||'—',c.state||'—',_fmtN(c.revenue),_fmtI(c.units),_fmtI(c.orders)]);
+  const skuHdr = ['S.No.','SKU','Platform','Revenue (INR)','Units','City','State'];
+  const skuRows = _skuLastData.map((r,i)=>[i+1,r.standard_sku||'—',r.platform||'—',_fmtN(r.standard_revenue),_fmtI(r.standard_units),r.standard_city||'—',r.standard_state||'—']);
+  const cityHdr = ['S.No.','City','State','Revenue (INR)','Units','Orders'];
+  const cityRows = _geoLastData.map((c,i)=>[i+1,c.city||'—',c.state||'—',_fmtN(c.revenue),_fmtI(c.units),_fmtI(c.orders)]);
   if (table==='skus')   return _skuLastData.length   ? _downloadCsv([skuHdr,...skuRows],   client+'_sku_breakdown_'+date+'.csv')  : alert('No SKU data yet.');
   if (table==='cities') return _geoLastData.length   ? _downloadCsv([cityHdr,...cityRows],  client+'_top_cities_'+date+'.csv')    : alert('No city data yet.');
   _downloadCsv([['SKU Breakdown'],[skuHdr],...skuRows,[''],['Top Cities'],[cityHdr],...cityRows], client+'_sku_performance_'+date+'.csv');
@@ -9170,8 +9173,8 @@ function _exportSKU(table, client, date) {
 
 function _exportCI(table, client, date) {
   if (!_ciAllCampaignsSorted.length) { alert('No campaign data loaded yet.'); return; }
-  const hdr = ['Campaign','Platform','Date','Spend (INR)','Revenue (INR)','ROAS','Clicks','Impressions','Orders'];
-  const rows = _ciAllCampaignsSorted.map(c=>[
+  const hdr = ['S.No.','Campaign','Platform','Date','Spend (INR)','Revenue (INR)','ROAS','Clicks','Impressions','Orders'];
+  const rows = _ciAllCampaignsSorted.map((c,i)=>[i+1,
     c.campaign_name||'—',c.platform||'—',c.campaign_date||'—',
     _fmtN(c.standard_spend),_fmtN(c.standard_revenue),
     c.standard_spend>0?(c.standard_revenue/c.standard_spend).toFixed(2):'—',
@@ -9181,12 +9184,12 @@ function _exportCI(table, client, date) {
 
 function _exportGEO(table, client, date) {
   if (!_geoLastData.length) { alert('No geographic data loaded yet.'); return; }
-  const cHdr = ['City','State','Revenue (INR)','Units','Orders'];
-  const cRows = _geoLastData.map(c=>[c.city||'—',c.state||'—',_fmtN(c.revenue),_fmtI(c.units),_fmtI(c.orders)]);
+  const cHdr = ['S.No.','City','State','Revenue (INR)','Units','Orders'];
+  const cRows = _geoLastData.map((c,i)=>[i+1,c.city||'—',c.state||'—',_fmtN(c.revenue),_fmtI(c.units),_fmtI(c.orders)]);
   const byS = {};
   _geoLastData.forEach(c=>{const s=c.state||'Unknown';if(!byS[s])byS[s]={state:s,revenue:0,units:0,orders:0};byS[s].revenue+=c.revenue||0;byS[s].units+=c.units||0;byS[s].orders+=c.orders||0;});
-  const sHdr = ['State','Revenue (INR)','Units','Orders'];
-  const sRows = Object.values(byS).sort((a,b)=>b.revenue-a.revenue).map(s=>[s.state,_fmtN(s.revenue),_fmtI(s.units),_fmtI(s.orders)]);
+  const sHdr = ['S.No.','State','Revenue (INR)','Units','Orders'];
+  const sRows = Object.values(byS).sort((a,b)=>b.revenue-a.revenue).map((s,i)=>[i+1,s.state,_fmtN(s.revenue),_fmtI(s.units),_fmtI(s.orders)]);
   if (table==='cities') return _downloadCsv([cHdr,...cRows], client+'_city_revenue_'+date+'.csv');
   if (table==='states') return _downloadCsv([sHdr,...sRows], client+'_state_revenue_'+date+'.csv');
   _downloadCsv([['City Revenue'],[cHdr],...cRows,[''],['State Revenue'],[sHdr],...sRows], client+'_geographic_'+date+'.csv');
@@ -9195,18 +9198,19 @@ function _exportGEO(table, client, date) {
 function _exportDT(table, client, date) {
   const dtDate = document.getElementById('dtDate')?.value || date;
   const plats = ['amazon','acutas','flipkart','blinkit','meta','google'];
-  const pHdr = ['Platform','Target (INR)','Achieved (INR)','Attainment %','Spend Target (INR)','Actual Spend (INR)'];
-  const pRows = _dtLastTargets ? plats.map(p=>{
+  const reportDateLabel = 'Report Date: ' + dtDate;
+  const pHdr = ['S.No.','Platform','Target (INR)','Achieved (INR)','Attainment %','Spend Target (INR)','Actual Spend (INR)'];
+  const pRows = _dtLastTargets ? plats.map((p,i)=>{
     const t=_dtLastTargets[p]||{}, a=(_dtLastAchieved||{})[p]||{};
     const tgt=t.target||0, ach=a.revenue||t.achieved||0;
-    return [p,_fmtN(tgt),_fmtN(ach),tgt>0?(ach/tgt*100).toFixed(1)+'%':'—',_fmtN(t.spendTarget),_fmtN(t.spendActual)];
+    return [i+1,p,_fmtN(tgt),_fmtN(ach),tgt>0?(ach/tgt*100).toFixed(1)+'%':'—',_fmtN(t.spendTarget),_fmtN(t.spendActual)];
   }) : null;
-  const cHdr = ['Campaign','Platform','Date','Revenue (INR)','Spend (INR)','ROAS'];
-  const cRows = _dtCampaignLast.length ? _dtCampaignLast.map(c=>[c.campaign_name||'—',c.platform||'—',c.campaign_date||dtDate,_fmtN(c.standard_revenue),_fmtN(c.standard_spend),c.standard_spend>0?(c.standard_revenue/c.standard_spend).toFixed(2):'—']) : null;
-  if (table==='platforms') return pRows ? _downloadCsv([pHdr,...pRows], client+'_daily_targets_platforms_'+dtDate+'.csv') : alert('No DT data yet.');
-  if (table==='campaigns') return cRows ? _downloadCsv([cHdr,...cRows], client+'_daily_campaigns_'+dtDate+'.csv') : alert('No campaign data yet.');
+  const cHdr = ['S.No.','Campaign','Platform','Date','Revenue (INR)','Spend (INR)','ROAS'];
+  const cRows = _dtCampaignLast.length ? _dtCampaignLast.map((c,i)=>[i+1,c.campaign_name||'—',c.platform||'—',c.campaign_date||dtDate,_fmtN(c.standard_revenue),_fmtN(c.standard_spend),c.standard_spend>0?(c.standard_revenue/c.standard_spend).toFixed(2):'—']) : null;
+  if (table==='platforms') return pRows ? _downloadCsv([[reportDateLabel],[],pHdr,...pRows], client+'_daily_targets_platforms_'+dtDate+'.csv') : alert('No DT data yet.');
+  if (table==='campaigns') return cRows ? _downloadCsv([[reportDateLabel],[],cHdr,...cRows], client+'_daily_campaigns_'+dtDate+'.csv') : alert('No campaign data yet.');
   const pr = pRows||[['No platform data']], cr = cRows||[['No campaign data']];
-  _downloadCsv([['Platform Attainment ('+dtDate+')'],[pHdr],...pr,[''],['Campaign Ranking'],[cHdr],...cr], client+'_daily_targets_'+dtDate+'.csv');
+  _downloadCsv([[reportDateLabel],[],['Platform Attainment'],[pHdr],...pr,[''],['Campaign Ranking'],[cHdr],...cr], client+'_daily_targets_'+dtDate+'.csv');
 }
 
 function _exportAI(table, client, date) {
@@ -9216,20 +9220,20 @@ function _exportAI(table, client, date) {
 }
 
 function _exportUTM(table, client, date) {
-  const sHdr = ['Campaign','Source','Medium','Clicks','Conversions','Revenue (INR)'];
-  const sRows = _utmStatsLast.map(r=>[r.campaign||'—',r.source||'—',r.medium||'—',_fmtI(r.clicks),_fmtI(r.conversions),_fmtN(r.revenue)]);
-  const dHdr = ['Campaign','Product','Source','Clicks','Conversions','Revenue (INR)'];
-  const dRows = _utmDetailsLast.map(r=>[r.campaign||'—',r.product||'—',r.source||'—',_fmtI(r.clicks),_fmtI(r.conversions),_fmtN(r.revenue)]);
+  const sHdr = ['S.No.','Campaign','Source','Medium','Clicks','Conversions','Revenue (INR)'];
+  const sRows = _utmStatsLast.map((r,i)=>[i+1,r.campaign||'—',r.source||'—',r.medium||'—',_fmtI(r.clicks),_fmtI(r.conversions),_fmtN(r.revenue)]);
+  const dHdr = ['S.No.','Campaign','Product','Source','Clicks','Conversions','Revenue (INR)'];
+  const dRows = _utmDetailsLast.map((r,i)=>[i+1,r.campaign||'—',r.product||'—',r.source||'—',_fmtI(r.clicks),_fmtI(r.conversions),_fmtN(r.revenue)]);
   if (table==='stats')   return _utmStatsLast.length   ? _downloadCsv([sHdr,...sRows], client+'_utm_campaign_performance_'+date+'.csv') : alert('No UTM stats yet.');
   if (table==='details') return _utmDetailsLast.length ? _downloadCsv([dHdr,...dRows], client+'_utm_campaign_details_'+date+'.csv')    : alert('No UTM details yet.');
   _downloadCsv([['Campaign Performance'],[sHdr],...sRows,[''],['Campaign Details'],[dHdr],...dRows], client+'_utm_analytics_'+date+'.csv');
 }
 
 function _exportINV(table, client, date) {
-  const sHdr = ['SKU','Warehouse','City','Qty on Hand','Alert Below','Lead Time (days)','Days in Hand Est.','Reorder By','Updated'];
-  const sRows = _invAllStock.map(r=>[r.sku||'—',r.warehouseName||'—',r.warehouseCity||'—',_fmtI(r.quantityOnHand),_fmtI(r.lowStockThreshold),_fmtI(r.leadTimeDays),r.daysRemainingEstimate!=null?_fmtI(r.daysRemainingEstimate):'—',r.reorderByDate||'—',r.updatedAt?new Date(r.updatedAt).toLocaleDateString('en-IN'):'—']);
-  const aHdr = ['Status','SKU','Warehouse','City','Qty','Alert Below','Days in Hand Est.','Reorder By'];
-  const aRows = _invAlertsLast.map(a=>{const isOut=a.quantityOnHand<=0,isCrit=!isOut&&(a.daysRemainingEstimate??99)<=7;const status=isOut?'Out of Stock':isCrit?'Critical':(a.daysRemainingEstimate??99)<=14?'Low Stock':'Monitor';return[status,a.sku||'—',a.warehouseName||'—',a.warehouseCity||'—',_fmtI(a.quantityOnHand),_fmtI(a.lowStockThreshold),a.daysRemainingEstimate!=null?_fmtI(a.daysRemainingEstimate):'—',a.reorderByDate||'—'];});
+  const sHdr = ['S.No.','SKU','Warehouse','City','Qty on Hand','Alert Below','Lead Time (days)','Days in Hand Est.','Reorder By','Updated'];
+  const sRows = _invAllStock.map((r,i)=>[i+1,r.sku||'—',r.warehouseName||'—',r.warehouseCity||'—',_fmtI(r.quantityOnHand),_fmtI(r.lowStockThreshold),_fmtI(r.leadTimeDays),r.daysRemainingEstimate!=null?_fmtI(r.daysRemainingEstimate):'—',r.reorderByDate||'—',r.updatedAt?new Date(r.updatedAt).toLocaleDateString('en-IN'):'—']);
+  const aHdr = ['S.No.','Status','SKU','Warehouse','City','Qty','Alert Below','Days in Hand Est.','Reorder By'];
+  const aRows = _invAlertsLast.map((a,i)=>{const isOut=a.quantityOnHand<=0,isCrit=!isOut&&(a.daysRemainingEstimate??99)<=7;const status=isOut?'Out of Stock':isCrit?'Critical':(a.daysRemainingEstimate??99)<=14?'Low Stock':'Monitor';return[i+1,status,a.sku||'—',a.warehouseName||'—',a.warehouseCity||'—',_fmtI(a.quantityOnHand),_fmtI(a.lowStockThreshold),a.daysRemainingEstimate!=null?_fmtI(a.daysRemainingEstimate):'—',a.reorderByDate||'—'];});
   if (table==='stock')  return _invAllStock.length    ? _downloadCsv([sHdr,...sRows], client+'_all_stock_'+date+'.csv')   : alert('No stock data yet.');
   if (table==='alerts') return _invAlertsLast.length  ? _downloadCsv([aHdr,...aRows], client+'_stock_alerts_'+date+'.csv') : alert('No alert data yet.');
   _downloadCsv([['All Stock'],[sHdr],...sRows,[''],['Stock Alerts'],[aHdr],...aRows], client+'_inventory_'+date+'.csv');
@@ -9237,8 +9241,8 @@ function _exportINV(table, client, date) {
 
 function _exportPROJ(table, client, date) {
   if (!_projLast||!(_projLast.series||[]).length) { alert('No projections data loaded yet.'); return; }
-  const hdr = ['Period','Revenue (INR)','Cost (INR)','Ad Spend (INR)','Net Profit (INR)','Return Loss (INR)'];
-  const rows = _projLast.series.map(s=>[s.label||'—',_fmtN(s.revenue),_fmtN(s.cost),_fmtN(s.adSpend),_fmtN(s.profit),_fmtN(s.returnLoss)]);
+  const hdr = ['S.No.','Period','Revenue (INR)','Cost (INR)','Ad Spend (INR)','Net Profit (INR)','Return Loss (INR)'];
+  const rows = _projLast.series.map((s,i)=>[i+1,s.label||'—',_fmtN(s.revenue),_fmtN(s.cost),_fmtN(s.adSpend),_fmtN(s.profit),_fmtN(s.returnLoss)]);
   _downloadCsv([hdr,...rows], client+'_projections_'+date+'.csv');
 }
 
