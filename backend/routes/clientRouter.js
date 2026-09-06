@@ -408,9 +408,15 @@ router.get(
 
     const [revenueRows, campaignRows] = await Promise.all([
       fetchAllRows((rangeFrom, rangeTo) => {
+        // Include raw_extras only when fetching all statuses (AI Insights
+        // cancellation tracker) — it's large JSONB and not needed for
+        // normal sku-performance aggregation.
+        const cols = includeAllStatuses
+          ? 'standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status, standard_product_name, standard_order_id, financial_status, risk_level, tags, raw_extras'
+          : 'standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status, standard_product_name, standard_order_id, financial_status, risk_level, tags';
         let q = supabaseAdmin
           .from('revenue_data')
-          .select('standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status, standard_product_name, standard_order_id, financial_status, risk_level, tags')
+          .select(cols)
           .eq('client_id', client.id)
           .order('order_date', { ascending: false, nullsFirst: false })
           .range(rangeFrom, rangeTo);
