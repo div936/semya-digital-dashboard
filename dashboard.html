@@ -460,6 +460,14 @@
     .kpi-card--warn::before  { background: #d97706; }
     .kpi-card--danger::before { background: #dc2626; }
 
+    /* ── Day-wise Cancellation Log collapse/expand ─────────────── */
+    .cancel-day-group { display: none; }
+    .cancel-day-group.cancel-day-open { display: block; }
+    .cancel-day-header:hover { background: #f1f5f9 !important; }
+    .cancel-day-open ~ .cancel-day-header .cancel-day-arrow,
+    .cancel-day-header:has(+ .cancel-day-open) .cancel-day-arrow { transform: rotate(90deg); }
+    .cancel-day-arrow { transition: transform .2s; }
+
     /* ── Unified Export Button ────────────────────────────────── */
     .export-wrap { position: relative; display: inline-flex; }
     .export-btn {
@@ -2170,6 +2178,7 @@
                 <div class="export-menu-header">Download as CSV</div>
                 <div class="export-menu-item all" onclick="exportTable('ai','all')">↓ All tables</div>
                 <div class="export-menu-item" onclick="exportTable('ai','cancellations')">Cancelled Orders</div>
+                <div class="export-menu-item" onclick="exportTable('ai','daylog')">Day-wise Cancellation Log</div>
                 <div class="export-menu-item" onclick="exportTable('ai','highrisk')">High Risk Orders</div>
                 <div class="export-menu-item" onclick="exportTable('ai','fraud')">Fraud Patterns</div>
               </div>
@@ -2286,6 +2295,37 @@
         </div>
         <div id="highRiskShowMore" style="display:none;text-align:center;padding-top:10px;">
           <button onclick="highRiskShowAll()" style="font-size:11px;font-weight:600;color:var(--theme-primary);background:none;border:none;cursor:pointer;text-decoration:underline;">Show all high risk orders</button>
+        </div>
+      </div>
+
+      <!-- ══ DAY-WISE CANCELLATION LOG ═══════════════════════════════ -->
+      <div class="card card-sm" style="margin-top:16px;" id="cancelDayLogCard">
+        <div class="ai-tab-header">
+          <div>
+            <div class="ai-tab-title" style="display:flex;align-items:center;gap:8px;">
+              <span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:#fef2f2;border:1px solid #fecaca;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              </span>
+              Day-wise Cancellation Log
+            </div>
+            <div class="ai-tab-meta" id="cancelLogMeta">Loading…</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div class="date-range-wrap" style="margin-left:0;">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <input type="date" class="date-input" id="cancelLogFrom" onchange="renderCancelDayLog()" />
+              <span class="date-sep">→</span>
+              <input type="date" class="date-input" id="cancelLogTo" onchange="renderCancelDayLog()" />
+            </div>
+            <button onclick="document.getElementById('cancelLogFrom').value='';document.getElementById('cancelLogTo').value='';renderCancelDayLog();" style="font-size:10px;color:#94a3b8;background:none;border:none;cursor:pointer;padding:2px 4px;" title="Clear">✕</button>
+          </div>
+        </div>
+        <div style="font-size:11px;color:#94a3b8;padding:2px 2px 10px;">
+          Individual cancellations grouped by day · buyer details shown for Shopify/Meta/Google orders · cross-referenced with Pattern Watch flags
+        </div>
+        <div id="cancelDayLogList">
+          <div class="skel skel-insight" style="height:36px;margin-bottom:6px;"></div>
+          <div class="skel skel-insight" style="height:36px;"></div>
         </div>
       </div>
 
@@ -2463,10 +2503,15 @@
     </div><!-- /tab-projections_insights -->
 
     <!-- All Clients comparison panel (shown when "All Clients" selected in switcher) -->
-    <div id="allClientsPanel" style="display:none;padding:24px 28px;">
-      <div style="margin-bottom:20px;">
-        <div style="font-size:20px;font-weight:800;color:#0f172a;">All Clients Overview</div>
-        <div style="font-size:12px;color:#94a3b8;margin-top:3px;">Platform Sales comparison · click a client card to view their full dashboard</div>
+    <div id="allClientsPanel" style="display:none;">
+      <!-- Toolbar matching every other tab -->
+      <div class="card card-sm" style="margin-bottom:16px;">
+        <div class="tab-toolbar">
+          <span class="tab-title" id="allClientsTabTitle">All Clients — Platform Sales</span>
+          <span class="fetch-badge loading" id="allClientsBadge" style="margin-left:auto;">
+            <span class="fetch-dot"></span><span id="allClientsBadgeText">Loading</span>
+          </span>
+        </div>
       </div>
       <div id="allClientsComparison"></div>
     </div>
@@ -4770,7 +4815,17 @@ let tabCache = {};
 const CACHE_TTL = 0;
 
 // ─── SHOW TAB ─────────────────────────────────────────────────────
-function showTab(tabKey) {
+function showTab(tabKey, force) {
+  // If we're in All Clients mode, switch the comparison view to this tab
+  // instead of navigating to a single-client tab panel
+  if (state.clientSlug === '__all__') {
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    const navEl = document.querySelector('[data-tab="' + tabKey + '"]');
+    if (navEl) navEl.classList.add('active');
+    activeTab = tabKey;
+    fetchAndRenderAllClients(tabKey);
+    return;
+  }
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   const navEl = document.querySelector('[data-tab="' + tabKey + '"]');
   if (navEl) navEl.classList.add('active');
@@ -7343,6 +7398,11 @@ async function fetchAndRenderOrderRisk() {
     q.set('includeAllStatuses', 'true');   // backend must honour this flag
     const resp = await apiFetch('/clients/' + clientSlug + '/sku-performance?' + q.toString());
     const rows = resp?.revenue || [];
+    // Set day-wise log date inputs to same range if not already set
+    const logFrom = document.getElementById('cancelLogFrom');
+    const logTo   = document.getElementById('cancelLogTo');
+    if (logFrom && !logFrom.value) logFrom.value = fromVal;
+    if (logTo   && !logTo.value)   logTo.value   = toVal;
 
     // ── Separate cancelled vs high-risk active ─────────────────────
     const cancelled = rows.filter(r => {
@@ -7360,6 +7420,7 @@ async function fetchAndRenderOrderRisk() {
 
     renderCancellationTracker(cancelled, rows.length);
     renderHighRiskOrders(highRisk, rows.length);
+    renderCancelDayLog(); // day-wise log uses the same _cancelData
   } catch(e) {
     console.warn('[order-risk]', e.message);
     _setRiskError();
@@ -7475,6 +7536,198 @@ function cancelTrackerShowAll() {
   _cancelShowAll = true;
   const sorted = [..._cancelData].sort((a, b) => (Number(b.standard_revenue)||0) - (Number(a.standard_revenue)||0));
   _renderCancelRows(sorted, true);
+}
+
+// ─── DAY-WISE CANCELLATION LOG ────────────────────────────────────
+// Groups _cancelData by order_date, shows buyer details (name/phone
+// from raw_extras where available — Shopify/Meta/Google only),
+// and cross-references each buyer against the Pattern Watch flags.
+//
+// _fraudPatternIndex is a Map keyed by normalised phone or name+pincode
+// → flagged pattern object, built once when fraud data loads.
+let _fraudPatternIndex = null;
+
+function _buildFraudIndex(fraudData) {
+  if (!fraudData) return null;
+  const idx = new Map();
+  for (const f of fraudData) {
+    // Key by each identity name (lowercased) for quick lookup
+    for (const id of (f.identities || [])) {
+      idx.set(id.toLowerCase().trim(), f);
+    }
+  }
+  return idx;
+}
+
+function renderCancelDayLog() {
+  const el = document.getElementById('cancelDayLogList');
+  const meta = document.getElementById('cancelLogMeta');
+  if (!el) return;
+  if (!_cancelData || !_cancelData.length) {
+    if (meta) meta.textContent = 'No cancellation data loaded yet';
+    el.innerHTML = '<div style="text-align:center;padding:24px 0;color:#94a3b8;font-size:12px;">No cancellation data for this period.</div>';
+    return;
+  }
+
+  // Apply date filter from the card's own date inputs
+  const fromRaw = document.getElementById('cancelLogFrom')?.value || '';
+  const toRaw   = document.getElementById('cancelLogTo')?.value   || '';
+
+  let filtered = _cancelData;
+  if (fromRaw) filtered = filtered.filter(r => (r.order_date || '') >= fromRaw);
+  if (toRaw)   filtered = filtered.filter(r => (r.order_date || '') <= toRaw);
+
+  // Only Shopify-family platforms have buyer PII (raw_extras)
+  // Amazon/Acutas rows still show but without buyer name
+  if (!filtered.length) {
+    if (meta) meta.textContent = 'No cancellations in selected date range';
+    el.innerHTML = '<div style="text-align:center;padding:24px 0;color:#94a3b8;font-size:12px;">No cancellations in this date range.</div>';
+    return;
+  }
+
+  // Build fraud index from latest fraud data if available
+  if (!_fraudPatternIndex && _lastFraudData) {
+    _fraudPatternIndex = _buildFraudIndex(_lastFraudData);
+  }
+
+  // Build phone→past-cancel count from the FULL _cancelData (not filtered)
+  // so history always reflects all known data, not just the visible window
+  const buyerHistory = new Map(); // key: buyer name (lc) → { count, revenue }
+  for (const r of _cancelData) {
+    const name = (r.raw_extras?.['Billing Name'] || r.raw_extras?.['billing_name'] ||
+                  r.raw_extras?.['Shipping Name'] || r.raw_extras?.['shipping_name'] || '').trim();
+    if (!name) continue;
+    const k = name.toLowerCase();
+    const prev = buyerHistory.get(k) || { count: 0, revenue: 0 };
+    buyerHistory.set(k, { count: prev.count + 1, revenue: prev.revenue + (Number(r.standard_revenue)||0) });
+  }
+
+  // Group filtered rows by order_date descending
+  const byDay = new Map();
+  for (const r of filtered) {
+    const d = r.order_date || 'Unknown date';
+    if (!byDay.has(d)) byDay.set(d, []);
+    byDay.get(d).push(r);
+  }
+  const sortedDays = [...byDay.keys()].sort((a, b) => b.localeCompare(a));
+
+  if (meta) {
+    meta.textContent = filtered.length + ' cancellation' + (filtered.length !== 1 ? 's' : '') +
+      ' · ' + sortedDays.length + ' day' + (sortedDays.length !== 1 ? 's' : '') +
+      ' · ₹' + (filtered.reduce((s,r) => s+(Number(r.standard_revenue)||0), 0)/100000).toFixed(2) + 'L lost';
+  }
+
+  // Render collapsible day groups
+  const fmt = d => {
+    try { return new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday:'short', day:'numeric', month:'short', year:'numeric' }); }
+    catch { return d; }
+  };
+
+  el.innerHTML = sortedDays.map((day, dayIdx) => {
+    const rows = byDay.get(day);
+    const dayRev = rows.reduce((s, r) => s + (Number(r.standard_revenue)||0), 0);
+    const groupId = 'cancelDayGroup_' + dayIdx;
+    const isToday = day === todayIST();
+    const isYest  = (() => { const d = new Date(); d.setDate(d.getDate()-1); return day === toISTDateString(d); })();
+    const dayLabel = isToday ? 'Today' : isYest ? 'Yesterday' : fmt(day);
+
+    const rowsHtml = rows.map(r => {
+      // Extract buyer identity from raw_extras
+      const extras = r.raw_extras || {};
+      const buyerName = (extras['Billing Name'] || extras['billing_name'] ||
+                         extras['Shipping Name'] || extras['shipping_name'] || '').trim();
+      const phone     = (extras['Billing Phone'] || extras['billing_phone'] ||
+                         extras['Shipping Phone'] || extras['shipping_phone'] || '').trim();
+      const pincode   = (extras['Billing Zip'] || extras['billing_zip'] ||
+                         extras['Shipping Zip'] || extras['shipping_zip'] || '').trim();
+
+      const rev      = Number(r.standard_revenue) || 0;
+      const orderId  = r.standard_order_id || '—';
+      const sku      = r.standard_sku || r.standard_product_name || '—';
+      const platform = r.platform || '';
+      const city     = r.standard_city || '';
+      const fs       = (r.financial_status || '').toLowerCase();
+      const isVoid   = fs === 'voided';
+      const statusLabel = isVoid ? 'Voided' : 'Refunded';
+      const statusColor = isVoid ? '#dc2626' : '#f97316';
+      const statusBg    = isVoid ? '#fef2f2' : '#fff7ed';
+      const statusBorder= isVoid ? '#fecaca' : '#fed7aa';
+
+      // Pattern Watch cross-reference
+      let patternFlag = '';
+      const nameKey = buyerName.toLowerCase();
+      if (_fraudPatternIndex && nameKey && _fraudPatternIndex.has(nameKey)) {
+        const pat = _fraudPatternIndex.get(nameKey);
+        patternFlag = '<span style="font-size:10px;font-weight:700;color:#dc2626;background:#fef2f2;' +
+          'border:1px solid #fecaca;border-radius:4px;padding:1px 6px;margin-left:4px;" ' +
+          'title="' + (pat.reason || 'Flagged in Pattern Watch') + '">⚠ Pattern Watch</span>';
+      }
+
+      // Past cancellation history for this buyer
+      let historyFlag = '';
+      if (buyerName) {
+        const hist = buyerHistory.get(nameKey);
+        const pastCount = hist ? hist.count : 0; // includes this order
+        if (pastCount > 1) {
+          historyFlag = '<span style="font-size:10px;color:#94a3b8;margin-left:4px;">' +
+            '· ' + pastCount + ' total cancels by this buyer</span>';
+        }
+      }
+
+      // Platform color dot
+      const platColors = { meta:'#1877f2', google:'#34a853', flipkart:'#0077ff', blinkit:'#fbbf24', amazon:'#ff9900', acutas:'#ff9900' };
+      const platDot = '<span style="width:6px;height:6px;border-radius:50%;background:' + (platColors[platform]||'#94a3b8') + ';display:inline-block;flex-shrink:0;"></span>';
+
+      return '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;' +
+        'padding:10px 8px;border-bottom:1px solid #f8fafc;">' +
+        '<div style="flex:1;min-width:0;">' +
+          // Row 1: status chip + order ID + buyer name + flags
+          '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:4px;">' +
+            '<span style="font-size:9px;font-weight:700;padding:1px 7px;border-radius:99px;background:' + statusBg + ';color:' + statusColor + ';border:1px solid ' + statusBorder + ';flex-shrink:0;">' + statusLabel + '</span>' +
+            '<span style="font-size:11px;font-weight:700;color:#1e293b;font-family:var(--font-mono);">' + orderId + '</span>' +
+            (buyerName ? '<span style="font-size:11px;font-weight:600;color:#334155;">' + buyerName + '</span>' : '<span style="font-size:11px;color:#94a3b8;">Unknown buyer</span>') +
+            patternFlag +
+            historyFlag +
+          '</div>' +
+          // Row 2: SKU · platform · city · phone
+          '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:10px;color:#94a3b8;">' +
+            platDot +
+            '<span>' + platform.charAt(0).toUpperCase() + platform.slice(1) + '</span>' +
+            (sku !== '—' ? '<span>·</span><span style="font-family:var(--font-mono);">' + sku + '</span>' : '') +
+            (city ? '<span>·</span><span>' + city + '</span>' : '') +
+            (phone ? '<span>·</span><span>📞 ' + phone.replace(/^(\+?91)?/, '').slice(-10) + '</span>' : '') +
+          '</div>' +
+        '</div>' +
+        // Revenue
+        '<div style="text-align:right;flex-shrink:0;">' +
+          '<div style="font-size:13px;font-weight:700;color:' + statusColor + ';">' + fmtRevenue(rev) + '</div>' +
+          '<div style="font-size:9px;color:#94a3b8;">lost</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    return '<div style="margin-bottom:8px;border:1px solid #f1f5f9;border-radius:var(--radius-sm);overflow:hidden;">' +
+      // Collapsible day header
+      '<div onclick="document.getElementById(\'' + groupId + '\').classList.toggle(\'cancel-day-open\')" ' +
+        'style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;' +
+        'background:#f8fafc;cursor:pointer;user-select:none;" class="cancel-day-header">' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+          '<svg class="cancel-day-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5">' +
+            '<polyline points="9 18 15 12 9 6"/></svg>' +
+          '<span style="font-size:12px;font-weight:700;color:#1e293b;">' + dayLabel + '</span>' +
+          '<span style="font-size:10px;color:#94a3b8;">' + day + '</span>' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:10px;">' +
+          '<span style="font-size:11px;font-weight:600;color:#dc2626;">' + rows.length + ' cancel' + (rows.length !== 1 ? 's' : '') + '</span>' +
+          '<span style="font-size:11px;font-weight:700;color:#dc2626;">−' + fmtRevenue(dayRev) + '</span>' +
+        '</div>' +
+      '</div>' +
+      // Collapsible content — first day open by default
+      '<div id="' + groupId + '" class="cancel-day-group' + (dayIdx === 0 ? ' cancel-day-open' : '') + '">' +
+        rowsHtml +
+      '</div>' +
+    '</div>';
+  }).join('');
 }
 
 function exportCancellationTracker() {
@@ -7648,8 +7901,11 @@ function renderFraudPatterns(resp) {
   const list = document.getElementById('fraudPatternList');
   if (!resp || !list) return;
 
-  // Store for export
+  // Store for export and cross-reference
   _lastFraudData = resp;
+  _fraudPatternIndex = _buildFraudIndex(resp.flagged || []); // rebuild for day-wise log
+  // Re-render day log with updated cross-reference flags
+  if (_cancelData) renderCancelDayLog();
   const exportBtn = document.getElementById('fraudExportBtn');
 
   const flagged = resp.flagged || [];
@@ -8124,7 +8380,8 @@ async function switchClient(newSlug) {
     tabCache = {};
     _sidebarCache = {};
     showAllClientsPanel(true);
-    fetchAndRenderAllClients();
+    const currentTab = document.querySelector('.nav-tab.active')?.dataset?.tab || 'platform_sales';
+    fetchAndRenderAllClients(currentTab);
     return;
   }
 
@@ -8375,55 +8632,321 @@ function fetchAndRenderUTM() {
 
 // ═══════════════════════════════════════════════════════════════════
 // ALL CLIENTS COMPARISON VIEW
+// Tab-aware: shows different metrics per tab, styled with .card/.kpi-card
 // ═══════════════════════════════════════════════════════════════════
-async function fetchAndRenderAllClients() {
+
+// Which tab the All Clients view is currently showing
+let _allClientsActiveTab = 'platform_sales';
+
+function setBadgeAllClients(mode) {
+  const b = document.getElementById('allClientsBadge');
+  const t = document.getElementById('allClientsBadgeText');
+  if (b) b.className = 'fetch-badge ' + mode;
+  if (t) t.textContent = mode === 'loading' ? 'Loading…' : mode === 'live' ? 'Live data' : 'No data';
+}
+
+// Tab labels shown in the toolbar
+const ALL_CLIENTS_TAB_LABELS = {
+  platform_sales:       'All Clients — Platform Sales',
+  sku_performance:      'All Clients — SKU Performance',
+  campaign_insights:    'All Clients — Campaign Insights',
+  geographic_analysis:  'All Clients — Geographic Analysis',
+  daily_targets:        'All Clients — Daily Targets',
+  ai_insights:          'All Clients — AI Insights',
+  utm_analytics:        'All Clients — UTM Analytics',
+  inventory:            'All Clients — Inventory',
+  projections_insights: 'All Clients — Projections',
+};
+
+async function fetchAndRenderAllClients(tabKey) {
+  _allClientsActiveTab = tabKey || _allClientsActiveTab || 'platform_sales';
   showAllClientsPanel(true);
+
+  // Update toolbar title
+  const titleEl = document.getElementById('allClientsTabTitle');
+  if (titleEl) titleEl.textContent = ALL_CLIENTS_TAB_LABELS[_allClientsActiveTab] || 'All Clients';
+
+  setBadgeAllClients('loading');
   const compEl = document.getElementById('allClientsComparison');
   if (!compEl) return;
-  compEl.innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;font-size:13px;">Loading data for all clients…</div>';
+  compEl.innerHTML = '';
+
   try {
     const resp = await apiFetch('/auth/clients');
     const clients = resp?.clients || [];
-    if (!clients.length) { compEl.innerHTML = '<div style="padding:32px;color:#94a3b8;text-align:center;">No clients found.</div>'; return; }
-    const qp = new URLSearchParams();
-    if (psState.dateFrom) qp.set('from', psState.dateFrom);
-    if (psState.dateTo)   qp.set('to',   psState.dateTo);
-    const q = qp.toString() ? '?' + qp.toString() : '';
+    if (!clients.length) {
+      compEl.innerHTML = '<div style="padding:32px;color:#94a3b8;text-align:center;font-size:13px;">No clients found.</div>';
+      setBadgeAllClients('empty');
+      return;
+    }
+
+    // Date params from the active state objects
+    const dateFrom = psState.dateFrom || '';
+    const dateTo   = psState.dateTo   || '';
+    const dtDate   = dtState.date || todayIST();
+    const qMain    = (dateFrom || dateTo) ? '?' + new URLSearchParams(Object.fromEntries([['from',dateFrom],['to',dateTo]].filter(([,v])=>v))) : '';
+
+    // Fetch endpoint per tab
+    const fetchForClient = (slug) => {
+      switch (_allClientsActiveTab) {
+        case 'platform_sales':
+          return apiFetch('/clients/' + slug + '/platform-sales' + qMain).catch(() => null);
+        case 'sku_performance':
+          return apiFetch('/clients/' + slug + '/platform-sales' + qMain).catch(() => null); // uses same endpoint for revenue
+        case 'campaign_insights':
+          return apiFetch('/clients/' + slug + '/campaign-insights' + qMain).catch(() => null);
+        case 'geographic_analysis':
+          return apiFetch('/clients/' + slug + '/geographic' + qMain).catch(() => null);
+        case 'daily_targets':
+          return apiFetch('/clients/' + slug + '/targets?date=' + dtDate).catch(() => null);
+        case 'ai_insights':
+          return apiFetch('/clients/' + slug + '/platform-sales' + qMain).catch(() => null); // cancel rate from PS
+        case 'utm_analytics':
+          return apiFetch('/clients/' + slug + '/utm/stats?days=30').catch(() => null);
+        case 'inventory':
+          return apiFetch('/clients/' + slug + '/inventory/stock').catch(() => null);
+        case 'projections_insights':
+          return apiFetch('/clients/' + slug + '/projections?bucket=week&periodsAhead=4').catch(() => null);
+        default:
+          return apiFetch('/clients/' + slug + '/platform-sales' + qMain).catch(() => null);
+      }
+    };
+
     const results = await Promise.allSettled(
-      clients.map(c => apiFetch('/clients/' + c.slug + '/platform-sales' + q)
-        .then(data => ({ client: c, data }))
-        .catch(err => ({ client: c, data: null, error: err.message }))
-      )
+      clients.map(c => fetchForClient(c.slug).then(data => ({ client: c, data })))
     );
-    const cards = results.map(r => {
-      const { client, data, error } = r.value || {};
-      const total = data?.grandTotal || 0;
-      const platforms = data?.platforms || [];
-      const prev = data?.prevGrandTotal || 0;
-      const growth = prev > 0 ? (((total - prev) / prev) * 100).toFixed(1) : null;
-      const fmtRev = n => n >= 100000 ? (n/100000).toFixed(2)+' L' : n >= 1000 ? (n/1000).toFixed(1)+'K' : Math.round(n).toString();
-      const pm = { amazon:'#ff9900',acutas:'#ff9900',flipkart:'#0077ff',blinkit:'#fbbf24',meta:'#1877f2',google:'#34a853' };
-      const platformRows = platforms.slice(0,5).map(p => {
-        const pct = total > 0 ? (p.totalRevenue/total*100).toFixed(1) : 0;
-        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #f1f5f9;">' +
-          '<span style="font-size:11px;color:#475569;display:flex;align-items:center;gap:5px;"><span style="width:8px;height:8px;border-radius:50%;background:'+(pm[p.platform]||'#94a3b8')+';display:inline-block;flex-shrink:0;"></span>'+p.platform.charAt(0).toUpperCase()+p.platform.slice(1)+'</span>' +
-          '<span style="font-size:11px;font-weight:600;color:#1e293b;">₹'+fmtRev(p.totalRevenue)+'</span>' +
-          '<span style="font-size:10px;color:#94a3b8;">'+pct+'%</span></div>';
-      }).join('');
-      const growthHtml = growth !== null ? '<span style="font-size:11px;font-weight:600;color:'+(parseFloat(growth)>=0?'#059669':'#dc2626')+';">'+(parseFloat(growth)>=0?'▲':'▼')+' '+Math.abs(growth)+'%</span>' : '';
-      return '<div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:20px;min-width:280px;flex:1;">' +
-        '<div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:4px;">'+(client?.name||'—')+'</div>' +
-        (error ? '<div style="color:#dc2626;font-size:12px;">Failed: '+error+'</div>' :
-          '<div style="display:flex;align-items:baseline;gap:4px;margin-bottom:12px;"><span style="font-size:24px;font-weight:800;color:#0f172a;">₹'+fmtRev(total)+'</span>'+growthHtml+'</div>' +
-          '<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;">Platform Breakdown</div>' +
-          (platformRows||'<div style="font-size:11px;color:#94a3b8;padding:8px 0;">No data yet</div>') +
-          '<div style="margin-top:12px;"><button onclick="switchClient(\''+client?.slug+'\')" style="font-size:11px;font-weight:600;padding:6px 14px;border-radius:6px;border:1.5px solid #e2e8f0;background:#f8fafc;color:#334155;cursor:pointer;">View Full Dashboard →</button></div>') +
-        '</div>';
-    }).join('');
-    compEl.innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;">'+cards+'</div>';
+
+    // Render a grid of cards — 2-col on wide, 1-col on narrow
+    compEl.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;">' +
+      results.map(r => {
+        const { client, data } = r.value || {};
+        return _renderAllClientsCard(client, data, _allClientsActiveTab);
+      }).join('') +
+    '</div>';
+
+    setBadgeAllClients('live');
   } catch(e) {
     compEl.innerHTML = '<div style="padding:32px;color:#dc2626;font-size:13px;">Failed: ' + e.message + '</div>';
+    setBadgeAllClients('empty');
   }
+}
+
+// ── Card renderer — one card per client, content varies by tab ───────
+function _renderAllClientsCard(client, data, tabKey) {
+  const name = client?.name || '—';
+  const slug = client?.slug || '';
+
+  // Format helpers scoped to this function
+  const fmtL = n => {
+    if (!n) return '₹0';
+    if (n >= 100000) return '₹' + (n/100000).toFixed(2) + ' L';
+    if (n >= 1000)   return '₹' + (n/1000).toFixed(1) + 'K';
+    return '₹' + Math.round(n);
+  };
+  const pct = (a, b) => b > 0 ? ((a/b)*100).toFixed(1) + '%' : '—';
+  const PLAT_COLOR = { amazon:'#ff9900', acutas:'#ff9900', flipkart:'#0077ff', blinkit:'#fbbf24', meta:'#1877f2', google:'#34a853' };
+
+  // Platform color dot
+  const dot = p => '<span style="width:7px;height:7px;border-radius:50%;background:' + (PLAT_COLOR[p]||'#94a3b8') + ';display:inline-block;flex-shrink:0;"></span>';
+
+  // Build the metric rows based on the active tab
+  let kpiHtml = '';
+  let subHtml = '';
+  let hasData = !!data;
+
+  if (!hasData) {
+    kpiHtml = '<div class="kpi-value" style="font-size:18px;color:#94a3b8;">No data</div>';
+  } else {
+    switch(tabKey) {
+
+      case 'platform_sales':
+      case 'sku_performance':
+      case 'ai_insights': {
+        const total   = data?.grandTotal || 0;
+        const prev    = data?.prevGrandTotal;
+        const units   = (data?.platforms||[]).reduce((s,p) => s + (p.totalUnits||0), 0);
+        const orders  = (data?.platforms||[]).reduce((s,p) => s + (p.orderCount||0), 0);
+        const growth  = prev != null && prev > 0 ? (((total-prev)/prev)*100) : null;
+        const growthHtml = growth !== null
+          ? '<span style="font-size:11px;font-weight:600;color:' + (growth>=0?'#059669':'#dc2626') + ';margin-left:6px;">' + (growth>=0?'▲':'▼') + ' ' + Math.abs(growth).toFixed(1) + '%</span>'
+          : '';
+        kpiHtml = '<div class="kpi-value revenue-kpi" style="font-size:22px;">' + fmtL(total) + growthHtml + '</div>';
+        // Platform breakdown rows
+        const platforms = (data?.platforms||[]).slice(0,4);
+        subHtml = platforms.length
+          ? '<div style="margin-top:10px;display:flex;flex-direction:column;gap:5px;">' +
+            platforms.map(p =>
+              '<div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;">' +
+              '<span style="display:flex;align-items:center;gap:5px;color:#475569;">' + dot(p.platform) + p.platform.charAt(0).toUpperCase()+p.platform.slice(1) + '</span>' +
+              '<span style="font-weight:600;color:#1e293b;">' + fmtL(p.totalRevenue) + '</span>' +
+              '<span style="color:#94a3b8;">' + pct(p.totalRevenue, data.grandTotal) + '</span></div>'
+            ).join('') + '</div>'
+          : '<div style="font-size:11px;color:#94a3b8;margin-top:8px;">No platform data</div>';
+        if (tabKey === 'ai_insights') {
+          // Show cancellation rate derived from PS data
+          const cancelRev = data?.cancelledRevenue || 0;
+          const cancelPct = total > 0 ? ((cancelRev/(total+cancelRev))*100).toFixed(1) : '0';
+          subHtml += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9;font-size:11px;color:#64748b;">' +
+            '⚠ Cancelled revenue: <strong style="color:#dc2626;">' + fmtL(cancelRev) + '</strong> · ' + cancelPct + '% cancel rate</div>';
+        }
+        break;
+      }
+
+      case 'campaign_insights': {
+        const camps    = data?.campaigns || data?.platformSummary || [];
+        const spend    = typeof data?.totalSpend === 'number' ? data.totalSpend
+                       : (Array.isArray(camps) ? camps.reduce((s,c) => s+(Number(c.standard_spend)||0), 0) : 0);
+        const campRev  = typeof data?.totalRevenue === 'number' ? data.totalRevenue
+                       : (Array.isArray(camps) ? camps.reduce((s,c) => s+(Number(c.standard_revenue)||0), 0) : 0);
+        const roas     = spend > 0 ? (campRev/spend).toFixed(1) + 'x' : '—';
+        const numCamps = Array.isArray(camps) ? camps.length : 0;
+        kpiHtml = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">' +
+          '<div class="kpi-card" style="padding:10px 12px;">' +
+            '<div class="kpi-label">Ad Spend</div>' +
+            '<div class="kpi-value" style="font-size:16px;">' + fmtL(spend) + '</div>' +
+          '</div>' +
+          '<div class="kpi-card" style="padding:10px 12px;">' +
+            '<div class="kpi-label">ROAS</div>' +
+            '<div class="kpi-value" style="font-size:16px;">' + roas + '</div>' +
+            '<div class="kpi-sub">' + numCamps + ' campaigns</div>' +
+          '</div></div>';
+        break;
+      }
+
+      case 'geographic_analysis': {
+        const cities = Array.isArray(data) ? data : [];
+        const topCity = cities[0];
+        const stateMap = {};
+        cities.forEach(c => {
+          const s = c.state || 'Unknown';
+          stateMap[s] = (stateMap[s]||0) + (c.revenue||0);
+        });
+        const topState = Object.entries(stateMap).sort((a,b)=>b[1]-a[1])[0];
+        const totalRev = cities.reduce((s,c) => s+(c.revenue||0), 0);
+        kpiHtml = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">' +
+          '<div class="kpi-card" style="padding:10px 12px;">' +
+            '<div class="kpi-label">Top City</div>' +
+            '<div style="font-size:13px;font-weight:700;color:var(--theme-primary);margin:4px 0 2px;">' + (topCity?.city||'—') + '</div>' +
+            '<div class="kpi-sub">' + fmtL(topCity?.revenue||0) + '</div>' +
+          '</div>' +
+          '<div class="kpi-card" style="padding:10px 12px;">' +
+            '<div class="kpi-label">Top State</div>' +
+            '<div style="font-size:13px;font-weight:700;color:var(--theme-primary);margin:4px 0 2px;">' + (topState?.[0]||'—') + '</div>' +
+            '<div class="kpi-sub">' + fmtL(topState?.[1]||0) + '</div>' +
+          '</div></div>';
+        subHtml = '<div style="margin-top:8px;font-size:11px;color:#94a3b8;">' + cities.length + ' cities tracked · Total: ' + fmtL(totalRev) + '</div>';
+        break;
+      }
+
+      case 'daily_targets': {
+        // data is { amazon:{target,achieved}, meta:{...}, ... }
+        // targets is separate from achieved — the /targets endpoint returns both merged
+        const plats = ['amazon','acutas','flipkart','blinkit','meta','google'];
+        let totalTarget = 0, totalAchieved = 0;
+        plats.forEach(p => {
+          totalTarget   += Number(data?.[p]?.target   || 0);
+          totalAchieved += Number(data?.[p]?.achieved || 0);
+        });
+        const attainPct = totalTarget > 0 ? (totalAchieved/totalTarget*100) : 0;
+        const attainColor = attainPct >= 100 ? '#059669' : attainPct >= 50 ? '#d97706' : '#dc2626';
+        kpiHtml = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">' +
+          '<div class="kpi-card" style="padding:10px 12px;">' +
+            '<div class="kpi-label">Achieved</div>' +
+            '<div class="kpi-value" style="font-size:16px;">' + fmtL(totalAchieved) + '</div>' +
+            '<div class="kpi-sub">Target: ' + fmtL(totalTarget) + '</div>' +
+          '</div>' +
+          '<div class="kpi-card" style="padding:10px 12px;">' +
+            '<div class="kpi-label">Attainment</div>' +
+            '<div class="kpi-value" style="font-size:20px;color:' + attainColor + ';">' + attainPct.toFixed(1) + '%</div>' +
+          '</div></div>';
+        break;
+      }
+
+      case 'utm_analytics': {
+        const rows = Array.isArray(data) ? data : [];
+        const clicks  = rows.reduce((s,r) => s+(Number(r.clicks)||0), 0);
+        const convs   = rows.reduce((s,r) => s+(Number(r.conversions)||0), 0);
+        const utmRev  = rows.reduce((s,r) => s+(Number(r.revenue)||0), 0);
+        const cvr     = clicks > 0 ? ((convs/clicks)*100).toFixed(2) + '%' : '—';
+        kpiHtml = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">' +
+          '<div class="kpi-card" style="padding:10px 12px;">' +
+            '<div class="kpi-label">Clicks</div>' +
+            '<div class="kpi-value" style="font-size:16px;">' + clicks.toLocaleString('en-IN') + '</div>' +
+            '<div class="kpi-sub">CVR: ' + cvr + '</div>' +
+          '</div>' +
+          '<div class="kpi-card" style="padding:10px 12px;">' +
+            '<div class="kpi-label">Revenue</div>' +
+            '<div class="kpi-value" style="font-size:16px;">' + fmtL(utmRev) + '</div>' +
+            '<div class="kpi-sub">' + convs + ' conversions</div>' +
+          '</div></div>';
+        break;
+      }
+
+      case 'inventory': {
+        const rows    = Array.isArray(data) ? data : [];
+        const total   = rows.length;
+        const outOf   = rows.filter(r => r.quantityOnHand <= 0).length;
+        const lowStk  = rows.filter(r => r.quantityOnHand > 0 && r.quantityOnHand <= r.lowStockThreshold).length;
+        kpiHtml = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px;">' +
+          '<div class="kpi-card" style="padding:10px 12px;">' +
+            '<div class="kpi-label">Total SKUs</div>' +
+            '<div class="kpi-value" style="font-size:18px;">' + total + '</div>' +
+          '</div>' +
+          '<div class="kpi-card kpi-card--warn" style="padding:10px 12px;">' +
+            '<div class="kpi-label">Low Stock</div>' +
+            '<div class="kpi-value" style="font-size:18px;color:#d97706;">' + lowStk + '</div>' +
+          '</div>' +
+          '<div class="kpi-card kpi-card--danger" style="padding:10px 12px;">' +
+            '<div class="kpi-label">Out of Stock</div>' +
+            '<div class="kpi-value" style="font-size:18px;color:#dc2626;">' + outOf + '</div>' +
+          '</div></div>';
+        break;
+      }
+
+      case 'projections_insights': {
+        const totals = data?.totals || {};
+        const profit = totals?.profit ?? null;
+        const profColor = profit == null ? '#94a3b8' : profit >= 0 ? '#059669' : '#dc2626';
+        kpiHtml = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">' +
+          '<div class="kpi-card" style="padding:10px 12px;">' +
+            '<div class="kpi-label">Net Profit</div>' +
+            '<div class="kpi-value" style="font-size:16px;color:' + profColor + ';">' + (profit != null ? fmtL(profit) : '—') + '</div>' +
+          '</div>' +
+          '<div class="kpi-card" style="padding:10px 12px;">' +
+            '<div class="kpi-label">Ad Spend</div>' +
+            '<div class="kpi-value" style="font-size:16px;">' + fmtL(totals?.adSpend||0) + '</div>' +
+            '<div class="kpi-sub">Return loss: ' + fmtL(totals?.returnLoss||0) + '</div>' +
+          '</div></div>';
+        break;
+      }
+
+      default: {
+        kpiHtml = '<div class="kpi-value" style="font-size:18px;color:#94a3b8;">—</div>';
+      }
+    }
+  }
+
+  return (
+    '<div class="card" style="padding:18px 20px;">' +
+      // Card header: client name + "View" button
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
+        '<div style="font-size:14px;font-weight:700;color:#0f172a;">' + name + '</div>' +
+        '<button data-slug="' + slug + '" data-tab="' + _allClientsActiveTab + '" onclick="_allClientsCardClick(this)" ' +
+          'style="font-size:10px;font-weight:600;padding:4px 10px;border-radius:6px;border:1.5px solid var(--color-border);background:var(--color-surface-2);color:var(--theme-primary);cursor:pointer;white-space:nowrap;">' +
+          'Open →' +
+        '</button>' +
+      '</div>' +
+      kpiHtml +
+      subHtml +
+    '</div>'
+  );
+}
+function _allClientsCardClick(btn) {
+  const slug = btn.dataset.slug;
+  const tab  = btn.dataset.tab || 'platform_sales';
+  if (!slug) return;
+  switchClient(slug);         // sets state.clientSlug, hides All Clients panel
+  showTab(tab);               // navigates to the correct tab for the new client
 }
 
 function showAllClientsPanel(show) {
@@ -9242,6 +9765,33 @@ function _exportDT(table, client, date) {
 
 function _exportAI(table, client, date) {
   if (table==='cancellations'||table==='all') { if(_cancelData&&_cancelData.length) exportCancellationTracker(); else if(table==='cancellations'){alert('No cancellation data yet.');return;} }
+  if (table==='daylog'||table==='all') {
+    if (_cancelData && _cancelData.length) {
+      const fromRaw = document.getElementById('cancelLogFrom')?.value || '';
+      const toRaw   = document.getElementById('cancelLogTo')?.value   || '';
+      let rows = [..._cancelData];
+      if (fromRaw) rows = rows.filter(r => (r.order_date||'') >= fromRaw);
+      if (toRaw)   rows = rows.filter(r => (r.order_date||'') <= toRaw);
+      const sorted = rows.sort((a,b) => (b.order_date||'').localeCompare(a.order_date||''));
+      const hdr = ['S.No.','Date','Order ID','Platform','Buyer Name','Phone','City','SKU / Product','Status','Revenue Lost (INR)','Past Cancels by Buyer','In Pattern Watch'];
+      const csvRows = sorted.map((r,i) => {
+        const extras = r.raw_extras || {};
+        const buyerName = (extras['Billing Name']||extras['billing_name']||extras['Shipping Name']||extras['shipping_name']||'').trim();
+        const phone     = (extras['Billing Phone']||extras['billing_phone']||extras['Shipping Phone']||extras['shipping_phone']||'').trim();
+        const nameKey = buyerName.toLowerCase();
+        // Count past cancels
+        const pastCount = buyerName ? (_cancelData||[]).filter(x => {
+          const n = (x.raw_extras?.['Billing Name']||x.raw_extras?.['billing_name']||x.raw_extras?.['Shipping Name']||x.raw_extras?.['shipping_name']||'').trim().toLowerCase();
+          return n === nameKey;
+        }).length : 0;
+        const inPattern = (_fraudPatternIndex && nameKey && _fraudPatternIndex.has(nameKey)) ? 'Yes' : 'No';
+        return [i+1, r.order_date||'—', r.standard_order_id||'—', r.platform||'—', buyerName||'Unknown',
+                phone||'—', r.standard_city||'—', r.standard_sku||r.standard_product_name||'—',
+                r.financial_status||'—', _fmtN(r.standard_revenue), pastCount, inPattern];
+      });
+      _downloadCsv([hdr,...csvRows], client+'_cancellation_day_log_'+date+'.csv');
+    } else if (table==='daylog') { alert('No cancellation data yet.'); return; }
+  }
   if (table==='highrisk'    ||table==='all') { if(_highRiskData&&_highRiskData.length) exportHighRiskOrders(); else if(table==='highrisk'){alert('No high-risk data yet.');return;} }
   if (table==='fraud'       ||table==='all') { if(_lastFraudData) exportFraudPatterns(); else if(table==='fraud'){alert('No fraud data yet.');return;} }
 }
