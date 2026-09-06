@@ -7711,7 +7711,11 @@ function renderCancelDayLog() {
           '<span style="color:#64748b;font-weight:600;">' + orderDate + '</span>' +
           '<span style="color:#cbd5e1;margin:0 2px;">→</span>' +
           '<span style="color:#94a3b8;">Cancelled:</span>' +
-          '<span style="color:' + statusColor + ';font-weight:600;">' + (cancelDate !== '—' ? cancelDate : '<em style="font-weight:400;color:#94a3b8;">not recorded</em>') + '</span>' +
+          '<span style="color:' + statusColor + ';font-weight:600;">' +
+            (cancelDate !== '—'
+              ? cancelDate
+              : '<span style="color:#94a3b8;font-style:italic;">same as order date</span>') +
+          '</span>' +
         '</div>' +
         '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:10px;color:#94a3b8;">' +
           platDot +
