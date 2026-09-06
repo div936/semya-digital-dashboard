@@ -7577,13 +7577,24 @@ function renderCancelDayLog() {
     return;
   }
 
-  // Apply date filter from the card's own date inputs
+  // Apply date filter by cancelled_date — matches Shopify's own "Sales reversals"
+  // logic which counts by the date the cancellation/void/refund happened,
+  // not the original order date. An order placed in July but cancelled
+  // yesterday appears in yesterday's view here, same as Shopify reports.
   const fromRaw = document.getElementById('cancelLogFrom')?.value || '';
   const toRaw   = document.getElementById('cancelLogTo')?.value   || '';
 
   let filtered = _cancelData;
-  if (fromRaw) filtered = filtered.filter(r => (r.order_date || '') >= fromRaw);
-  if (toRaw)   filtered = filtered.filter(r => (r.order_date || '') <= toRaw);
+  if (fromRaw || toRaw) {
+    filtered = filtered.filter(r => {
+      // Use cancelled_date if available; fall back to order_date for
+      // rows ingested before cancelled_date was added to the select.
+      const cd = r.cancelled_date || r.order_date || '';
+      if (fromRaw && cd < fromRaw) return false;
+      if (toRaw   && cd > toRaw)   return false;
+      return true;
+    });
+  }
 
   // Only Shopify-family platforms have buyer PII (raw_extras)
   // Amazon/Acutas rows still show but without buyer name
@@ -7620,10 +7631,10 @@ function renderCancelDayLog() {
     buyerHistory.set(k, { count: prev.count + 1, revenue: prev.revenue + (Number(r.standard_revenue)||0) });
   }
 
-  // Sort filtered rows by date descending — flat list, no day grouping
+  // Sort by cancelled_date descending (when it was cancelled) — matches Shopify
   const sorted = [...filtered].sort((a, b) => {
-    const da = a.order_date || '';
-    const db = b.order_date || '';
+    const da = a.cancelled_date || a.order_date || '';
+    const db = b.cancelled_date || b.order_date || '';
     return db.localeCompare(da) || (Number(b.standard_revenue)||0) - (Number(a.standard_revenue)||0);
   });
 
@@ -7647,12 +7658,13 @@ function renderCancelDayLog() {
     const buyerName = id.name;
     const phone     = id.phone;
 
-    const rev      = Number(r.standard_revenue) || 0;
-    const orderId  = r.standard_order_id || '—';
-    const sku      = r.standard_sku || r.standard_product_name || '—';
-    const platform = r.platform || '';
-    const city     = r.standard_city || '';
-    const date     = r.order_date || '—';
+    const rev         = Number(r.standard_revenue) || 0;
+    const orderId     = r.standard_order_id || '—';
+    const sku         = r.standard_sku || r.standard_product_name || '—';
+    const platform    = r.platform || '';
+    const city        = r.standard_city || '';
+    const orderDate   = r.order_date     || '—';
+    const cancelDate  = r.cancelled_date || '—';  // date the void/refund was recorded
     const fs       = (r.financial_status || r.standard_status || '').toLowerCase();
     const isVoid   = fs === 'voided' || fs === 'cancelled';
     const statusLabel = isVoid ? 'Cancelled' : 'Refunded';
@@ -7689,10 +7701,17 @@ function renderCancelDayLog() {
       '<div style="flex:1;min-width:0;">' +
         '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:4px;">' +
           '<span style="font-size:9px;font-weight:700;padding:1px 7px;border-radius:99px;background:' + statusBg + ';color:' + statusColor + ';border:1px solid ' + statusBorder + ';flex-shrink:0;">' + statusLabel + '</span>' +
-          '<span style="font-size:10px;color:#94a3b8;flex-shrink:0;">' + date + '</span>' +
           '<span style="font-size:11px;font-weight:700;color:#1e293b;font-family:var(--font-mono);">' + orderId + '</span>' +
           (buyerName ? '<span style="font-size:11px;font-weight:600;color:#334155;">' + buyerName + '</span>' : '<span style="font-size:11px;color:#94a3b8;">Unknown buyer</span>') +
           patternFlag + historyFlag +
+        '</div>' +
+        // Date line: ordered on X · cancelled on Y
+        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;margin-bottom:3px;">' +
+          '<span style="color:#94a3b8;">Ordered:</span>' +
+          '<span style="color:#64748b;font-weight:600;">' + orderDate + '</span>' +
+          '<span style="color:#cbd5e1;margin:0 2px;">→</span>' +
+          '<span style="color:#94a3b8;">Cancelled:</span>' +
+          '<span style="color:' + statusColor + ';font-weight:600;">' + (cancelDate !== '—' ? cancelDate : '<em style="font-weight:400;color:#94a3b8;">not recorded</em>') + '</span>' +
         '</div>' +
         '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:10px;color:#94a3b8;">' +
           platDot +
@@ -9750,30 +9769,41 @@ function _exportAI(table, client, date) {
       const fromRaw = document.getElementById('cancelLogFrom')?.value || '';
       const toRaw   = document.getElementById('cancelLogTo')?.value   || '';
       let rows = [..._cancelData];
-      if (fromRaw) rows = rows.filter(r => (r.order_date||'') >= fromRaw);
-      if (toRaw)   rows = rows.filter(r => (r.order_date||'') <= toRaw);
-      const sorted = rows.sort((a,b) => (b.order_date||'').localeCompare(a.order_date||''));
-      const hdr = ['S.No.','Date','Order ID','Platform','Buyer Name','Phone','City','SKU / Product','Status','Revenue Lost (INR)','Past Cancels by Buyer','In Pattern Watch'];
+      // Filter by cancelled_date matching Shopify's reversal logic
+      if (fromRaw || toRaw) {
+        rows = rows.filter(r => {
+          const cd = r.cancelled_date || r.order_date || '';
+          if (fromRaw && cd < fromRaw) return false;
+          if (toRaw   && cd > toRaw)   return false;
+          return true;
+        });
+      }
+      const sorted = rows.sort((a,b) => {
+        const da = a.cancelled_date || a.order_date || '';
+        const db = b.cancelled_date || b.order_date || '';
+        return db.localeCompare(da);
+      });
+      const hdr = ['S.No.','Order Date','Cancelled Date','Order ID','Platform','Buyer Name','Phone','City','SKU / Product','Status','Revenue Lost (INR)','Past Cancels by Buyer','In Pattern Watch'];
       const _pickId = (extras) => { if (!extras) return {name:'',phone:''}; const p = (ks) => { for (const k of ks) { const v = extras[k]; if (v&&String(v).trim()) return String(v).trim(); } return ''; }; return { name: p(['Billing Name','Shipping Name','Buyer name','Ship to name','Customer Name','Name']), phone: p(['Billing Phone','Shipping Phone','Phone','Buyer Phone','Customer Phone','Mobile']) }; };
       const csvRows = sorted.map((r,i) => {
         const id = _pickId(r.raw_extras || {});
         const buyerName = id.name;
         const phone     = id.phone;
         const nameKey = buyerName.toLowerCase();
-        // Count past cancels from full dataset
         const pastCount = buyerName ? (_cancelData||[]).filter(x => {
           const xid = _pickId(x.raw_extras||{});
           return xid.name.toLowerCase() === nameKey;
         }).length : 0;
         const inPattern = (_fraudPatternIndex && nameKey && _fraudPatternIndex.has(nameKey)) ? 'Yes' : 'No';
-        return [i+1, r.order_date||'—', r.standard_order_id||'—', r.platform||'—', buyerName||'Unknown',
-                phone||'—', r.standard_city||'—', r.standard_sku||r.standard_product_name||'—',
-                r.financial_status||'—', _fmtN(r.standard_revenue), pastCount, inPattern];
+        return [i+1, r.order_date||'—', r.cancelled_date||'—', r.standard_order_id||'—', r.platform||'—',
+                buyerName||'Unknown', phone||'—', r.standard_city||'—',
+                r.standard_sku||r.standard_product_name||'—',
+                r.financial_status||r.standard_status||'—', _fmtN(r.standard_revenue), pastCount, inPattern];
       });
       _downloadCsv([hdr,...csvRows], client+'_cancellation_day_log_'+date+'.csv');
     } else if (table==='daylog') { alert('No cancellation data yet.'); return; }
   }
-  if (table==='highrisk'    ||table==='all') { if(_highRiskData&&_highRiskData.length) exportHighRiskOrders(); else if(table==='highrisk'){alert('No high-risk data yet.');return;} }
+    if (table==='highrisk'    ||table==='all') { if(_highRiskData&&_highRiskData.length) exportHighRiskOrders(); else if(table==='highrisk'){alert('No high-risk data yet.');return;} }
   if (table==='fraud'       ||table==='all') { if(_lastFraudData) exportFraudPatterns(); else if(table==='fraud'){alert('No fraud data yet.');return;} }
 }
 
