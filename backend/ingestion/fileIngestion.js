@@ -926,11 +926,11 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
       for (const row of normalisedRows) {
         const oid = row.standard_order_id;
         if (!oid) continue;
-        // financial_status and fulfillment_status are now their own mapped
-        // columns (not in raw_extras) — read from the column directly.
-        // Fall back to raw_extras for older rows ingested before this fix.
         const fin = String(row.financial_status || row.raw_extras?.['Financial Status'] || '').trim();
-        const ca  = String(row.raw_extras?.['Cancelled at'] || '').trim();
+        // Shopify populates 'Cancelled at' for explicit cancellations.
+        // Voided/refunded orders via payment gateway often leave 'Cancelled at'
+        // blank but populate 'Closed at' instead — use that as a fallback.
+        const ca  = String(row.raw_extras?.['Cancelled at'] || row.raw_extras?.['Closed at'] || '').trim();
         if (!orderStatusMap.has(oid)) orderStatusMap.set(oid, { finStatus: '', cancelledAt: '' });
         const entry = orderStatusMap.get(oid);
         if (!entry.finStatus  && fin) entry.finStatus  = fin;
