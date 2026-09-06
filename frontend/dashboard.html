@@ -2321,7 +2321,7 @@
           </div>
         </div>
         <div style="font-size:11px;color:#94a3b8;padding:2px 2px 10px;">
-          Individual cancellations grouped by day · buyer details shown for Shopify/Meta/Google orders · cross-referenced with Pattern Watch flags
+          All cancellations in the selected date range · buyer details shown for Shopify/Meta/Google orders · cross-referenced with Pattern Watch flags
         </div>
         <div id="cancelDayLogList">
           <div class="skel skel-insight" style="height:36px;margin-bottom:6px;"></div>
@@ -7620,126 +7620,91 @@ function renderCancelDayLog() {
     buyerHistory.set(k, { count: prev.count + 1, revenue: prev.revenue + (Number(r.standard_revenue)||0) });
   }
 
-  // Group filtered rows by order_date descending
-  const byDay = new Map();
-  for (const r of filtered) {
-    const d = r.order_date || 'Unknown date';
-    if (!byDay.has(d)) byDay.set(d, []);
-    byDay.get(d).push(r);
-  }
-  const sortedDays = [...byDay.keys()].sort((a, b) => b.localeCompare(a));
+  // Sort filtered rows by date descending — flat list, no day grouping
+  const sorted = [...filtered].sort((a, b) => {
+    const da = a.order_date || '';
+    const db = b.order_date || '';
+    return db.localeCompare(da) || (Number(b.standard_revenue)||0) - (Number(a.standard_revenue)||0);
+  });
 
+  const totalRev = filtered.reduce((s,r) => s+(Number(r.standard_revenue)||0), 0);
   if (meta) {
-    meta.textContent = filtered.length + ' cancellation' + (filtered.length !== 1 ? 's' : '') +
-      ' · ' + sortedDays.length + ' day' + (sortedDays.length !== 1 ? 's' : '') +
-      ' · ₹' + (filtered.reduce((s,r) => s+(Number(r.standard_revenue)||0), 0)/100000).toFixed(2) + 'L lost';
+    const fromLabel = fromRaw || '—';
+    const toLabel   = toRaw   || '—';
+    const rangeText = fromRaw === toRaw && fromRaw ? fromRaw : fromLabel + ' → ' + toLabel;
+    meta.textContent = sorted.length + ' cancellation' + (sorted.length !== 1 ? 's' : '') +
+      ' · ' + rangeText +
+      ' · ₹' + (totalRev/100000).toFixed(2) + 'L lost';
   }
 
-  // Render collapsible day groups
-  const fmt = d => {
-    try { return new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday:'short', day:'numeric', month:'short', year:'numeric' }); }
-    catch { return d; }
-  };
+  if (!sorted.length) {
+    el.innerHTML = '<div style="text-align:center;padding:24px 0;color:#94a3b8;font-size:12px;">No cancellations in this date range.</div>';
+    return;
+  }
 
-  el.innerHTML = sortedDays.map((day, dayIdx) => {
-    const rows = byDay.get(day);
-    const dayRev = rows.reduce((s, r) => s + (Number(r.standard_revenue)||0), 0);
-    const groupId = 'cancelDayGroup_' + dayIdx;
-    const isToday = day === todayIST();
-    const isYest  = (() => { const d = new Date(); d.setDate(d.getDate()-1); return day === toISTDateString(d); })();
-    const dayLabel = isToday ? 'Today' : isYest ? 'Yesterday' : fmt(day);
+  el.innerHTML = sorted.map(r => {
+    const id        = _pickIdentity(r.raw_extras);
+    const buyerName = id.name;
+    const phone     = id.phone;
 
-    const rowsHtml = rows.map(r => {
-      // Extract buyer identity using the same key variants as the backend
-      const id        = _pickIdentity(r.raw_extras);
-      const buyerName = id.name;
-      const phone     = id.phone;
-      const pincode   = id.pincode;
+    const rev      = Number(r.standard_revenue) || 0;
+    const orderId  = r.standard_order_id || '—';
+    const sku      = r.standard_sku || r.standard_product_name || '—';
+    const platform = r.platform || '';
+    const city     = r.standard_city || '';
+    const date     = r.order_date || '—';
+    const fs       = (r.financial_status || r.standard_status || '').toLowerCase();
+    const isVoid   = fs === 'voided' || fs === 'cancelled';
+    const statusLabel = isVoid ? 'Cancelled' : 'Refunded';
+    const statusColor = isVoid ? '#dc2626' : '#f97316';
+    const statusBg    = isVoid ? '#fef2f2' : '#fff7ed';
+    const statusBorder= isVoid ? '#fecaca' : '#fed7aa';
 
-      const rev      = Number(r.standard_revenue) || 0;
-      const orderId  = r.standard_order_id || '—';
-      const sku      = r.standard_sku || r.standard_product_name || '—';
-      const platform = r.platform || '';
-      const city     = r.standard_city || '';
-      const fs       = (r.financial_status || '').toLowerCase();
-      const isVoid   = fs === 'voided';
-      const statusLabel = isVoid ? 'Voided' : 'Refunded';
-      const statusColor = isVoid ? '#dc2626' : '#f97316';
-      const statusBg    = isVoid ? '#fef2f2' : '#fff7ed';
-      const statusBorder= isVoid ? '#fecaca' : '#fed7aa';
+    // Pattern Watch cross-reference
+    const nameKey = buyerName.toLowerCase();
+    let patternFlag = '';
+    if (_fraudPatternIndex && nameKey && _fraudPatternIndex.has(nameKey)) {
+      const pat = _fraudPatternIndex.get(nameKey);
+      patternFlag = '<span style="font-size:10px;font-weight:700;color:#dc2626;background:#fef2f2;' +
+        'border:1px solid #fecaca;border-radius:4px;padding:1px 6px;margin-left:4px;" ' +
+        'title="' + (pat.reason || 'Flagged in Pattern Watch') + '">⚠ Pattern</span>';
+    }
 
-      // Pattern Watch cross-reference
-      let patternFlag = '';
-      const nameKey = buyerName.toLowerCase();
-      if (_fraudPatternIndex && nameKey && _fraudPatternIndex.has(nameKey)) {
-        const pat = _fraudPatternIndex.get(nameKey);
-        patternFlag = '<span style="font-size:10px;font-weight:700;color:#dc2626;background:#fef2f2;' +
-          'border:1px solid #fecaca;border-radius:4px;padding:1px 6px;margin-left:4px;" ' +
-          'title="' + (pat.reason || 'Flagged in Pattern Watch') + '">⚠ Pattern Watch</span>';
+    // Past cancellation count for this buyer
+    let historyFlag = '';
+    if (buyerName) {
+      const hist = buyerHistory.get(nameKey);
+      const pastCount = hist ? hist.count : 0;
+      if (pastCount > 1) {
+        historyFlag = '<span style="font-size:10px;color:#94a3b8;margin-left:4px;">' +
+          '· ' + pastCount + ' total cancels</span>';
       }
+    }
 
-      // Past cancellation history for this buyer
-      let historyFlag = '';
-      if (buyerName) {
-        const hist = buyerHistory.get(nameKey);
-        const pastCount = hist ? hist.count : 0; // includes this order
-        if (pastCount > 1) {
-          historyFlag = '<span style="font-size:10px;color:#94a3b8;margin-left:4px;">' +
-            '· ' + pastCount + ' total cancels by this buyer</span>';
-        }
-      }
+    const platColors = { meta:'#1877f2', google:'#34a853', flipkart:'#0077ff', blinkit:'#fbbf24', amazon:'#ff9900', acutas:'#ff9900' };
+    const platDot = '<span style="width:6px;height:6px;border-radius:50%;background:' + (platColors[platform]||'#94a3b8') + ';display:inline-block;flex-shrink:0;"></span>';
 
-      // Platform color dot
-      const platColors = { meta:'#1877f2', google:'#34a853', flipkart:'#0077ff', blinkit:'#fbbf24', amazon:'#ff9900', acutas:'#ff9900' };
-      const platDot = '<span style="width:6px;height:6px;border-radius:50%;background:' + (platColors[platform]||'#94a3b8') + ';display:inline-block;flex-shrink:0;"></span>';
-
-      return '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;' +
-        'padding:10px 8px;border-bottom:1px solid #f8fafc;">' +
-        '<div style="flex:1;min-width:0;">' +
-          // Row 1: status chip + order ID + buyer name + flags
-          '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:4px;">' +
-            '<span style="font-size:9px;font-weight:700;padding:1px 7px;border-radius:99px;background:' + statusBg + ';color:' + statusColor + ';border:1px solid ' + statusBorder + ';flex-shrink:0;">' + statusLabel + '</span>' +
-            '<span style="font-size:11px;font-weight:700;color:#1e293b;font-family:var(--font-mono);">' + orderId + '</span>' +
-            (buyerName ? '<span style="font-size:11px;font-weight:600;color:#334155;">' + buyerName + '</span>' : '<span style="font-size:11px;color:#94a3b8;">Unknown buyer</span>') +
-            patternFlag +
-            historyFlag +
-          '</div>' +
-          // Row 2: SKU · platform · city · phone
-          '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:10px;color:#94a3b8;">' +
-            platDot +
-            '<span>' + platform.charAt(0).toUpperCase() + platform.slice(1) + '</span>' +
-            (sku !== '—' ? '<span>·</span><span style="font-family:var(--font-mono);">' + sku + '</span>' : '') +
-            (city ? '<span>·</span><span>' + city + '</span>' : '') +
-            (phone ? '<span>·</span><span>📞 ' + phone.replace(/^(\+?91)?/, '').slice(-10) + '</span>' : '') +
-          '</div>' +
+    return '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;' +
+      'padding:10px 8px;border-bottom:1px solid #f8fafc;">' +
+      '<div style="flex:1;min-width:0;">' +
+        '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:4px;">' +
+          '<span style="font-size:9px;font-weight:700;padding:1px 7px;border-radius:99px;background:' + statusBg + ';color:' + statusColor + ';border:1px solid ' + statusBorder + ';flex-shrink:0;">' + statusLabel + '</span>' +
+          '<span style="font-size:10px;color:#94a3b8;flex-shrink:0;">' + date + '</span>' +
+          '<span style="font-size:11px;font-weight:700;color:#1e293b;font-family:var(--font-mono);">' + orderId + '</span>' +
+          (buyerName ? '<span style="font-size:11px;font-weight:600;color:#334155;">' + buyerName + '</span>' : '<span style="font-size:11px;color:#94a3b8;">Unknown buyer</span>') +
+          patternFlag + historyFlag +
         '</div>' +
-        // Revenue
-        '<div style="text-align:right;flex-shrink:0;">' +
-          '<div style="font-size:13px;font-weight:700;color:' + statusColor + ';">' + fmtRevenue(rev) + '</div>' +
-          '<div style="font-size:9px;color:#94a3b8;">lost</div>' +
-        '</div>' +
-      '</div>';
-    }).join('');
-
-    return '<div style="margin-bottom:8px;border:1px solid #f1f5f9;border-radius:var(--radius-sm);overflow:hidden;">' +
-      // Collapsible day header
-      '<div onclick="document.getElementById(\'' + groupId + '\').classList.toggle(\'cancel-day-open\')" ' +
-        'style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;' +
-        'background:#f8fafc;cursor:pointer;user-select:none;" class="cancel-day-header">' +
-        '<div style="display:flex;align-items:center;gap:8px;">' +
-          '<svg class="cancel-day-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5">' +
-            '<polyline points="9 18 15 12 9 6"/></svg>' +
-          '<span style="font-size:12px;font-weight:700;color:#1e293b;">' + dayLabel + '</span>' +
-          '<span style="font-size:10px;color:#94a3b8;">' + day + '</span>' +
-        '</div>' +
-        '<div style="display:flex;align-items:center;gap:10px;">' +
-          '<span style="font-size:11px;font-weight:600;color:#dc2626;">' + rows.length + ' cancel' + (rows.length !== 1 ? 's' : '') + '</span>' +
-          '<span style="font-size:11px;font-weight:700;color:#dc2626;">−' + fmtRevenue(dayRev) + '</span>' +
+        '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:10px;color:#94a3b8;">' +
+          platDot +
+          '<span>' + platform.charAt(0).toUpperCase() + platform.slice(1) + '</span>' +
+          (sku !== '—' ? '<span>·</span><span style="font-family:var(--font-mono);">' + sku + '</span>' : '') +
+          (city ? '<span>·</span><span>' + city + '</span>' : '') +
+          (phone ? '<span>·</span><span>📞 ' + phone.replace(/^(\+?91)?/, '').slice(-10) + '</span>' : '') +
         '</div>' +
       '</div>' +
-      // Collapsible content — first day open by default
-      '<div id="' + groupId + '" class="cancel-day-group' + (dayIdx === 0 ? ' cancel-day-open' : '') + '">' +
-        rowsHtml +
+      '<div style="text-align:right;flex-shrink:0;">' +
+        '<div style="font-size:13px;font-weight:700;color:' + statusColor + ';">' + fmtRevenue(rev) + '</div>' +
+        '<div style="font-size:9px;color:#94a3b8;">lost</div>' +
       '</div>' +
     '</div>';
   }).join('');
