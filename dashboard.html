@@ -7398,16 +7398,24 @@ async function fetchAndRenderOrderRisk() {
     q.set('includeAllStatuses', 'true');   // backend must honour this flag
     const resp = await apiFetch('/clients/' + clientSlug + '/sku-performance?' + q.toString());
     const rows = resp?.revenue || [];
-    // Set day-wise log date inputs to same range if not already set
+    // Set day-wise log to last 7 days by default (independent of the
+    // 90-day tracker range) — gives a focused daily view immediately
     const logFrom = document.getElementById('cancelLogFrom');
     const logTo   = document.getElementById('cancelLogTo');
-    if (logFrom && !logFrom.value) logFrom.value = fromVal;
-    if (logTo   && !logTo.value)   logTo.value   = toVal;
+    if (logFrom && !logFrom.value) {
+      const d7 = new Date(); d7.setDate(d7.getDate() - 7);
+      logFrom.value = toISTDateString(d7);
+    }
+    if (logTo && !logTo.value) logTo.value = toVal;
 
     // ── Separate cancelled vs high-risk active ─────────────────────
+    // Catch ALL cancellation signals:
+    // 1. financial_status = voided / refunded (Shopify standard)
+    // 2. standard_status = Cancelled (some platforms set this directly)
     const cancelled = rows.filter(r => {
       const fs = (r.financial_status || '').toLowerCase();
-      return fs === 'voided' || fs === 'refunded';
+      const ss = (r.standard_status  || '').toLowerCase();
+      return fs === 'voided' || fs === 'refunded' || ss === 'cancelled' || ss === 'returned';
     });
     const highRisk = rows.filter(r => {
       const fs  = (r.financial_status || '').toLowerCase();
@@ -7590,14 +7598,24 @@ function renderCancelDayLog() {
     _fraudPatternIndex = _buildFraudIndex(_lastFraudData);
   }
 
-  // Build phone→past-cancel count from the FULL _cancelData (not filtered)
-  // so history always reflects all known data, not just the visible window
-  const buyerHistory = new Map(); // key: buyer name (lc) → { count, revenue }
+  // Build buyer identity helper — tries all known key variants across platforms
+  const _pickIdentity = (extras) => {
+    if (!extras || typeof extras !== 'object') return { name: '', phone: '', pincode: '' };
+    const pick = (keys) => { for (const k of keys) { const v = extras[k]; if (v && String(v).trim()) return String(v).trim(); } return ''; };
+    return {
+      name:    pick(['Billing Name','Shipping Name','Buyer name','Ship to name','Customer Name','Name']),
+      phone:   pick(['Billing Phone','Shipping Phone','Phone','Buyer Phone','Customer Phone','Mobile','Mobile Number','Contact Number']),
+      pincode: pick(['Billing Zip','Shipping Zip','PIN Code','Postal Code','Zip','Pincode']),
+    };
+  };
+
+  // Build buyer history from full _cancelData (unfiltered) so
+  // 'past cancels by this buyer' reflects all-time, not just the current window
+  const buyerHistory = new Map();
   for (const r of _cancelData) {
-    const name = (r.raw_extras?.['Billing Name'] || r.raw_extras?.['billing_name'] ||
-                  r.raw_extras?.['Shipping Name'] || r.raw_extras?.['shipping_name'] || '').trim();
-    if (!name) continue;
-    const k = name.toLowerCase();
+    const id = _pickIdentity(r.raw_extras);
+    if (!id.name) continue;
+    const k = id.name.toLowerCase();
     const prev = buyerHistory.get(k) || { count: 0, revenue: 0 };
     buyerHistory.set(k, { count: prev.count + 1, revenue: prev.revenue + (Number(r.standard_revenue)||0) });
   }
@@ -7632,14 +7650,11 @@ function renderCancelDayLog() {
     const dayLabel = isToday ? 'Today' : isYest ? 'Yesterday' : fmt(day);
 
     const rowsHtml = rows.map(r => {
-      // Extract buyer identity from raw_extras
-      const extras = r.raw_extras || {};
-      const buyerName = (extras['Billing Name'] || extras['billing_name'] ||
-                         extras['Shipping Name'] || extras['shipping_name'] || '').trim();
-      const phone     = (extras['Billing Phone'] || extras['billing_phone'] ||
-                         extras['Shipping Phone'] || extras['shipping_phone'] || '').trim();
-      const pincode   = (extras['Billing Zip'] || extras['billing_zip'] ||
-                         extras['Shipping Zip'] || extras['shipping_zip'] || '').trim();
+      // Extract buyer identity using the same key variants as the backend
+      const id        = _pickIdentity(r.raw_extras);
+      const buyerName = id.name;
+      const phone     = id.phone;
+      const pincode   = id.pincode;
 
       const rev      = Number(r.standard_revenue) || 0;
       const orderId  = r.standard_order_id || '—';
@@ -9774,15 +9789,16 @@ function _exportAI(table, client, date) {
       if (toRaw)   rows = rows.filter(r => (r.order_date||'') <= toRaw);
       const sorted = rows.sort((a,b) => (b.order_date||'').localeCompare(a.order_date||''));
       const hdr = ['S.No.','Date','Order ID','Platform','Buyer Name','Phone','City','SKU / Product','Status','Revenue Lost (INR)','Past Cancels by Buyer','In Pattern Watch'];
+      const _pickId = (extras) => { if (!extras) return {name:'',phone:''}; const p = (ks) => { for (const k of ks) { const v = extras[k]; if (v&&String(v).trim()) return String(v).trim(); } return ''; }; return { name: p(['Billing Name','Shipping Name','Buyer name','Ship to name','Customer Name','Name']), phone: p(['Billing Phone','Shipping Phone','Phone','Buyer Phone','Customer Phone','Mobile']) }; };
       const csvRows = sorted.map((r,i) => {
-        const extras = r.raw_extras || {};
-        const buyerName = (extras['Billing Name']||extras['billing_name']||extras['Shipping Name']||extras['shipping_name']||'').trim();
-        const phone     = (extras['Billing Phone']||extras['billing_phone']||extras['Shipping Phone']||extras['shipping_phone']||'').trim();
+        const id = _pickId(r.raw_extras || {});
+        const buyerName = id.name;
+        const phone     = id.phone;
         const nameKey = buyerName.toLowerCase();
-        // Count past cancels
+        // Count past cancels from full dataset
         const pastCount = buyerName ? (_cancelData||[]).filter(x => {
-          const n = (x.raw_extras?.['Billing Name']||x.raw_extras?.['billing_name']||x.raw_extras?.['Shipping Name']||x.raw_extras?.['shipping_name']||'').trim().toLowerCase();
-          return n === nameKey;
+          const xid = _pickId(x.raw_extras||{});
+          return xid.name.toLowerCase() === nameKey;
         }).length : 0;
         const inPattern = (_fraudPatternIndex && nameKey && _fraudPatternIndex.has(nameKey)) ? 'Yes' : 'No';
         return [i+1, r.order_date||'—', r.standard_order_id||'—', r.platform||'—', buyerName||'Unknown',
