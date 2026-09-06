@@ -412,7 +412,7 @@ router.get(
         // cancellation tracker) — it's large JSONB and not needed for
         // normal sku-performance aggregation.
         const cols = includeAllStatuses
-          ? 'standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status, standard_product_name, standard_order_id, financial_status, risk_level, tags, raw_extras'
+          ? 'standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, cancelled_date, standard_status, standard_product_name, standard_order_id, financial_status, risk_level, tags, raw_extras'
           : 'standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status, standard_product_name, standard_order_id, financial_status, risk_level, tags';
         let q = supabaseAdmin
           .from('revenue_data')
