@@ -2508,6 +2508,11 @@
       <div class="card card-sm" style="margin-bottom:16px;">
         <div class="tab-toolbar">
           <span class="tab-title" id="allClientsTabTitle">All Clients — Platform Sales</span>
+          <!-- Date picker shown only on Daily Targets tab -->
+          <div id="allClientsDtDateWrap" style="display:none;align-items:center;gap:6px;">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <input type="date" class="date-input" id="allClientsDtDate" onchange="fetchAndRenderAllClients('daily_targets')" />
+          </div>
           <span class="fetch-badge loading" id="allClientsBadge" style="margin-left:auto;">
             <span class="fetch-dot"></span><span id="allClientsBadgeText">Loading</span>
           </span>
@@ -8895,9 +8900,16 @@ async function fetchAndRenderAllClients(tabKey) {
   _allClientsActiveTab = tabKey || _allClientsActiveTab || 'platform_sales';
   showAllClientsPanel(true);
 
-  // Update toolbar title
+  // Update toolbar title and show/hide Daily Targets date picker
   const titleEl = document.getElementById('allClientsTabTitle');
   if (titleEl) titleEl.textContent = ALL_CLIENTS_TAB_LABELS[_allClientsActiveTab] || 'All Clients';
+  const dtDateWrap = document.getElementById('allClientsDtDateWrap');
+  if (dtDateWrap) dtDateWrap.style.display = (_allClientsActiveTab === 'daily_targets') ? 'flex' : 'none';
+  // Default DT date picker to today if not set
+  const dtDateInput = document.getElementById('allClientsDtDate');
+  if (_allClientsActiveTab === 'daily_targets' && dtDateInput && !dtDateInput.value) {
+    dtDateInput.value = todayIST();
+  }
 
   setBadgeAllClients('loading');
   const compEl = document.getElementById('allClientsComparison');
@@ -8916,7 +8928,11 @@ async function fetchAndRenderAllClients(tabKey) {
     // Date params from the active state objects
     const dateFrom = psState.dateFrom || '';
     const dateTo   = psState.dateTo   || '';
-    const dtDate   = dtState.date || todayIST();
+    // For Daily Targets: use the All Clients dedicated date picker
+    const allClientsDtInput = document.getElementById('allClientsDtDate');
+    const dtDate = (_allClientsActiveTab === 'daily_targets' && allClientsDtInput?.value)
+      ? allClientsDtInput.value
+      : (dtState.date || todayIST());
     const qMain    = (dateFrom || dateTo) ? '?' + new URLSearchParams(Object.fromEntries([['from',dateFrom],['to',dateTo]].filter(([,v])=>v))) : '';
 
     // Fetch endpoint per tab
@@ -9047,15 +9063,30 @@ function _renderAllClientsCard(client, data, tabKey) {
       }
 
       case 'geographic_analysis': {
-        const cities = Array.isArray(data) ? data : [];
+        // API returns raw revenue_data rows with standard_city/standard_state.
+        // Aggregate them the same way fetchAndRenderGEO() does so city names resolve.
+        const rawRows = Array.isArray(data) ? data : [];
+        const byCity = {};
+        rawRows.forEach(r => {
+          const k = r.standard_city || r.city || 'Unknown';
+          if (!byCity[k]) byCity[k] = { city: k, revenue: 0, _stateCounts: {} };
+          byCity[k].revenue += Number(r.standard_revenue || r.revenue) || 0;
+          const st = r.standard_state || r.state || '';
+          if (st) byCity[k]._stateCounts[st] = (byCity[k]._stateCounts[st] || 0) + 1;
+        });
+        // Resolve majority state
+        Object.values(byCity).forEach(c => {
+          const counts = c._stateCounts;
+          c.state = Object.keys(counts).length
+            ? Object.keys(counts).reduce((a, b) => counts[a] >= counts[b] ? a : b) : '';
+          delete c._stateCounts;
+        });
+        const cities = Object.values(byCity).sort((a, b) => b.revenue - a.revenue);
         const topCity = cities[0];
         const stateMap = {};
-        cities.forEach(c => {
-          const s = c.state || 'Unknown';
-          stateMap[s] = (stateMap[s]||0) + (c.revenue||0);
-        });
+        cities.forEach(c => { const s = c.state || 'Unknown'; stateMap[s] = (stateMap[s]||0) + c.revenue; });
         const topState = Object.entries(stateMap).sort((a,b)=>b[1]-a[1])[0];
-        const totalRev = cities.reduce((s,c) => s+(c.revenue||0), 0);
+        const totalRev = cities.reduce((s,c) => s+c.revenue, 0);
         kpiHtml = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">' +
           '<div class="kpi-card" style="padding:10px 12px;">' +
             '<div class="kpi-label">Top City</div>' +
