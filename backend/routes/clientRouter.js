@@ -14,9 +14,24 @@ import { Router } from 'express';
 import { rbacMiddleware, requireTab } from '../middleware/rbac.js';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { detectSuspiciousPatterns } from '../lib/fraudDetector.js';
-import { backfillLocationByOrder, normaliseStateName, inferCategory, CATEGORY_KEYWORDS } from '../lib/columnMapper.js';
+import { backfillLocationByOrder, normaliseStateName, inferCategory } from '../lib/columnMapper.js';
 
 const router = Router({ mergeParams: true });
+
+// ── Load per-client product categories from DB (cached per request) ──
+// Returns array of { category, keywords, sku_prefixes } sorted by sort_order.
+// Cached on req._clientCategories after first call within a request.
+async function loadClientCategories(clientId, req) {
+  if (req && req._clientCategories) return req._clientCategories;
+  const { data } = await supabaseAdmin
+    .from('client_product_categories')
+    .select('category, keywords, sku_prefixes')
+    .eq('client_id', clientId)
+    .order('sort_order');
+  const cats = data || [];
+  if (req) req._clientCategories = cats;
+  return cats;
+}
 
 // ─── PAGINATED FETCH ──────────────────────────────────────────────
 // Supabase free tier caps rows at 1000 per request (project-level Max Rows setting).
@@ -205,6 +220,8 @@ router.get(
   async (req, res) => {
     const { client } = req.semya;
     const { from, to, platform } = req.query;
+    // Load per-client product categories once — used by inferCategory below
+    await loadClientCategories(client.id, req);
 
     const applyDiscounts = req.query.applyDiscounts === 'true';
 
@@ -260,7 +277,7 @@ router.get(
     // the chart it's driven from always agree.
     const categoryFilter = req.query.category || null;
     const dataForSummary = categoryFilter
-      ? data.filter(row => inferCategory(row.standard_product_name, row.standard_sku) === categoryFilter)
+      ? data.filter(row => inferCategory(row.standard_product_name, row.standard_sku, req._clientCategories || []) === categoryFilter)
       : data;
 
     // Apply per-line discount (Lineitem discount from Shopify raw_extras)
@@ -399,6 +416,7 @@ router.get(
   async (req, res) => {
     const { client } = req.semya;
     const { sku, platform, from, to } = req.query;
+    await loadClientCategories(client.id, req);
 
     // includeAllStatuses=true: used by AI Insights Cancellation Tracker
     // and High Risk cards — they need voided/refunded rows too.
@@ -493,9 +511,9 @@ router.get(
     let campaignsMatchedToProduct = [];
     if (sku) {
       const skuRow = filteredRevenue.find(r => r.standard_sku === sku);
-      productCategory = inferCategory(skuRow?.standard_product_name, sku);
-      const catEntry = CATEGORY_KEYWORDS.find(([cat]) => cat === productCategory);
-      const keywords = catEntry ? catEntry[1] : [];
+      productCategory = inferCategory(skuRow?.standard_product_name, sku, req._clientCategories || []);
+      const catEntry = (req._clientCategories || []).find(c => c.category === productCategory);
+      const keywords = catEntry ? catEntry.keywords : [];
       if (keywords.length) {
         campaignsMatchedToProduct = campaignRows.filter(c => {
           const name = (c.campaign_name || '').toLowerCase();
@@ -1159,7 +1177,7 @@ async function aggregatePlatformSales(rows, excludeStatuses = new Set(), exclude
     // different, fixable problem (the keyword list is missing a
     // product line) and shouldn't be hidden inside the same bucket.
     const hasProductSignal = !!(row.standard_product_name || (row.standard_sku && row.standard_sku.trim()));
-    let category = inferCategory(row.standard_product_name, row.standard_sku);
+    let category = inferCategory(row.standard_product_name, row.standard_sku, req._clientCategories || []);
     if (category === 'Uncategorized' && !hasProductSignal) {
       category = 'No Product Data (Ad Platforms)';
     }
@@ -1294,5 +1312,238 @@ async function aggregatePlatformSales(rows, excludeStatuses = new Set(), exclude
   };
 }
 
+
+
+// ═══════════════════════════════════════════════════════════════════
+// PRODUCT CATEGORIES — confirmed per-client rules
+// ═══════════════════════════════════════════════════════════════════
+router.get('/:client_slug/product-categories', async (req, res) => {
+  const { client } = req.semya;
+  const { data, error } = await supabaseAdmin
+    .from('client_product_categories')
+    .select('id, category, keywords, sku_prefixes, sort_order, created_at')
+    .eq('client_id', client.id)
+    .order('sort_order');
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json(data || []);
+});
+
+router.post('/:client_slug/product-categories', async (req, res) => {
+  if (!req.semya.isAdmin) return res.status(403).json({ error: 'Admin only.' });
+  const { client } = req.semya;
+  const { category, keywords = [], sku_prefixes = [] } = req.body || {};
+  if (!category?.trim()) return res.status(400).json({ error: 'category is required.' });
+
+  // sort_order = max existing + 1
+  const { data: existing } = await supabaseAdmin
+    .from('client_product_categories')
+    .select('sort_order')
+    .eq('client_id', client.id)
+    .order('sort_order', { ascending: false })
+    .limit(1);
+  const nextOrder = ((existing?.[0]?.sort_order) || 0) + 1;
+
+  const { data, error } = await supabaseAdmin
+    .from('client_product_categories')
+    .insert({ client_id: client.id, category: category.trim(), keywords, sku_prefixes, sort_order: nextOrder })
+    .select('id, category, keywords, sku_prefixes, sort_order')
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json(data);
+});
+
+router.patch('/:client_slug/product-categories/:id', async (req, res) => {
+  if (!req.semya.isAdmin) return res.status(403).json({ error: 'Admin only.' });
+  const { client } = req.semya;
+  const { category, keywords, sku_prefixes, sort_order } = req.body || {};
+  const update = {};
+  if (category    !== undefined) update.category    = category.trim();
+  if (keywords    !== undefined) update.keywords    = keywords;
+  if (sku_prefixes!== undefined) update.sku_prefixes= sku_prefixes;
+  if (sort_order  !== undefined) update.sort_order  = sort_order;
+  update.updated_at = new Date().toISOString();
+
+  const { data, error } = await supabaseAdmin
+    .from('client_product_categories')
+    .update(update)
+    .eq('id', req.params.id)
+    .eq('client_id', client.id)
+    .select('id, category, keywords, sku_prefixes, sort_order')
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json(data);
+});
+
+router.delete('/:client_slug/product-categories/:id', async (req, res) => {
+  if (!req.semya.isAdmin) return res.status(403).json({ error: 'Admin only.' });
+  const { client } = req.semya;
+  const { error } = await supabaseAdmin
+    .from('client_product_categories')
+    .delete()
+    .eq('id', req.params.id)
+    .eq('client_id', client.id);
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json({ ok: true });
+});
+
+
+// ═══════════════════════════════════════════════════════════════════
+// CATEGORY SUGGESTIONS — pending auto-suggestions for admin review
+// ═══════════════════════════════════════════════════════════════════
+router.get('/:client_slug/category-suggestions', async (req, res) => {
+  const { client } = req.semya;
+  const status = req.query.status || 'pending';
+  const { data, error } = await supabaseAdmin
+    .from('client_category_suggestions')
+    .select('id, product_name, sku, suggested_cat, status, created_at')
+    .eq('client_id', client.id)
+    .eq('status', status)
+    .order('suggested_cat')
+    .order('created_at');
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json(data || []);
+});
+
+// Count pending suggestions (used by notification bell)
+router.get('/:client_slug/category-suggestions/count', async (req, res) => {
+  const { client } = req.semya;
+  const { count, error } = await supabaseAdmin
+    .from('client_category_suggestions')
+    .select('*', { count: 'exact', head: true })
+    .eq('client_id', client.id)
+    .eq('status', 'pending');
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json({ count: count || 0 });
+});
+
+// Accept / dismiss a suggestion
+router.patch('/:client_slug/category-suggestions/:id', async (req, res) => {
+  if (!req.semya.isAdmin) return res.status(403).json({ error: 'Admin only.' });
+  const { client } = req.semya;
+  const { action, category, keywords, sku_prefixes } = req.body || {};
+  if (!['accept', 'dismiss'].includes(action)) {
+    return res.status(400).json({ error: "action must be 'accept' or 'dismiss'." });
+  }
+
+  // Fetch the suggestion first
+  const { data: sugg } = await supabaseAdmin
+    .from('client_category_suggestions')
+    .select('id, product_name, sku, suggested_cat')
+    .eq('id', req.params.id)
+    .eq('client_id', client.id)
+    .single();
+  if (!sugg) return res.status(404).json({ error: 'Suggestion not found.' });
+
+  if (action === 'accept') {
+    const finalCategory   = (category || sugg.suggested_cat).trim();
+    // The keyword is derived from the product name — cleaned same way as the suggestion
+    let autoKeyword = sugg.product_name.toLowerCase();
+    // Strip brand prefix, pipe suffix, size specs — same as extraction logic
+    autoKeyword = autoKeyword.replace(/^[a-z]{2,}\s+/, '');
+    autoKeyword = autoKeyword.split(/\s*[|(].*$/)[0].trim();
+    autoKeyword = autoKeyword.replace(/\s+\d+\s*(pcs|ml|gm|g|kg|l|pack|set|piece|pieces|nos|x\s*\d+)[\s,]*/gi, '').trim();
+    const finalKeywords     = keywords     || [autoKeyword];
+    const finalSkuPrefixes  = sku_prefixes || (sugg.sku ? [sugg.sku.replace(/\d+$/, '')] : []);
+
+    // Upsert the category — if it already exists, add the new keyword to its array
+    const { data: existing } = await supabaseAdmin
+      .from('client_product_categories')
+      .select('id, keywords, sku_prefixes')
+      .eq('client_id', client.id)
+      .eq('category', finalCategory)
+      .maybeSingle();
+
+    if (existing) {
+      // Merge keywords and sku_prefixes — deduplicate
+      const mergedKw  = [...new Set([...(existing.keywords    || []), ...finalKeywords])];
+      const mergedSku = [...new Set([...(existing.sku_prefixes|| []), ...finalSkuPrefixes])];
+      await supabaseAdmin
+        .from('client_product_categories')
+        .update({ keywords: mergedKw, sku_prefixes: mergedSku, updated_at: new Date().toISOString() })
+        .eq('id', existing.id);
+    } else {
+      const { data: maxOrder } = await supabaseAdmin
+        .from('client_product_categories')
+        .select('sort_order')
+        .eq('client_id', client.id)
+        .order('sort_order', { ascending: false })
+        .limit(1);
+      await supabaseAdmin
+        .from('client_product_categories')
+        .insert({ client_id: client.id, category: finalCategory, keywords: finalKeywords, sku_prefixes: finalSkuPrefixes, sort_order: ((maxOrder?.[0]?.sort_order) || 0) + 1 });
+    }
+  }
+
+  // Mark suggestion as accepted or dismissed
+  await supabaseAdmin
+    .from('client_category_suggestions')
+    .update({ status: action === 'accept' ? 'accepted' : 'dismissed' })
+    .eq('id', req.params.id);
+
+  return res.json({ ok: true });
+});
+
+// Batch accept all pending suggestions
+router.post('/:client_slug/category-suggestions/accept-all', async (req, res) => {
+  if (!req.semya.isAdmin) return res.status(403).json({ error: 'Admin only.' });
+  const { client } = req.semya;
+  const { data: pending } = await supabaseAdmin
+    .from('client_category_suggestions')
+    .select('id, product_name, sku, suggested_cat')
+    .eq('client_id', client.id)
+    .eq('status', 'pending');
+
+  if (!pending?.length) return res.json({ accepted: 0 });
+
+  // Group by suggested_cat to create one category per group
+  const byCategory = new Map();
+  for (const s of pending) {
+    if (!byCategory.has(s.suggested_cat)) byCategory.set(s.suggested_cat, []);
+    byCategory.get(s.suggested_cat).push(s);
+  }
+
+  let accepted = 0;
+  for (const [cat, suggestions] of byCategory) {
+    const keywords = [...new Set(suggestions.map(s => {
+      let kw = s.product_name.toLowerCase();
+      kw = kw.replace(/^[a-z]{2,}\s+/, '');
+      kw = kw.split(/\s*[|(].*$/)[0].trim();
+      kw = kw.replace(/\s+\d+\s*(pcs|ml|gm|g|kg|l|pack|set|piece|pieces|nos|x\s*\d+)[\s,]*/gi, '').trim();
+      return kw;
+    }).filter(Boolean))];
+
+    const { data: existing } = await supabaseAdmin
+      .from('client_product_categories')
+      .select('id, keywords, sku_prefixes')
+      .eq('client_id', client.id)
+      .eq('category', cat)
+      .maybeSingle();
+
+    if (existing) {
+      const merged = [...new Set([...(existing.keywords || []), ...keywords])];
+      await supabaseAdmin
+        .from('client_product_categories')
+        .update({ keywords: merged, updated_at: new Date().toISOString() })
+        .eq('id', existing.id);
+    } else {
+      const { data: maxOrder } = await supabaseAdmin
+        .from('client_product_categories')
+        .select('sort_order').eq('client_id', client.id)
+        .order('sort_order', { ascending: false }).limit(1);
+      await supabaseAdmin
+        .from('client_product_categories')
+        .insert({ client_id: client.id, category: cat, keywords, sku_prefixes: [], sort_order: ((maxOrder?.[0]?.sort_order)||0) + 1 });
+    }
+    accepted++;
+  }
+
+  await supabaseAdmin
+    .from('client_category_suggestions')
+    .update({ status: 'accepted' })
+    .eq('client_id', client.id)
+    .eq('status', 'pending');
+
+  return res.json({ accepted, categories: accepted });
+});
 
 export default router;

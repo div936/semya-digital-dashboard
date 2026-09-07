@@ -194,15 +194,57 @@ export const REVENUE_MAP = {
 };
 
 // ═══════════════════════════════════════════════════════════════════
-// CATEGORY INFERENCE
-// Ported directly from the old dashboard's CATEGORY_KEYWORDS /
-// infer_category() (main.py) so both dashboards classify products into
-// the same categories from the same source data. Matching is
-// case-insensitive substring search against the product name first,
-// falling back to the SKU if the name is blank or unmatched — same
-// order and same keyword lists as the original, kept in sync
-// deliberately. Extend both together if a new product line is added.
+// PER-CLIENT CATEGORY INFERENCE
+//
+// clientCategories: array of { category, keywords, sku_prefixes }
+//   loaded from client_product_categories table per request.
+//   No global hardcoded fallback — every client is fully isolated.
+//
+// Resolution order:
+//   1. keyword  match against standard_product_name (case-insensitive substring)
+//   2. sku_prefix match against standard_sku (case-insensitive prefix)
+//   3. No match but name exists → cleaned product name as category label
+//   4. No name/SKU → 'No Product Data (Ad Platforms)'
 // ═══════════════════════════════════════════════════════════════════
+export function inferCategory(productName, sku, clientCategories = []) {
+  const nameLower = (productName || '').toLowerCase().trim();
+  const skuLower  = (sku         || '').toLowerCase().trim();
+
+  // 1. Keyword match against product name
+  for (const { category, keywords = [] } of clientCategories) {
+    if (nameLower && keywords.some(kw => nameLower.includes(kw.toLowerCase()))) {
+      return category;
+    }
+  }
+
+  // 2. SKU prefix match
+  for (const { category, sku_prefixes = [] } of clientCategories) {
+    if (skuLower && sku_prefixes.some(p => skuLower.startsWith(p.toLowerCase()))) {
+      return category;
+    }
+  }
+
+  // 3. No match — use cleaned product name as category so the chart
+  //    shows something meaningful rather than one giant bucket.
+  //    Strip brand prefix (leading ALL-CAPS word), pipe-delimited
+  //    suffixes, and trailing size/count specs.
+  if (nameLower) {
+    let label = productName.trim();
+    label = label.replace(/^[A-Z]{2,}\s+/, '');              // strip brand prefix
+    label = label.split(/\s*[|(].*$/)[0].trim();             // strip after | or (
+    label = label.replace(/\s+\d+\s*(pcs|ml|gm|g|kg|l|pack|set|piece|pieces|nos|x\s*\d+)[\s,]*/gi, '').trim();
+    if (label.length > 50) label = label.substring(0, 50).trim();
+    if (label) return label;
+  }
+
+  // 4. Pure ad-platform row — no product signal at all
+  return 'No Product Data (Ad Platforms)';
+}
+
+// These arrays are kept only as reference for the migration SQL
+// and any external tooling that imports them. They are NOT used
+// in the live inferCategory() path — all classification is now
+// driven by client_product_categories rows in the database.
 export const CATEGORY_KEYWORDS = [
   ['Castor & Senna Capsules', ['castromix', 'castor & senna', 'castor and senna']],
   ['Castor Oil',              ['castor oil', 'erand oil', 'arandi']],
@@ -256,30 +298,7 @@ export const SKU_CATEGORY_KEYWORDS = [
   ['Aloe Vera Gel',           ['aloevera', 'ag-t']],
   ['Rose Water',              ['prw-']],
   ['Immunity Booster',        ['immunty', 'imb-b', 'ib-tg']],
-];
-
-export function inferCategory(productName, sku) {
-  const nameLower = (productName || '').toLowerCase();
-  // Try client-specific keyword lists first (currently Neat Everyday product lines).
-  // If no match, fall back to the product name itself as the category —
-  // this makes it work for any client (e.g. Daluci) whose products don't
-  // appear in these lists, without needing per-client keyword configuration.
-  for (const [category, keywords] of CATEGORY_KEYWORDS) {
-    if (keywords.some(kw => nameLower.includes(kw))) return category;
-  }
-  const skuLower = (sku || '').toLowerCase();
-  for (const [category, keywords] of SKU_CATEGORY_KEYWORDS) {
-    if (keywords.some(kw => skuLower.includes(kw))) return category;
-  }
-  // For any client whose products aren't in the keyword lists above:
-  // use the product name directly as the category label (e.g. Amazon's
-  // "Portfolio name" maps to standard_product_name and becomes the category).
-  // Cap at 60 chars to avoid using a long product title as a category label.
-  const name = (productName || '').trim();
-  if (name.length > 0 && name.length <= 60) return name;
-  return 'Uncategorized';
-}
-
+]
 
 // ═══════════════════════════════════════════════════════════════════
 // CAMPAIGN MAP

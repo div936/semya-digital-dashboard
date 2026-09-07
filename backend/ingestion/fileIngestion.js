@@ -1068,6 +1068,14 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
       console.error('[ingestion] Narrative summary generation failed (non-fatal):', err.message)
     );
 
+    // 7c. Auto-suggest product categories for any new product names seen
+    //     in this upload that aren't already confirmed or pending.
+    if (dataType === 'revenue') {
+      extractCategorySuggestions(clientId, rows, uploadId).catch(err =>
+        console.warn('[ingestion] Category suggestion extraction failed (non-fatal):', err.message)
+      );
+    }
+
     return {
       uploadId, platform, dataType,
       rowCount: inserted, skippedRows: skipped,
@@ -1101,4 +1109,90 @@ async function finaliseUpload(uploadId, status, rowCount, skippedRows, errorMess
   if (error) {
     console.error(`[ingestion] Failed to finalise upload ${uploadId}:`, error.message);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// AUTO-CATEGORY SUGGESTION EXTRACTION
+//
+// Runs after every revenue file ingestion. For each unique product
+// name in the upload:
+//   1. Skip if it already matches a confirmed category keyword
+//   2. Skip if a suggestion (pending/accepted/dismissed) already exists
+//   3. Otherwise generate a cleaned label and insert as 'pending'
+//
+// Non-blocking — called with .catch() so any failure is logged only.
+// ─────────────────────────────────────────────────────────────────
+async function extractCategorySuggestions(clientId, rows, uploadId) {
+  // Load client's confirmed categories to check for existing matches
+  const { data: confirmedCats } = await supabaseAdmin
+    .from('client_product_categories')
+    .select('category, keywords, sku_prefixes')
+    .eq('client_id', clientId);
+  const cats = confirmedCats || [];
+
+  // Load all existing suggestions (any status) to avoid duplicates
+  const { data: existingSuggestions } = await supabaseAdmin
+    .from('client_category_suggestions')
+    .select('product_name')
+    .eq('client_id', clientId);
+  const existingNames = new Set((existingSuggestions || []).map(s => s.product_name));
+
+  // Collect unique product name + sku pairs from this upload
+  const seen = new Map(); // product_name → sku
+  for (const row of rows) {
+    const name = (row.standard_product_name || '').trim();
+    const sku  = (row.standard_sku || '').trim();
+    if (!name || seen.has(name)) continue;
+    seen.set(name, sku);
+  }
+
+  const toInsert = [];
+  for (const [productName, sku] of seen) {
+    // Skip if already in suggestions table
+    if (existingNames.has(productName)) continue;
+
+    const nameLower = productName.toLowerCase();
+    const skuLower  = sku.toLowerCase();
+
+    // Skip if already matched by a confirmed category
+    const alreadyMatched = cats.some(c =>
+      (c.keywords  || []).some(kw => nameLower.includes(kw.toLowerCase())) ||
+      (c.sku_prefixes || []).some(p  => skuLower.startsWith(p.toLowerCase()))
+    );
+    if (alreadyMatched) continue;
+
+    // Generate suggested category label from product name
+    let label = productName.trim();
+    // Remove brand prefix — leading ALL-CAPS word (e.g. "DALUCI ", "NEAT ")
+    label = label.replace(/^[A-Z]{2,}\s+/, '');
+    // Remove everything after | or ( — pipe is common in Amazon titles
+    label = label.split(/\s*[|(].*$/)[0].trim();
+    // Remove trailing count/size specs: "100 PCS", "500ml", "Set of 2", "2 Pack"
+    label = label.replace(/\s+(\d+\s*)?(pcs|ml|gm|g|kg|l|pack|set|piece|pieces|nos|x\s*\d+)[\s,]*/gi, '').trim();
+    // Cap at 60 chars
+    if (label.length > 60) label = label.substring(0, 60).trim();
+    if (!label) label = productName.substring(0, 60).trim();
+
+    toInsert.push({
+      client_id:     clientId,
+      product_name:  productName,
+      sku:           sku || null,
+      suggested_cat: label,
+      status:        'pending',
+      upload_id:     uploadId,
+    });
+  }
+
+  if (!toInsert.length) return;
+
+  // Batch upsert — ignoreDuplicates on (client_id, product_name) unique constraint
+  const BATCH = 50;
+  for (let i = 0; i < toInsert.length; i += BATCH) {
+    const { error } = await supabaseAdmin
+      .from('client_category_suggestions')
+      .upsert(toInsert.slice(i, i + BATCH), { onConflict: 'client_id,product_name', ignoreDuplicates: true });
+    if (error) console.warn('[suggestions] batch upsert error:', error.message);
+  }
+
+  console.log(`[suggestions] ${toInsert.length} new suggestions queued for client ${clientId}`);
 }

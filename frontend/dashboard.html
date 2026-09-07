@@ -2672,6 +2672,10 @@
       <button class="dm-tab active" id="caTab-client"     onclick="setCaTab('client')">Client Section</button>
       <button class="dm-tab"        id="caTab-appearance" onclick="setCaTab('appearance')">Appearance</button>
       <button class="dm-tab"        id="caTab-access"     onclick="setCaTab('access')">Access Control</button>
+      <button class="dm-tab"        id="caTab-categories" onclick="setCaTab('categories')">
+        Categories
+        <span id="caCategSuggBadge" style="display:none;margin-left:5px;font-size:9px;font-weight:700;padding:1px 6px;border-radius:999px;background:#fee2e2;color:#dc2626;"></span>
+      </button>
     </div>
 
     <!-- ═══ CLIENT SECTION ═══ -->
@@ -2906,6 +2910,51 @@
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="closeClientAdminModal()">Cancel</button>
         <button class="btn btn-primary" onclick="saveTabPermissions()">Save Access Rules</button>
+      </div>
+    </div>
+
+    <!-- ── Categories Tab ───────────────────────────────────────── -->
+    <div id="caPanel-categories" class="dm-panel" style="display:none;">
+
+      <!-- Pending Suggestions Section -->
+      <div id="caCatSuggSection">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#0f172a;">⚡ Pending Suggestions</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:2px;">Auto-detected from uploaded files — review and accept to add to this client's category list</div>
+          </div>
+          <button class="btn btn-primary" style="font-size:11px;padding:5px 12px;" onclick="caCatAcceptAll()" id="caCatAcceptAllBtn">Accept All</button>
+        </div>
+        <div id="caCatSuggList"><div class="skel skel-row" style="height:36px;margin-bottom:6px;"></div></div>
+      </div>
+
+      <div style="height:20px;border-top:1px solid var(--color-border);margin:16px 0;"></div>
+
+      <!-- Confirmed Categories Section -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div style="font-size:13px;font-weight:700;color:#0f172a;">✓ Confirmed Categories</div>
+        <button class="btn btn-ghost" style="font-size:11px;" onclick="caCatAddNew()">+ Add Category</button>
+      </div>
+      <div id="caCatConfirmedList"><div class="skel skel-row" style="height:36px;margin-bottom:6px;"></div></div>
+
+      <!-- Add New Category inline form -->
+      <div id="caCatNewForm" style="display:none;margin-top:12px;padding:12px;background:#f8fafc;border:1px solid var(--color-border);border-radius:var(--radius-sm);">
+        <div style="font-size:11px;font-weight:700;color:#334155;margin-bottom:8px;">New Category</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+          <input id="caCatNewName" type="text" placeholder="Category name (e.g. Wall Hooks)" style="flex:1;min-width:160px;padding:6px 10px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:12px;" />
+        </div>
+        <div style="margin-bottom:8px;">
+          <label style="font-size:10px;color:#94a3b8;display:block;margin-bottom:3px;">Keywords (comma-separated, matched against product name)</label>
+          <input id="caCatNewKeywords" type="text" placeholder="e.g. wall hook, adhesive hook, nail-free" style="width:100%;box-sizing:border-box;padding:6px 10px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:12px;" />
+        </div>
+        <div style="margin-bottom:12px;">
+          <label style="font-size:10px;color:#94a3b8;display:block;margin-bottom:3px;">SKU prefixes (comma-separated, matched against start of SKU)</label>
+          <input id="caCatNewSkuPfx" type="text" placeholder="e.g. HOW, OTW, DLBS" style="width:100%;box-sizing:border-box;padding:6px 10px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:12px;" />
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary" style="font-size:11px;" onclick="caCatSaveNew()">Save Category</button>
+          <button class="btn btn-ghost"   style="font-size:11px;" onclick="document.getElementById('caCatNewForm').style.display='none'">Cancel</button>
+        </div>
       </div>
     </div>
 
@@ -6702,7 +6751,7 @@ document.getElementById('clientAdminModal')?.addEventListener('click', e => {
 });
 
 function setCaTab(tab) {
-  ['client', 'appearance', 'access'].forEach(t => {
+  ['client', 'appearance', 'access', 'categories'].forEach(t => {
     document.getElementById('caTab-' + t)?.classList.toggle('active', t === tab);
     const panel = document.getElementById('caPanel-' + t);
     if (panel) panel.style.display = t === tab ? '' : 'none';
@@ -6721,6 +6770,187 @@ function setCaTab(tab) {
       if (caState.clientSlug) loadAccessControlForClient(caState.clientSlug);
     }
   }
+  if (tab === 'categories' && caState.clientSlug) loadCaCategories(caState.clientSlug);
+}
+
+// ─── CATEGORIES TAB ───────────────────────────────────────────────
+async function loadCaCategories(slug) {
+  if (!slug || slug === '__admin__') return;
+  await Promise.all([loadCaSuggestions(slug), loadCaConfirmed(slug)]);
+  // Update badge on tab
+  const pending = document.querySelectorAll('#caCatSuggList .ca-sugg-row').length;
+  const badge = document.getElementById('caCategSuggBadge');
+  if (badge) { badge.textContent = pending; badge.style.display = pending ? 'inline-block' : 'none'; }
+}
+
+async function loadCaSuggestions(slug) {
+  const el = document.getElementById('caCatSuggList');
+  if (!el) return;
+  const accBtn = document.getElementById('caCatAcceptAllBtn');
+  try {
+    const data = await apiFetch('/clients/' + slug + '/category-suggestions?status=pending');
+    if (!data.length) {
+      el.innerHTML = '<div style="text-align:center;padding:20px 0;color:#94a3b8;font-size:12px;">No pending suggestions — all product names are categorised. ✓</div>';
+      if (accBtn) accBtn.style.display = 'none';
+      return;
+    }
+    if (accBtn) accBtn.style.display = '';
+
+    // Group by suggested_cat
+    const byGroup = new Map();
+    for (const s of data) {
+      if (!byGroup.has(s.suggested_cat)) byGroup.set(s.suggested_cat, []);
+      byGroup.get(s.suggested_cat).push(s);
+    }
+
+    el.innerHTML = [...byGroup.entries()].map(([cat, items]) => `
+      <div style="margin-bottom:10px;border:1px solid #e2e8f0;border-radius:var(--radius-sm);overflow:hidden;">
+        <div style="background:#f8fafc;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <span style="font-size:12px;font-weight:700;color:#1e293b;">${cat}</span>
+            <span style="font-size:10px;color:#94a3b8;margin-left:6px;">${items.length} product${items.length>1?'s':''}</span>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-primary" style="font-size:10px;padding:3px 10px;" onclick="caCatAcceptGroup('${slug}','${encodeURIComponent(cat)}')">Accept all as "${cat}"</button>
+            <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px;color:#dc2626;" onclick="caCatDismissGroup('${slug}','${encodeURIComponent(cat)}')">Dismiss</button>
+          </div>
+        </div>
+        ${items.map(s => `
+          <div class="ca-sugg-row" style="padding:6px 12px 6px 20px;border-top:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;">
+            <div>
+              <span style="font-size:11px;color:#334155;">${s.product_name}</span>
+              ${s.sku ? `<span style="font-size:10px;color:#94a3b8;margin-left:6px;font-family:var(--font-mono);">${s.sku}</span>` : ''}
+            </div>
+            <button class="btn btn-ghost" style="font-size:10px;padding:2px 7px;color:#dc2626;" onclick="caCatDismissOne('${slug}','${s.id}')">✕</button>
+          </div>`).join('')}
+      </div>`).join('');
+  } catch(e) {
+    el.innerHTML = '<div style="color:#dc2626;font-size:12px;padding:10px 0;">Failed to load suggestions: ' + e.message + '</div>';
+  }
+}
+
+async function loadCaConfirmed(slug) {
+  const el = document.getElementById('caCatConfirmedList');
+  if (!el) return;
+  try {
+    const data = await apiFetch('/clients/' + slug + '/product-categories');
+    if (!data.length) {
+      el.innerHTML = '<div style="text-align:center;padding:20px 0;color:#94a3b8;font-size:12px;">No confirmed categories yet — accept suggestions above or add one manually.</div>';
+      return;
+    }
+    el.innerHTML = data.map(c => `
+      <div style="padding:8px 10px;border:1px solid #e2e8f0;border-radius:var(--radius-sm);margin-bottom:6px;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+          <div style="flex:1;">
+            <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:3px;">${c.category}</div>
+            <div style="font-size:10px;color:#64748b;margin-bottom:2px;">
+              <strong>Keywords:</strong> ${(c.keywords||[]).join(', ')||'—'}
+            </div>
+            ${(c.sku_prefixes||[]).length ? `<div style="font-size:10px;color:#64748b;"><strong>SKU prefixes:</strong> ${c.sku_prefixes.join(', ')}</div>` : ''}
+          </div>
+          <div style="display:flex;gap:5px;flex-shrink:0;">
+            <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px;" onclick="caCatEditConfirmed('${slug}','${c.id}','${encodeURIComponent(c.category)}','${encodeURIComponent((c.keywords||[]).join(','))}','${encodeURIComponent((c.sku_prefixes||[]).join(','))}')">Edit</button>
+            <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px;color:#dc2626;" onclick="caCatDeleteConfirmed('${slug}','${c.id}')">Delete</button>
+          </div>
+        </div>
+      </div>`).join('');
+  } catch(e) {
+    el.innerHTML = '<div style="color:#dc2626;font-size:12px;padding:10px 0;">Failed to load categories: ' + e.message + '</div>';
+  }
+}
+
+async function caCatAcceptGroup(slug, catEncoded) {
+  const cat = decodeURIComponent(catEncoded);
+  const suggestions = document.querySelectorAll('#caCatSuggList .ca-sugg-row');
+  // Find IDs for this group — get from DOM data or re-fetch
+  const data = await apiFetch('/clients/' + slug + '/category-suggestions?status=pending');
+  const ids = data.filter(s => s.suggested_cat === cat).map(s => s.id);
+  await Promise.all(ids.map(id => apiFetch('/clients/' + slug + '/category-suggestions/' + id, {
+    method: 'PATCH', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'accept', category: cat }),
+  })));
+  loadCaCategories(slug);
+  updateNotifBell();
+}
+
+async function caCatDismissGroup(slug, catEncoded) {
+  const cat = decodeURIComponent(catEncoded);
+  const data = await apiFetch('/clients/' + slug + '/category-suggestions?status=pending');
+  const ids = data.filter(s => s.suggested_cat === cat).map(s => s.id);
+  await Promise.all(ids.map(id => apiFetch('/clients/' + slug + '/category-suggestions/' + id, {
+    method: 'PATCH', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'dismiss' }),
+  })));
+  loadCaCategories(slug);
+  updateNotifBell();
+}
+
+async function caCatDismissOne(slug, id) {
+  await apiFetch('/clients/' + slug + '/category-suggestions/' + id, {
+    method: 'PATCH', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'dismiss' }),
+  });
+  loadCaCategories(slug);
+  updateNotifBell();
+}
+
+async function caCatAcceptAll() {
+  const slug = caState.clientSlug;
+  if (!slug) return;
+  await apiFetch('/clients/' + slug + '/category-suggestions/accept-all', {
+    method: 'POST', headers: authHeaders(),
+  });
+  loadCaCategories(slug);
+  updateNotifBell();
+}
+
+function caCatAddNew() {
+  document.getElementById('caCatNewForm').style.display = '';
+  document.getElementById('caCatNewName').focus();
+}
+
+async function caCatSaveNew() {
+  const slug = caState.clientSlug;
+  const name = document.getElementById('caCatNewName').value.trim();
+  const kws  = document.getElementById('caCatNewKeywords').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const pfxs = document.getElementById('caCatNewSkuPfx').value.split(',').map(s=>s.trim()).filter(Boolean);
+  if (!name) { alert('Category name is required.'); return; }
+  await apiFetch('/clients/' + slug + '/product-categories', {
+    method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ category: name, keywords: kws, sku_prefixes: pfxs }),
+  });
+  document.getElementById('caCatNewForm').style.display = 'none';
+  document.getElementById('caCatNewName').value = '';
+  document.getElementById('caCatNewKeywords').value = '';
+  document.getElementById('caCatNewSkuPfx').value = '';
+  loadCaConfirmed(slug);
+}
+
+async function caCatDeleteConfirmed(slug, id) {
+  if (!confirm('Delete this category? Existing revenue data will fall back to the cleaned product name.')) return;
+  await apiFetch('/clients/' + slug + '/product-categories/' + id, {
+    method: 'DELETE', headers: authHeaders(),
+  });
+  loadCaConfirmed(slug);
+}
+
+async function caCatEditConfirmed(slug, id, catEnc, kwEnc, pfxEnc) {
+  const cat  = decodeURIComponent(catEnc);
+  const kws  = decodeURIComponent(kwEnc);
+  const pfxs = decodeURIComponent(pfxEnc);
+  const newCat = prompt('Category name:', cat);
+  if (!newCat) return;
+  const newKws  = prompt('Keywords (comma-separated):', kws);
+  const newPfxs = prompt('SKU prefixes (comma-separated):', pfxs);
+  await apiFetch('/clients/' + slug + '/product-categories/' + id, {
+    method: 'PATCH', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      category:     newCat.trim(),
+      keywords:     (newKws||'').split(',').map(s=>s.trim()).filter(Boolean),
+      sku_prefixes: (newPfxs||'').split(',').map(s=>s.trim()).filter(Boolean),
+    }),
+  });
+  loadCaConfirmed(slug);
 }
 
 function updateCaAccessHeader() {
@@ -9250,7 +9480,7 @@ async function loadStockLevels() {
 }
 
 // ── Notification bell ──────────────────────────────────────────
-let _notifPanelOpen=false, _notifStockCount=0, _notifRequestCount=0;
+let _notifPanelOpen=false, _notifStockCount=0, _notifRequestCount=0, _notifSuggCount=0;
 
 function toggleNotifPanel(e) {
   if (e) e.stopPropagation();
@@ -9317,7 +9547,7 @@ async function _loadRequestNotifs() {
 
 function _updateBadge(s) {
   if(s!==undefined) _notifStockCount=s;
-  const total=_notifStockCount+_notifRequestCount;
+  const total=_notifStockCount+_notifRequestCount+_notifSuggCount;
   const badge=document.getElementById('notifBadge');
   if (!badge) return;
   badge.textContent=total>99?'99+':total;
@@ -9334,12 +9564,14 @@ function _checkEmptyState() {
 async function updateNotifBell() {
   const { clientSlug }=state; if (!clientSlug) return;
   try {
-    const [ar,rr]=await Promise.allSettled([
+    const [ar,rr,sr]=await Promise.allSettled([
       apiFetch('/clients/'+clientSlug+'/inventory/alerts'),
       state.isAdmin?fetch(API_BASE+'/auth/requests',{headers:authHeaders(),credentials:'include'}).then(r=>r.json()):Promise.resolve([]),
+      apiFetch('/clients/'+clientSlug+'/category-suggestions/count'),
     ]);
-    _notifStockCount=ar.status==='fulfilled'?(ar.value?.length||0):0;
+    _notifStockCount  =ar.status==='fulfilled'?(ar.value?.length||0):0;
     _notifRequestCount=rr.status==='fulfilled'?(rr.value||[]).filter(r=>r.status==='pending').length:0;
+    _notifSuggCount   =sr.status==='fulfilled'?(sr.value?.count||0):0;
     _updateBadge();
   } catch(e) { console.warn('[notif]',e.message); }
 }
