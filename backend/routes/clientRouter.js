@@ -352,10 +352,15 @@ router.get(
     // Count cancelled orders and their gross value for the note
     // under the Total Orders card on Platform Sales.
     // Cancelled orders — count unique order IDs with Cancelled status
-    const cancelledRows     = data.filter(r => r.standard_status === 'Cancelled');
+    const cancelledRows     = data.filter(r => {
+      const fs = (r.financial_status || '').toLowerCase();
+      const ss = (r.standard_status  || '').toLowerCase();
+      return fs === 'voided' || fs === 'refunded' || ss === 'cancelled' || ss === 'returned';
+    });
     const cancelledOrderIds = new Set(cancelledRows.map(r => r.standard_order_id).filter(Boolean));
     summary.cancelledOrders  = cancelledOrderIds.size;
-    summary.cancelledRevenue = 0; // shown in AI Insights Cancellation Tracker
+    // Sum the revenue of cancelled rows (positive values represent what was lost)
+    summary.cancelledRevenue = cancelledRows.reduce((s, r) => s + (Number(r.standard_revenue) || 0), 0);
 
     // Date-aligned ROAS — was previously computed on the frontend as
     // "this platform's ENTIRE selected-range revenue ÷ whatever

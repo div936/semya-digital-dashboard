@@ -46,19 +46,25 @@ ALTER TABLE client_category_suggestions ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "client_categories_isolation"   ON client_product_categories;
 DROP POLICY IF EXISTS "client_suggestions_isolation"  ON client_category_suggestions;
 
+-- RLS: client-role users can only see their own client's rows.
+-- Admin users (client_id IS NULL in users table) bypass via service role key.
+-- Your schema stores the user→client mapping as a client_id column on the
+-- users table (not a separate user_clients join table).
 CREATE POLICY "client_categories_isolation" ON client_product_categories
   FOR ALL USING (
     client_id IN (
-      SELECT client_id FROM user_clients
-      WHERE user_id = auth.uid()
+      SELECT client_id FROM users
+      WHERE id = auth.uid()
+        AND client_id IS NOT NULL
     )
   );
 
 CREATE POLICY "client_suggestions_isolation" ON client_category_suggestions
   FOR ALL USING (
     client_id IN (
-      SELECT client_id FROM user_clients
-      WHERE user_id = auth.uid()
+      SELECT client_id FROM users
+      WHERE id = auth.uid()
+        AND client_id IS NOT NULL
     )
   );
 
