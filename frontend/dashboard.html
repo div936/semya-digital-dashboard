@@ -8506,10 +8506,14 @@ async function handleUploadAll() {
   }
 
   const { clientSlug } = state;
-  if (!clientSlug) {
+  if (!clientSlug || clientSlug === '__all__') {
     status.style.display = 'block';
-    status.style.color = '#dc2626';
-    status.textContent = 'No client selected.';
+    status.style.background = '#fef2f2';
+    status.style.border = '1px solid #fecaca';
+    status.style.color  = '#dc2626';
+    status.textContent  = clientSlug === '__all__'
+      ? 'You are in "All Clients" view — please select a specific client from the dropdown first, then upload.'
+      : 'No client selected.';
     return;
   }
 
