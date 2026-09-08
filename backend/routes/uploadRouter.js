@@ -22,7 +22,7 @@ const router = Router({ mergeParams: true });
 // see note in fileIngestion.js about large-file ingestion time.
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits:  { fileSize: 60 * 1024 * 1024 },
+  limits:  { fileSize: 100 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowed = [
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
@@ -79,7 +79,7 @@ router.post(
 
     // Quick row estimate from file size to decide sync vs async
     const fileSizeKb = fileBuffer.length / 1024;
-    const useAsync   = fileSizeKb > 500; // files > 500KB go async
+    const useAsync   = fileSizeKb > 200; // files > 200KB go async to avoid timeouts
 
     if (!useAsync) {
       // Small file — process synchronously as before

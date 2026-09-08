@@ -3461,18 +3461,25 @@ function todayIST() { return toISTDateString(new Date()); }
 
 // ─── PLATFORM META ────────────────────────────────────────────────
 const PLATFORM_META = {
-  // Individual data sources — used for breakdown rows, tables, and pills
-  // that need to show exactly where a row of data came from.
-  amazon:   { label: 'Neat Amazon', color: '#ff9900', pillClass: 'pill-amz'  },
+  amazon:   { label: 'Amazon',      color: '#ff9900', pillClass: 'pill-amz'  },
   acutas:   { label: 'Acutas',      color: '#0ea5e9', pillClass: 'pill-amz'  },
   flipkart: { label: 'Flipkart',    color: '#0077ff', pillClass: 'pill-fk'   },
   blinkit:  { label: 'Blinkit',     color: '#fbbf24', pillClass: 'pill-bk'   },
   meta:     { label: 'Meta',        color: '#1877f2', pillClass: 'pill-meta' },
   google:   { label: 'Google',      color: '#4285f4', pillClass: 'pill-goog' },
-  // Group labels — used only for the top-level filter pills / badges, where
-  // "Amazon" = amazon + acutas combined, and "Website" = meta + google combined.
   website:  { label: 'Website',     color: '#1877f2', pillClass: 'pill-meta' },
 };
+
+// Client-aware platform label: "Daluci Amazon", "Neat Amazon", etc.
+// All code uses PLATFORM_META[p] directly — this function is available
+// for places that need the dynamic label, used via the helper below.
+function getPlatformMeta(platform) {
+  const base = PLATFORM_META[platform] || { label: (platform||'').toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
+  if (platform !== 'amazon' && platform !== 'acutas') return base;
+  const clientFirst = (state.clientName || '').split(' ')[0] || '';
+  if (!clientFirst) return base;
+  return Object.assign({}, base, { label: clientFirst + ' ' + (platform === 'amazon' ? 'Amazon' : 'Acutas') });
+}
 
 // Which individual platforms roll up into which top-level filter group.
 // Kept in sync with PLATFORM_GROUPS on the backend (clientRouter.js).
@@ -3911,7 +3918,7 @@ function roasColor(r) {
   return '#dc2626';
 }
 function platformPillHtml(platform) {
-  const m = PLATFORM_META[platform] || { label: platform.toUpperCase(), pillClass: 'pill-amz' };
+  const m = getPlatformMeta(platform);
   return `<span class="platform-pill ${m.pillClass}">${m.label}</span>`;
 }
 
@@ -4022,9 +4029,9 @@ function renderCities(cities) {
 function renderDoughnut(byPlatform) {
   const platforms = byPlatform || [];
   const total     = platforms.reduce((s, p) => s + p.totalRevenue, 0);
-  const labels    = platforms.map(p => (PLATFORM_META[p.platform]?.label || p.platform));
+  const labels    = platforms.map(p => getPlatformMeta(p.platform).label);
   const data      = platforms.map(p => +(p.totalRevenue / total * 100).toFixed(1));
-  const colors    = platforms.map(p => PLATFORM_META[p.platform]?.color || '#94a3b8');
+  const colors    = platforms.map(p => getPlatformMeta(p.platform).color || '#94a3b8');
 
   if (state.doughnutChart) {
     state.doughnutChart.data.labels   = labels;
@@ -4049,7 +4056,7 @@ function renderDoughnut(byPlatform) {
   document.getElementById('doughnutLegend').innerHTML = platforms.map((p, i) => `
     <div style="display:flex;align-items:center;gap:5px;font-size:11px;">
       <div style="width:8px;height:8px;border-radius:50%;background:${colors[i]};"></div>
-      <span style="color:#64748b;">${PLATFORM_META[p.platform]?.label || p.platform}</span>
+      <span style="color:#64748b;">${getPlatformMeta(p.platform).label}</span>
       <span style="color:#1e293b;font-weight:700;">${data[i]}%</span>
     </div>`).join('');
 }
@@ -5519,7 +5526,7 @@ function renderPS(data) {
   const splitEl = document.getElementById('psPlatformSplit');
   const maxRev  = Math.max(...platforms.map(p => p.totalRevenue));
   splitEl.innerHTML = platforms.map(p => {
-    const m   = PLATFORM_META[p.platform] || { label: p.platform.toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
+    const m   = getPlatformMeta(p.platform);
     const pct = grandTotal > 0 ? (p.totalRevenue / grandTotal * 100).toFixed(1) : 0;
     const barW= maxRev > 0 ? (p.totalRevenue / maxRev * 100).toFixed(1) : 0;
     return '<div class="stat-bar-row"><div class="stat-bar-meta"><span class="stat-bar-name"><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></span><div class="stat-bar-vals"><span class="stat-bar-rev">' + fmtRevenue(p.totalRevenue) + '</span><span class="stat-bar-pct">' + pct + '%</span></div></div><div class="stat-bar-bg"><div class="stat-bar-fill" style="width:' + barW + '%;background:' + m.color + ';"></div></div></div>';
@@ -5536,7 +5543,7 @@ function renderPS(data) {
     const sortedProds = [...topProducts].sort((a, b) => b.revenue - a.revenue);
     tbody.innerHTML = sortedProds.slice(0, 8).map((p, i) => {
       const share = grandTotal > 0 ? (p.revenue / grandTotal * 100).toFixed(1) : 0;
-      const m = PLATFORM_META[p.platform] || { label: (p.platform||'').toUpperCase(), pillClass: 'pill-amz' };
+      const m = getPlatformMeta(p.platform);
       return '<tr><td style="color:#94a3b8;font-size:11px;font-weight:700;">' + (i+1) + '</td><td style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#1e293b;">' + (p.sku||'—') + '</td><td><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></td><td style="font-family:var(--font-mono);">' + fmtUnits(p.units||0) + '</td><td style="font-family:var(--font-mono);font-weight:700;color:var(--theme-primary);">' + fmtRevenue(p.revenue||0) + '</td><td><div style="display:flex;align-items:center;gap:6px;"><div style="width:40px;height:4px;background:#e2eaf2;border-radius:99px;overflow:hidden;"><div style="width:' + share + '%;height:100%;background:var(--theme-primary);border-radius:99px;"></div></div><span style="font-size:10px;color:#94a3b8;">' + share + '%</span></div></td></tr>';
     }).join('');
   }
@@ -5657,7 +5664,7 @@ function renderCICampaignRows(searchTerm) {
     return;
   }
   ciTbody.innerHTML = rows.map(c => {
-    const m    = PLATFORM_META[c.platform] || { label: (c.platform||'').toUpperCase(), pillClass: 'pill-amz' };
+    const m    = getPlatformMeta(c.platform);
     const roas = c.standard_spend > 0 ? c.standard_revenue/c.standard_spend : 0;
     const ctr  = c.standard_impressions > 0 ? (c.standard_clicks/c.standard_impressions*100) : 0;
     return '<tr><td><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></td><td style="font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (c.campaign_name||'—') + '</td><td style="font-family:var(--font-mono);font-size:11px;">' + fmtRevenue(c.standard_spend||0) + '</td><td style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--theme-primary);">' + fmtRevenue(c.standard_revenue||0) + '</td><td><span style="font-weight:700;color:' + roasColor(roas) + ';font-family:var(--font-mono);font-size:11px;">' + (roas > 0 ? fmtRoas(roas) : '—') + '</span></td><td style="font-family:var(--font-mono);font-size:11px;">' + (c.standard_clicks||0).toLocaleString('en-IN') + '</td><td style="font-family:var(--font-mono);font-size:11px;color:#94a3b8;">' + (c.standard_impressions||0).toLocaleString('en-IN') + '</td><td style="font-family:var(--font-mono);font-size:11px;">' + ctr.toFixed(2) + '%</td></tr>';
@@ -5813,7 +5820,7 @@ function renderCI(payload) {
   const countBadge = document.getElementById('ciCampaignCount');
   if (countBadge) countBadge.textContent = campaigns.length + ' active';
   document.getElementById('ciCampaignCards').innerHTML = top3.map(c => {
-    const m = PLATFORM_META[c.platform] || { label: (c.platform||'').toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
+    const m = getPlatformMeta(c.platform);
     const roas = c.standard_spend > 0 ? c.standard_revenue/c.standard_spend : 0;
     const ctr  = c.standard_impressions > 0 ? (c.standard_clicks/c.standard_impressions*100) : 0;
     return '<div class="campaign-card"><div class="campaign-card-platform"><span class="platform-pill ' + m.pillClass + '">' + m.label + '</span></div><div class="campaign-card-name">' + (c.campaign_name||'—') + '</div><div class="campaign-card-metrics"><div><div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px;">Spend</div><div style="font-size:13px;font-weight:700;color:#1e293b;font-family:var(--font-mono);">' + fmtRevenue(c.standard_spend||0) + '</div></div><div><div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px;">Revenue</div><div style="font-size:13px;font-weight:700;color:var(--theme-primary);font-family:var(--font-mono);">' + fmtRevenue(c.standard_revenue||0) + '</div></div><div><div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px;">RoAS</div><div style="font-size:13px;font-weight:700;color:' + roasColor(roas) + ';">' + (roas > 0 ? fmtRoas(roas) : '—') + '</div></div><div><div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px;">CTR</div><div style="font-size:13px;font-weight:700;color:#64748b;">' + ctr.toFixed(2) + '%</div></div></div></div>';
@@ -5857,7 +5864,7 @@ function renderCI(payload) {
       ciProdTbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#94a3b8;font-size:12px;padding:20px 0;">No product data for this selection.</td></tr>';
     } else {
       ciProdTbody.innerHTML = prods.slice(0, 10).map((p, i) => {
-        const m = PLATFORM_META[p.platform] || { label: (p.platform||'').toUpperCase(), pillClass: 'pill-amz' };
+        const m = getPlatformMeta(p.platform);
         return '<tr><td style="color:#94a3b8;font-size:11px;font-weight:700;">' + (i+1) + '</td><td style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#1e293b;">' + (p.sku||'—') + '</td><td><span class="platform-pill ' + m.pillClass + '" style="font-size:9px;padding:2px 7px;">' + m.label + '</span></td><td style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--theme-primary);">' + fmtRevenue(p.revenue||0) + '</td></tr>';
       }).join('');
     }
@@ -6308,7 +6315,7 @@ async function loadDTCampaignRanking(date, myToken) {
   }
 
   const row = (c, rank) => {
-    const m = PLATFORM_META[c.platform] || { label: (c.platform || '').toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
+    const m = getPlatformMeta(c.platform);
     const rev = c.standard_revenue || 0;
     const rankColor = rev > 0 ? '#059669' : '#94a3b8';
     return '<div class="dt-campaign-row" data-name="' + (c.campaign_name || '').toLowerCase().replace(/"/g, '&quot;') + '" data-platform="' + (c.platform || '') + '" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9;">' +
@@ -8437,12 +8444,26 @@ async function uploadOneFile(file, clientSlug) {
   const freshToken = await getFreshToken();
   if (!freshToken) throw new Error('SESSION_EXPIRED');
 
-  let res = await fetch(API_BASE + '/clients/' + clientSlug + '/upload', {
-    method:      'POST',
-    headers:     { 'Authorization': 'Bearer ' + freshToken },
-    credentials: 'include',
-    body:        formData,
-  });
+  // Large files get a 5-min timeout; backend responds immediately (async)
+  // for files >200KB so the connection shouldn't hang — but cold-start
+  // servers can be slow to accept the connection itself.
+  const _ctl = new AbortController();
+  const _timer = setTimeout(() => _ctl.abort(), file.size > 5*1024*1024 ? 5*60*1000 : 90*1000);
+  let res;
+  try {
+    res = await fetch(API_BASE + '/clients/' + clientSlug + '/upload', {
+      method:      'POST',
+      headers:     { 'Authorization': 'Bearer ' + freshToken },
+      credentials: 'include',
+      body:        formData,
+      signal:      _ctl.signal,
+    });
+  } catch(_fe) {
+    clearTimeout(_timer);
+    if (_fe.name === 'AbortError') throw new Error('Upload timed out — try splitting the file into smaller date ranges.');
+    throw new Error('Failed to reach server (' + _fe.message + ')');
+  }
+  clearTimeout(_timer);
 
   if (res.status === 401) {
     console.warn('[upload] 401 received, refreshing token and retrying...', file.name);
@@ -9814,7 +9835,7 @@ async function loadPlatformAssumptions() {
     const resp = await apiFetch('/clients/' + clientSlug + '/platform-assumptions');
     const assumptions = resp?.assumptions || {};
     grid.innerHTML = Object.entries(assumptions).map(([platform, a]) => {
-      const m = PLATFORM_META[platform] || { label: platform };
+      const m = getPlatformMeta(platform);
       return '<div style="border:1px solid var(--color-border);border-radius:var(--radius-sm);padding:10px;">' +
         '<div style="font-size:11px;font-weight:700;color:#1e293b;margin-bottom:8px;">' + m.label + '</div>' +
         '<label style="font-size:10px;color:#94a3b8;">Commission %</label>' +
