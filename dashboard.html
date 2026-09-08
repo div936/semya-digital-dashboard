@@ -8400,6 +8400,18 @@ function setSelectedFiles(files) {
   } else {
     status.style.display = 'none';
   }
+
+  // Warn about files exceeding the 15MB limit before upload attempt
+  const oversized = Array.from(files).filter(f => f.size > 15 * 1024 * 1024);
+  if (oversized.length) {
+    status.style.display = 'block';
+    status.style.background = '#fffbeb';
+    status.style.border = '1px solid #fcd34d';
+    status.style.color  = '#92400e';
+    status.textContent  = '⚠ ' + oversized.map(f => `${f.name} (${(f.size/1024/1024).toFixed(1)}MB)`).join(', ') +
+      ' exceed' + (oversized.length > 1 ? '' : 's') + ' the 15MB limit. Please split by date range in Seller Central and upload one month at a time.';
+  }
+
   selectedFiles = files;
 
   const info = document.getElementById('selectedFileInfo');
@@ -8653,10 +8665,28 @@ async function switchClient(newSlug) {
 
   state.clientSlug = newSlug;
   _fetchGeneration++;
+  // Clear ALL caches and in-memory data stores so no previous client's
+  // data can bleed through — especially important after a server restart
+  // where the browser may have stale responses in the tab cache.
   tabCache = {};
   _sidebarCache = {};
   psState._lastData = null;
   if (typeof ciState !== 'undefined') ciState._lastData = null;
+  // Clear in-memory data stores used by export and rendering
+  _geoLastData    = [];
+  _skuLastData    = [];
+  _utmStatsLast   = [];
+  _utmDetailsLast = [];
+  _invAlertsLast  = [];
+  _invAllStock    = [];
+  _dtLastTargets  = null;
+  _dtLastAchieved = null;
+  _projLast       = null;
+  _cancelData     = null;
+  _highRiskData   = null;
+  _lastFraudData  = null;
+  _fraudPatternIndex = null;
+  _ciAllCampaignsSorted = [];
   const phList = document.getElementById('platformHealthList');
   if (phList) phList.innerHTML = '<div class="skel skel-insight" style="height:32px;margin-bottom:6px;"></div><div class="skel skel-insight" style="height:32px;"></div>';
   const aiList = document.getElementById('aiInsightsList');
