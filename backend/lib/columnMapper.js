@@ -307,6 +307,23 @@ export const CAMPAIGN_MAP = {
 
   // ── Campaign name ─────────────────────────────────────────────
   'campaign name':              'campaign_name',
+  // ── Flipkart Ads campaign export columns ──────────────────────
+  // File has a preamble: "Start Time, 2026-08-01..." / "End Time, ..."
+  // then headers: Campaign ID, Campaign Name, Campaign Status, ...,
+  // Average CPC, Ad Spend, Views, Clicks, Total converted units,
+  // Total Revenue (Rs.), ROI
+  // campaign_start_date is each campaign's own start date — NOT the
+  // report period date. We intentionally do NOT map it to campaign_date
+  // so the preamble's "Start Time" date is used as campaign_date for
+  // all rows (matching how Meta/Google exports work).
+  'campaign id':                'campaign_id',
+  'campaign status':            'campaign_status',
+  'total revenue (rs.)':        'standard_revenue',
+  'total revenue':              'standard_revenue',
+  'total converted units':      'standard_units',
+  'converted units':            'standard_units',
+  'average cpc':                'standard_cpc',
+  'roi':                        'standard_roas',   // Flipkart calls it ROI, maps to ROAS field
 
   // ── Flipkart campaign columns ─────────────────────────────────
   'ad spends':                  'standard_spend',

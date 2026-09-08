@@ -141,6 +141,17 @@ function parseSpreadsheet(fileBuffer) {
   const allRows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false });
   if (allRows.length < 2) return [];
 
+  // Hard limit: reject files with more than 60,000 data rows to prevent OOM.
+  // Amazon exports with 100K+ rows should be split by date range before upload.
+  // Each 60K-row file processes safely within ~300MB RAM on Render free tier.
+  const DATA_ROW_LIMIT = 60000;
+  if (allRows.length - 1 > DATA_ROW_LIMIT) {
+    throw new Error(
+      `File has ${(allRows.length - 1).toLocaleString()} rows — exceeds the ${DATA_ROW_LIMIT.toLocaleString()}-row limit per upload. ` +
+      `Please split the file into smaller date ranges (e.g. one month at a time) and upload each separately.`
+    );
+  }
+
   // Apply the same smart header detection used for CSV files — many
   // campaign exports (Meta, Google Ads, Amazon) have 1-4 metadata rows
   // above the real header, including a date range line. Blindly using
@@ -756,6 +767,18 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
     // 3. Parse file into raw row objects (handles encoding/delimiter/
     //    header-row detection, and a file-level default date if the
     //    report doesn't have a per-row date column)
+    // Pre-check: reject very large files immediately before parsing
+    // to avoid OOM. 15MB is approximately 60K rows of Amazon data.
+    // Users should split larger exports by date range.
+    const fileSizeMB = fileBuffer.length / (1024 * 1024);
+    if (fileSizeMB > 15) {
+      throw new Error(
+        `File is ${fileSizeMB.toFixed(1)}MB — exceeds the 15MB per-upload limit. ` +
+        `Please split the file into smaller date ranges (e.g. one month at a time) and upload each separately. ` +
+        `Amazon exports: filter by purchase date in Seller Central before downloading.`
+      );
+    }
+
     const { rows: rawRows0, defaultDate } = parseFile(fileBuffer, originalName);
     if (rawRows0.length === 0) {
       await finaliseUpload(uploadId, 'success', 0, 0);
