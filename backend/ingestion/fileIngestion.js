@@ -803,12 +803,56 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
     // row shape hasn't shown up in any other platform's export so far,
     // so this is safe to apply across the board rather than gating it
     // to Google specifically.
-    const rawRows = rawRows0.filter(row => {
+    //
+    // GOOGLE ACCOUNT-TOTAL HANDLING:
+    // Google Ads exports include a "Total: Account" row whose Cost = the
+    // true account-wide spend for the period — including campaigns that
+    // are now paused and therefore no longer appear as individual rows.
+    // Summing only the individual Enabled rows would silently under-count
+    // spend whenever any campaign ran during the period but was later paused.
+    //
+    // When a "Total: Account" row is present, we therefore use it as the
+    // single authoritative spend figure for the whole file, stored as a
+    // synthetic campaign row named "__account_total__". Every other row
+    // (both individual campaigns AND every other "Total: ..." subtotal row)
+    // is dropped, so there is no double-counting between the account total
+    // and its constituent campaigns.
+    //
+    // When no "Total: Account" row exists (e.g. a file that only exports
+    // one campaign in isolation) the original per-row behaviour is kept:
+    // individual campaign rows are ingested and all "Total: ..." rows are
+    // dropped, exactly as before.
+    let rawRows;
+    const accountTotalRow = rawRows0.find(row => {
       const firstValue = String(Object.values(row)[0] ?? '').trim();
-      return !/^total\b/i.test(firstValue);
+      return /^total:\s*account$/i.test(firstValue);
     });
-    if (rawRows.length < rawRows0.length) {
-      console.log(`[ingestion] dropped ${rawRows0.length - rawRows.length} rollup/summary row(s) from ${originalName} (e.g. Google Ads "Total: ..." rows)`);
+    if (accountTotalRow) {
+      // Use the account-total row as the sole representative of this file.
+      // Rename it to a fixed sentinel campaign name so the upsert key
+      // (client_id, platform, campaign_date, campaign_name) is stable
+      // across re-uploads and never collides with a real campaign name.
+      const firstKey = Object.keys(accountTotalRow)[0];
+      const secondKey = Object.keys(accountTotalRow)[1]; // usually 'Campaign'
+      const syntheticRow = { ...accountTotalRow };
+      syntheticRow[firstKey]  = 'Enabled';           // make it look like a real row to downstream
+      syntheticRow[secondKey] = '__account_total__'; // stable sentinel name
+      rawRows = [syntheticRow];
+      console.log(
+        `[ingestion] Google account-total mode: using "Total: Account" row as sole spend source ` +
+        `(cost = ${accountTotalRow[Object.keys(accountTotalRow).find(k => /^cost$/i.test(k))] ?? '?'}). ` +
+        `Dropped ${rawRows0.length - 1} other rows (individual campaigns + subtotals).`
+      );
+    } else {
+      // No account-total row — fall back to the original behaviour:
+      // ingest individual campaign rows and drop all "Total: ..." subtotals.
+      rawRows = rawRows0.filter(row => {
+        const firstValue = String(Object.values(row)[0] ?? '').trim();
+        return !/^total\b/i.test(firstValue);
+      });
+      if (rawRows.length < rawRows0.length) {
+        console.log(`[ingestion] dropped ${rawRows0.length - rawRows.length} rollup/summary row(s) from ${originalName} (e.g. Google Ads "Total: ..." rows)`);
+      }
     }
     if (rawRows.length === 0) {
       await finaliseUpload(uploadId, 'success', 0, 0);
@@ -1026,7 +1070,24 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
 
     // 5. Bulk insert into the correct table
     const table     = dataType === 'revenue' ? 'revenue_data' : 'campaign_data';
-    const inserted  = await bulkInsert(table, rows);
+
+    // Whitelist campaign_data columns — any extra normalised fields
+    // (e.g. standard_cpc, standard_roas from Flipkart) that aren't in
+    // the DB schema must be stripped here; they're already in raw_extras.
+    const CAMPAIGN_DB_COLS = new Set([
+      'client_id', 'platform', 'upload_id', 'campaign_date', 'campaign_name',
+      'standard_spend', 'standard_revenue', 'standard_impressions',
+      'standard_clicks', 'standard_orders', 'raw_extras',
+    ]);
+    const filteredRows = dataType === 'campaign'
+      ? rows.map(row => {
+          const out = {};
+          for (const k of CAMPAIGN_DB_COLS) if (row[k] !== undefined) out[k] = row[k];
+          return out;
+        })
+      : rows;
+
+    const inserted  = await bulkInsert(table, filteredRows);
 
     // 5a. Populate standard_discount column from raw_extras for Shopify rows.
     // The audit clientRouter.js reads standard_discount as a real DB column
