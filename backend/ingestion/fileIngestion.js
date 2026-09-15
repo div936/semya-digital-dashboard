@@ -1053,8 +1053,18 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
     // same order has multiple line-items with the same SKU.
     const orderSeqCounter = new Map();
     // For Flipkart campaigns: expand each row into daily rows before merging.
-    // Other platforms already export daily data so this is a no-op for them.
-    const campaignRowsToMerge = (dataType === 'campaign' && platform === 'flipkart')
+    // Only applies to the OLD campaign export format where the Date column
+    // contains a lifetime range like "24 Aug '26 - Till budget ends".
+    // The Consolidated Daily Report already has one row per campaign per day
+    // with a clean ISO date (e.g. "2026-09-05") — no spreading needed.
+    // If every row's _raw_date_range has no " - " separator it's the daily
+    // format → skip expansion to avoid dividing spend/impressions across days
+    // which produces decimals that fail bigint DB columns.
+    const isAlreadyDailyFormat = (dataType === 'campaign' && platform === 'flipkart')
+      && normalisedRows.length > 0
+      && normalisedRows.every(r => !String(r.raw_extras?._raw_date_range || '').includes(' - '));
+
+    const campaignRowsToMerge = (dataType === 'campaign' && platform === 'flipkart' && !isAlreadyDailyFormat)
       ? expandFlipkartCampaignDates(normalisedRows, new Date().toISOString().split('T')[0])
       : normalisedRows;
 
