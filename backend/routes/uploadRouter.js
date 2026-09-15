@@ -2,7 +2,7 @@
 // ─────────────────────────────────────────────────────────────────
 // POST /clients/:client_slug/upload
 //
-// Admin-only route. Receives a multipart file upload, validates it,
+// Receives a multipart file upload, validates it,
 // then hands off to the ingestion pipeline.
 //
 // Mount in app.js:
@@ -43,10 +43,11 @@ router.post(
   '/:client_slug/upload',
   rbacMiddleware,               // verifies JWT, resolves client
   (req, res, next) => {
-    // Admin-only gate
-    if (!req.semya.isAdmin) {
-      return res.status(403).json({ error: 'Only admins can upload files.' });
-    }
+    // Admins can upload for any client slug.
+    // Client-role users can upload only for their own slug — rbacMiddleware
+    // already enforces this (it resolves req.semya.client from the slug in
+    // the URL and checks the user belongs to that client), so no extra check
+    // is needed here. Both roles proceed.
     return next();
   },
   (req, res, next) => {
