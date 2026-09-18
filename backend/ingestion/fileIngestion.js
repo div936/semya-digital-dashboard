@@ -786,73 +786,19 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
     }
 
     // 3a. Drop rollup/summary rows before anything else touches them.
-    // Google Ads campaign exports append several aggregate rows after
-    // the real per-campaign data — "Total: Campaigns", "Total: Account",
-    // "Total: Search", "Total: Performance Max", etc. — each carrying
-    // its own real Cost/spend figure that's a SUM of (some subset of)
-    // the individual campaigns above it, not a new campaign. Left in,
-    // these get treated as ordinary rows and their spend gets summed
-    // right alongside the real campaigns' spend, multiplying the
-    // reported total several times over (confirmed directly against an
-    // uploaded file: real spend ₹4,182.68, but summing every row
-    // including 5 non-zero "Total: ..." rows on top of it produced
-    // ₹16,730.72 — very close to what the affected dashboard actually
-    // showed). Detected generically off the first column's value
-    // starting with "Total" (case-insensitive) — a live campaign name
-    // wouldn't naturally start with that word, and this same "Total:"
-    // row shape hasn't shown up in any other platform's export so far,
-    // so this is safe to apply across the board rather than gating it
-    // to Google specifically.
-    //
-    // GOOGLE ACCOUNT-TOTAL HANDLING:
-    // Google Ads exports include a "Total: Account" row whose Cost = the
-    // true account-wide spend for the period — including campaigns that
-    // are now paused and therefore no longer appear as individual rows.
-    // Summing only the individual Enabled rows would silently under-count
-    // spend whenever any campaign ran during the period but was later paused.
-    //
-    // When a "Total: Account" row is present, we therefore use it as the
-    // single authoritative spend figure for the whole file, stored as a
-    // synthetic campaign row named "__account_total__". Every other row
-    // (both individual campaigns AND every other "Total: ..." subtotal row)
-    // is dropped, so there is no double-counting between the account total
-    // and its constituent campaigns.
-    //
-    // When no "Total: Account" row exists (e.g. a file that only exports
-    // one campaign in isolation) the original per-row behaviour is kept:
-    // individual campaign rows are ingested and all "Total: ..." rows are
-    // dropped, exactly as before.
-    let rawRows;
-    const accountTotalRow = rawRows0.find(row => {
+    // Drop all "Total: ..." rollup/summary rows — these are subtotals
+    // (Total: Campaigns, Total: Account, Total: Performance Max, etc.)
+    // that represent the same money as the individual campaign rows above
+    // them. Ingesting them alongside real campaigns would double-count spend.
+    // Individual Enabled/Paused campaign rows are always ingested so the
+    // full per-campaign breakdown is available on Campaign Insights and
+    // Daily Targets ranking.
+    const rawRows = rawRows0.filter(row => {
       const firstValue = String(Object.values(row)[0] ?? '').trim();
-      return /^total:\s*account$/i.test(firstValue);
+      return !/^total\b/i.test(firstValue);
     });
-    if (accountTotalRow) {
-      // Use the account-total row as the sole representative of this file.
-      // Rename it to a fixed sentinel campaign name so the upsert key
-      // (client_id, platform, campaign_date, campaign_name) is stable
-      // across re-uploads and never collides with a real campaign name.
-      const firstKey = Object.keys(accountTotalRow)[0];
-      const secondKey = Object.keys(accountTotalRow)[1]; // usually 'Campaign'
-      const syntheticRow = { ...accountTotalRow };
-      syntheticRow[firstKey]  = 'Enabled';           // make it look like a real row to downstream
-      syntheticRow[secondKey] = '__account_total__'; // stable sentinel name
-      rawRows = [syntheticRow];
-      console.log(
-        `[ingestion] Google account-total mode: using "Total: Account" row as sole spend source ` +
-        `(cost = ${accountTotalRow[Object.keys(accountTotalRow).find(k => /^cost$/i.test(k))] ?? '?'}). ` +
-        `Dropped ${rawRows0.length - 1} other rows (individual campaigns + subtotals).`
-      );
-    } else {
-      // No account-total row — fall back to the original behaviour:
-      // ingest individual campaign rows and drop all "Total: ..." subtotals.
-      rawRows = rawRows0.filter(row => {
-        const firstValue = String(Object.values(row)[0] ?? '').trim();
-        return !/^total\b/i.test(firstValue);
-      });
-      if (rawRows.length < rawRows0.length) {
-        console.log(`[ingestion] dropped ${rawRows0.length - rawRows.length} rollup/summary row(s) from ${originalName} (e.g. Google Ads "Total: ..." rows)`);
-      }
+    if (rawRows.length < rawRows0.length) {
+      console.log(`[ingestion] dropped ${rawRows0.length - rawRows.length} rollup/summary row(s) from ${originalName} (e.g. Google Ads "Total: ..." rows)`);
     }
     if (rawRows.length === 0) {
       await finaliseUpload(uploadId, 'success', 0, 0);
