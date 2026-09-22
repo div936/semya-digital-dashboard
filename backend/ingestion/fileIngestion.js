@@ -685,9 +685,14 @@ async function bulkInsert(table, rows) {
     const results = await Promise.all(
       batch.map((chunk) => {
         if (isCampaignTable) {
+          // ignoreDuplicates: false (the default) — on conflict, UPDATE the existing
+          // row with the new spend/revenue/impressions/clicks values. Campaign files
+          // are often re-uploaded throughout the day as spend accumulates, and we
+          // always want the latest values to win. This is safe because campaign rows
+          // are already deduplicated before reaching here by mergeDuplicateCampaignRows,
+          // so no chunk will contain two rows with the same conflict key.
           return supabaseAdmin.from(table).upsert(chunk, {
             onConflict: 'client_id,platform,campaign_date,campaign_name',
-            ignoreDuplicates: true,
           });
         }
         if (isRevenueTable) {
