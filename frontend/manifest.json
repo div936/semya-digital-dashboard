@@ -1,0 +1,41 @@
+{
+  "name": "Semya Digital Dashboard",
+  "short_name": "Semya",
+  "description": "Performance analytics dashboard for Semya Digital clients",
+  "start_url": "/semya-digital-dashboard/dashboard.html",
+  "scope": "/semya-digital-dashboard/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "assets/semya-logo.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/semya-logo.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Daily Targets",
+      "short_name": "Targets",
+      "description": "View today's revenue targets",
+      "url": "/semya-digital-dashboard/dashboard.html#daily_targets"
+    },
+    {
+      "name": "Platform Sales",
+      "short_name": "Sales",
+      "description": "View platform sales overview",
+      "url": "/semya-digital-dashboard/dashboard.html#platform_sales"
+    }
+  ]
+}
