@@ -80,7 +80,7 @@ router.post(
 
     // Quick row estimate from file size to decide sync vs async
     const fileSizeKb = fileBuffer.length / 1024;
-    const useAsync   = fileSizeKb > 200; // files > 200KB go async to avoid timeouts
+    const useAsync   = fileSizeKb > 100; // files > 100KB go async to avoid Render's 30s gateway timeout
 
     if (!useAsync) {
       // Small file — process synchronously as before
@@ -135,6 +135,30 @@ router.post(
           .eq('id', uploadId);
       }
     });
+  }
+);
+
+// ─── GET /clients/:client_slug/uploads/:uploadId/status ──────────
+// Polling endpoint for async large-file uploads.
+// Returns the current status of the upload record.
+router.get(
+  '/:client_slug/uploads/:uploadId/status',
+  rbacMiddleware,
+  async (req, res) => {
+    const { supabaseAdmin } = await import('../lib/supabase.js');
+    const { client } = req.semya;
+    const { uploadId } = req.params;
+
+    const { data: upload, error } = await supabaseAdmin
+      .from('uploads')
+      .select('id, status, row_count, error_message, detected_platform, detected_data_type')
+      .eq('id', uploadId)
+      .eq('client_id', client.id)
+      .single();
+
+    if (error || !upload) return res.status(404).json({ error: 'Upload not found.' });
+
+    return res.json({ upload });
   }
 );
 
