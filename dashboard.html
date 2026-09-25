@@ -8708,6 +8708,44 @@ async function uploadOneFile(file, clientSlug) {
   return data;
 }
 
+// Polls the uploads table via the backend until status is 'success' or 'error'.
+// Called when the backend returns { async: true } for a large file.
+async function pollUploadStatus(uploadId, onProgress) {
+  const POLL_INTERVAL = 3000; // 3s between checks
+  const MAX_WAIT_MS   = 10 * 60 * 1000; // 10 min max
+  const started = Date.now();
+  let elapsed = 0;
+
+  while (elapsed < MAX_WAIT_MS) {
+    await new Promise(r => setTimeout(r, POLL_INTERVAL));
+    elapsed = Date.now() - started;
+    const secs = Math.round(elapsed / 1000);
+    if (onProgress) onProgress(`⏳ Processing… (${secs}s)`);
+
+    try {
+      const resp = await apiFetch('/clients/' + state.clientSlug + '/uploads/' + uploadId + '/status');
+      const rec  = resp?.upload;
+      if (!rec) continue;
+
+      if (rec.status === 'success') {
+        return {
+          rowsIngested: rec.row_count ?? rec.rows_ingested ?? 0,
+          platform: rec.detected_platform || 'done',
+          usedFallbackMapping: false,
+        };
+      }
+      if (rec.status === 'error') {
+        throw new Error(rec.error_message || 'Background processing failed');
+      }
+      // still 'processing' — keep polling
+    } catch (pollErr) {
+      if (pollErr.message && !pollErr.message.includes('processing')) throw pollErr;
+      // network hiccup — keep polling
+    }
+  }
+  throw new Error('Upload timed out after 10 minutes — check Upload History for status.');
+}
+
 async function handleUploadAll() {
   const btn    = document.getElementById('uploadBtn');
   const status = document.getElementById('uploadStatus');
@@ -8753,7 +8791,17 @@ async function handleUploadAll() {
     const rowStatus = document.getElementById('uploadRowStatus_' + i);
     if (rowStatus) { rowStatus.textContent = 'Uploading…'; rowStatus.style.color = '#0284c7'; }
     try {
-      const data = await uploadOneFile(file, clientSlug);
+      let data = await uploadOneFile(file, clientSlug);
+
+      // Large files are processed asynchronously — backend returns immediately
+      // with { async: true, uploadId }. Poll the upload record until done.
+      if (data.async && data.uploadId) {
+        if (rowStatus) { rowStatus.textContent = '⏳ Processing in background…'; rowStatus.style.color = '#0284c7'; }
+        data = await pollUploadStatus(data.uploadId, (msg) => {
+          if (rowStatus) { rowStatus.textContent = msg; rowStatus.style.color = '#0284c7'; }
+        });
+      }
+
       successCount++;
       if (rowStatus) {
         if (data.usedFallbackMapping) {
