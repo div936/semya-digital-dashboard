@@ -296,8 +296,8 @@ function extractDateFromPreamble(preambleLines) {
 // large files (10k+ rows) don't take so long that a hosting platform's
 // request/gateway timeout kills the connection before we respond.
 // ═══════════════════════════════════════════════════════════════════
-const CHUNK_SIZE   = 2000; // raised from 1000 — larger batches reduce round trips for big files
-const CONCURRENCY  = 16;   // raised from 8 — saturate Supabase connection pool for speed
+const CHUNK_SIZE   = 2000; // larger batches reduce round trips for big files
+const CONCURRENCY  = 4;    // keep low — high concurrency causes deadlocks on revenue_data upserts
 
 // ═══════════════════════════════════════════════════════════════════
 // MERGE DUPLICATE CAMPAIGN ROWS
@@ -679,39 +679,40 @@ async function bulkInsert(table, rows) {
   const isCampaignTable = table === 'campaign_data';
   const isRevenueTable  = table === 'revenue_data';
 
+  // Helper: upsert one chunk with up to 3 retries on deadlock.
+  // Deadlocks happen when two concurrent uploads write to the same rows
+  // (e.g. overlapping date ranges queued together). Retrying with a
+  // short back-off resolves them — Postgres releases the lock quickly.
+  async function upsertChunk(chunk, attempt = 0) {
+    let result;
+    if (isCampaignTable) {
+      result = await supabaseAdmin.from(table).upsert(chunk, {
+        onConflict: 'client_id,platform,campaign_date,campaign_name',
+      });
+    } else if (isRevenueTable) {
+      result = await supabaseAdmin.from(table).upsert(chunk, {
+        onConflict: 'client_id,row_hash',
+        ignoreDuplicates: true,
+      });
+    } else {
+      result = await supabaseAdmin.from(table).insert(chunk);
+    }
+    if (result.error) {
+      const isDeadlock = result.error.message?.toLowerCase().includes('deadlock');
+      if (isDeadlock && attempt < 3) {
+        // Back off 200ms, 400ms, 800ms then give up
+        await new Promise(r => setTimeout(r, 200 * Math.pow(2, attempt)));
+        return upsertChunk(chunk, attempt + 1);
+      }
+      throw new Error(`Supabase upsert error on ${table}: ${result.error.message}`);
+    }
+    return result;
+  }
+
   let inserted = 0;
   for (let i = 0; i < chunks.length; i += CONCURRENCY) {
     const batch = chunks.slice(i, i + CONCURRENCY);
-    const results = await Promise.all(
-      batch.map((chunk) => {
-        if (isCampaignTable) {
-          // ignoreDuplicates: false (the default) — on conflict, UPDATE the existing
-          // row with the new spend/revenue/impressions/clicks values. Campaign files
-          // are often re-uploaded throughout the day as spend accumulates, and we
-          // always want the latest values to win. This is safe because campaign rows
-          // are already deduplicated before reaching here by mergeDuplicateCampaignRows,
-          // so no chunk will contain two rows with the same conflict key.
-          return supabaseAdmin.from(table).upsert(chunk, {
-            onConflict: 'client_id,platform,campaign_date,campaign_name',
-          });
-        }
-        if (isRevenueTable) {
-          // ignoreDuplicates: true — if a row with this (client_id, row_hash) already
-          // exists, skip it silently instead of trying to UPDATE it. This prevents
-          // the "ON CONFLICT DO UPDATE command cannot affect row a second time" error
-          // that occurs when a chunk contains two rows mapping to the same hash,
-          // or when a retry upload finds rows from a previous partial attempt.
-          return supabaseAdmin.from(table).upsert(chunk, {
-            onConflict: 'client_id,row_hash',
-            ignoreDuplicates: true,
-          });
-        }
-        return supabaseAdmin.from(table).insert(chunk);
-      })
-    );
-    for (const { error } of results) {
-      if (error) throw new Error(`Supabase upsert error on ${table}: ${error.message}`);
-    }
+    await Promise.all(batch.map(chunk => upsertChunk(chunk)));
     inserted += batch.reduce((sum, c) => sum + c.length, 0);
   }
   return inserted;
