@@ -296,8 +296,8 @@ function extractDateFromPreamble(preambleLines) {
 // large files (10k+ rows) don't take so long that a hosting platform's
 // request/gateway timeout kills the connection before we respond.
 // ═══════════════════════════════════════════════════════════════════
-const CHUNK_SIZE   = 1000; // raised from 500 — fewer round trips for large files (22k+ rows)
-const CONCURRENCY  = 8;    // raised from 5 — more parallelism per batch
+const CHUNK_SIZE   = 2000; // raised from 1000 — larger batches reduce round trips for big files
+const CONCURRENCY  = 16;   // raised from 8 — saturate Supabase connection pool for speed
 
 // ═══════════════════════════════════════════════════════════════════
 // MERGE DUPLICATE CAMPAIGN ROWS
