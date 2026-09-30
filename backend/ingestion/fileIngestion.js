@@ -138,7 +138,7 @@ function parseSpreadsheet(fileBuffer) {
   const sheetName = workbook.SheetNames[0];
   const sheet     = workbook.Sheets[sheetName];
 
-  const allRows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false });
+  const allRows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
   if (allRows.length < 2) return [];
 
   // Hard limit: reject files with more than 60,000 data rows to prevent OOM.
@@ -180,10 +180,22 @@ function parseSpreadsheet(fileBuffer) {
   const dataRows = allRows.slice(headerIdx + 1);
 
   const rows = dataRows
-    .filter((row) => row.some((cell) => cell !== ''))   // skip blank rows
+    .filter((row) => row.some((cell) => cell !== '' && cell != null))   // skip blank rows
     .map((row) => {
       const obj = {};
-      headers.forEach((h, i) => { obj[h] = row[i] ?? ''; });
+      headers.forEach((h, i) => {
+        let val = row[i] ?? '';
+        // With raw: true, cellDates: true returns JS Date objects for date cells.
+        // Convert them to ISO strings so extractLiteralDate() can parse them normally.
+        if (val instanceof Date) {
+          val = val.toISOString(); // "2026-09-29T00:00:00.000Z"
+        } else if (typeof val === 'number') {
+          // Preserve full integer precision (e.g. 68605913332042, not "6.86059E+13").
+          // Number.isInteger check avoids corrupting decimal revenue values like 162.50.
+          val = Number.isInteger(val) ? String(val) : val;
+        }
+        obj[h] = val;
+      });
       return obj;
     });
 
