@@ -8763,20 +8763,28 @@ async function uploadOneFile(file, clientSlug) {
 // Polls the uploads table via the backend until status is 'success' or 'error'.
 // Called when the backend returns { async: true } for a large file.
 async function pollUploadStatus(uploadId, onProgress) {
-  const POLL_INTERVAL = 3000; // 3s between checks
+  const POLL_INTERVAL = 5000; // 5s between checks
   const MAX_WAIT_MS   = 10 * 60 * 1000; // 10 min max
   const started = Date.now();
   let elapsed = 0;
+  let consecutiveErrors = 0;
+  const MAX_CONSECUTIVE_ERRORS = 6; // tolerate ~30s of 502s (backend restart)
 
   while (elapsed < MAX_WAIT_MS) {
     await new Promise(r => setTimeout(r, POLL_INTERVAL));
     elapsed = Date.now() - started;
     const secs = Math.round(elapsed / 1000);
-    if (onProgress) onProgress(`⏳ Processing… (${secs}s)`);
+    if (onProgress) {
+      const msg = consecutiveErrors > 0
+        ? `⏳ Processing… (${secs}s — server restarting, please wait)`
+        : `⏳ Processing… (${secs}s)`;
+      onProgress(msg);
+    }
 
     try {
       const resp = await apiFetch('/clients/' + state.clientSlug + '/uploads/' + uploadId + '/status');
-      const rec  = resp?.upload;
+      consecutiveErrors = 0; // reset on any successful response
+      const rec = resp?.upload;
       if (!rec) continue;
 
       if (rec.status === 'success') {
@@ -8791,8 +8799,17 @@ async function pollUploadStatus(uploadId, onProgress) {
       }
       // still 'processing' — keep polling
     } catch (pollErr) {
-      if (pollErr.message && !pollErr.message.includes('processing')) throw pollErr;
-      // network hiccup — keep polling
+      // If it's a definitive processing error, rethrow immediately
+      if (pollErr.message && pollErr.message.includes('Background processing failed')) throw pollErr;
+      // For network errors (502/503/Failed to fetch) — the backend may be
+      // restarting after processing a large file. Keep polling until we
+      // exhaust MAX_CONSECUTIVE_ERRORS, then give up.
+      consecutiveErrors++;
+      console.warn('[pollUploadStatus] transient error #' + consecutiveErrors + ':', pollErr.message);
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        throw new Error('Server became unavailable while processing. Check Upload History — your file may have processed successfully despite this error.');
+      }
+      // Keep polling — backend is likely cold-starting
     }
   }
   throw new Error('Upload timed out after 10 minutes — check Upload History for status.');
