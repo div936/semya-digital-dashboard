@@ -3222,8 +3222,8 @@
             <label class="target-input-label">Platform (optional)</label>
             <select id="dmRangePlatform" class="select-styled" style="width:100%;height:36px;font-size:12px;">
               <option value="">All platforms</option>
-              <option value="amazon">Amazon (Neat Amazon)</option>
-              <option value="acutas">Amazon (Acutas)</option>
+              <option value="amazon" id="dmRangePlatformAmazonOpt">Amazon</option>
+              <option value="acutas" id="dmRangePlatformAcutasOpt" style="display:none">Amazon (Acutas)</option>
               <option value="flipkart">Flipkart</option>
               <option value="blinkit">Blinkit</option>
               <option value="meta">Website (Meta)</option>
@@ -3675,15 +3675,16 @@ const PLATFORM_META = {
   website:  { label: 'Website',     color: '#1877f2', pillClass: 'pill-meta' },
 };
 
-// Client-aware platform label: "Daluci Amazon", "Neat Amazon", etc.
-// All code uses PLATFORM_META[p] directly — this function is available
-// for places that need the dynamic label, used via the helper below.
+// Client-aware platform label: "Amazon (Neat Amazon)", "Amazon (Daluci Amazon)", etc.
+// Amazon always shows as the primary label; the client name is appended in brackets
+// so every client sees "Amazon (...)" rather than a client-specific replacement.
+// Acutas stays as "Acutas" — it is NeatEveryday-specific and shown as a child of Amazon.
 function getPlatformMeta(platform) {
   const base = PLATFORM_META[platform] || { label: (platform||'').toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
-  if (platform !== 'amazon' && platform !== 'acutas') return base;
+  if (platform !== 'amazon') return base;
   const clientFirst = (state.clientName || '').split(' ')[0] || '';
   if (!clientFirst) return base;
-  return Object.assign({}, base, { label: clientFirst + ' ' + (platform === 'amazon' ? 'Amazon' : 'Acutas') });
+  return Object.assign({}, base, { label: 'Amazon (' + clientFirst + ' Amazon)' });
 }
 
 // Which individual platforms roll up into which top-level filter group.
@@ -3697,6 +3698,7 @@ const PLATFORM_GROUPS = {
 let _skuOptions = []; // { value, label } — master SKU list for custom dropdown
 let state = {
   clientSlug:   null,
+  clientName:   null,
   token:        null,
   sku:          '',
   platform:     '',
@@ -5226,6 +5228,14 @@ function setHeaderBranding(name, tagline, logoUrl, theme) {
   const tagEl  = document.querySelector('.logo-sub');
   if (nameEl) nameEl.textContent = name || 'Neat Everyday';
   if (tagEl)  tagEl.textContent  = tagline || 'Semya Digital';
+
+  // Keep state.clientName in sync so dynamic labels (platform pills, dropdowns) update
+  state.clientName = name || null;
+  const clientFirst = (name || '').split(' ')[0];
+  const amzOptEl = document.getElementById('dmRangePlatformAmazonOpt');
+  if (amzOptEl) amzOptEl.textContent = clientFirst ? 'Amazon (' + clientFirst + ' Amazon)' : 'Amazon';
+  const acutasOptEl = document.getElementById('dmRangePlatformAcutasOpt');
+  if (acutasOptEl) acutasOptEl.style.display = (state.clientSlug === 'neateveryday') ? '' : 'none';
 
   const img = document.getElementById('logoImg');
   const txt = document.getElementById('logoText');
@@ -6765,6 +6775,7 @@ function renderDT(targets, achieved) {
     // children are zero to avoid a noisy empty sub-list.
     if (group.children && group.children.length > 1) {
       const childHtml = group.children.map(cp => {
+        if (cp === 'acutas' && state.clientSlug !== 'neateveryday') return ''; // Acutas is NeatEveryday-specific
         const cm    = PLATFORM_META[cp] || { label: cp.toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
         const ctgt  = targets[cp]?.target   || 0;
         const cach  = achieved[cp]?.revenue || targets[cp]?.achieved || 0;
@@ -11542,7 +11553,7 @@ async function saveAppearance() {
 // DATA MANAGER  (Admin only — Profile → Settings → Manage Data)
 // ════════════════════════════════════════════════════════════════
 const PLATFORM_DM_META = {
-  amazon:   { label: 'Neat Amazon', color: '#f59e0b', pillClass: 'pill-amz' },
+  get amazon() { const f=(state.clientName||'').split(' ')[0]; return { label: f?'Amazon ('+f+' Amazon)':'Amazon', color:'#f59e0b', pillClass:'pill-amz' }; },
   acutas:   { label: 'Acutas',      color: '#0ea5e9', pillClass: 'pill-amz' },
   flipkart: { label: 'Flipkart',    color: '#0ea5e9', pillClass: 'pill-fk'  },
   blinkit:  { label: 'Blinkit',     color: '#84cc16', pillClass: 'pill-bk'  },
