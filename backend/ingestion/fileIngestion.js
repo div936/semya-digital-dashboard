@@ -199,6 +199,16 @@ function parseSpreadsheet(fileBuffer) {
       return obj;
     });
 
+  // Free the large intermediate arrays and workbook immediately so the GC
+  // can reclaim memory before the normalise + insert phases.
+  // On Render's free tier (512 MB RAM) a 14 MB xlsx can expand to
+  // 150–250 MB in the workbook + allRows representations; keeping both
+  // alive alongside the mapped rows array risks an OOM crash.
+  workbook.Sheets[sheetName] = null;
+  workbook.SheetNames = [];
+  allRows.length = 0;
+  dataRows.length = 0;
+
   return { rows, defaultDate };
 }
 
@@ -308,8 +318,8 @@ function extractDateFromPreamble(preambleLines) {
 // large files (10k+ rows) don't take so long that a hosting platform's
 // request/gateway timeout kills the connection before we respond.
 // ═══════════════════════════════════════════════════════════════════
-const CHUNK_SIZE   = 2000; // larger batches reduce round trips for big files
-const CONCURRENCY  = 4;    // keep low — high concurrency causes deadlocks on revenue_data upserts
+const CHUNK_SIZE   = 500;  // smaller batches keep per-chunk memory low on Render free tier (512 MB)
+const CONCURRENCY  = 2;    // low concurrency avoids deadlocks and reduces peak memory during inserts
 
 // ═══════════════════════════════════════════════════════════════════
 // MERGE DUPLICATE CAMPAIGN ROWS
