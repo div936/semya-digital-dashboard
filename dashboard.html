@@ -5235,7 +5235,7 @@ function setHeaderBranding(name, tagline, logoUrl, theme) {
   const amzOptEl = document.getElementById('dmRangePlatformAmazonOpt');
   if (amzOptEl) amzOptEl.textContent = clientFirst ? 'Amazon (' + clientFirst + ' Amazon)' : 'Amazon';
   const acutasOptEl = document.getElementById('dmRangePlatformAcutasOpt');
-  if (acutasOptEl) acutasOptEl.style.display = (state.clientSlug === 'neateveryday') ? '' : 'none';
+  if (acutasOptEl) acutasOptEl.style.display = (/neat/i.test(state.clientSlug || '')) ? '' : 'none';
 
   const img = document.getElementById('logoImg');
   const txt = document.getElementById('logoText');
@@ -6775,7 +6775,7 @@ function renderDT(targets, achieved) {
     // children are zero to avoid a noisy empty sub-list.
     if (group.children && group.children.length > 1) {
       const childHtml = group.children.map(cp => {
-        if (cp === 'acutas' && state.clientSlug !== 'neateveryday') return ''; // Acutas is NeatEveryday-specific
+        if (cp === 'acutas' && !/neat/i.test(state.clientSlug || '')) return ''; // Acutas is NeatEveryday-specific
         const cm    = PLATFORM_META[cp] || { label: cp.toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
         const ctgt  = targets[cp]?.target   || 0;
         const cach  = achieved[cp]?.revenue || targets[cp]?.achieved || 0;
