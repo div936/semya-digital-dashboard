@@ -6749,6 +6749,7 @@ function renderDT(targets, achieved) {
       (roasP != null ? ' · ROAS ' + fmtRoas(roasP) : '') + '</div>';
   };
 
+  console.log('[DT attainment] targets:', JSON.stringify(targets), 'achieved:', JSON.stringify(achieved), 'clientSlug:', state.clientSlug);
   document.getElementById('dtPlatformProgress').innerHTML = attainmentGroups.map(group => {
     const childPlatforms = group.children || [group.key];
     const tgt   = childPlatforms.reduce((s, p) => s + (targets[p]?.target   || 0), 0);
