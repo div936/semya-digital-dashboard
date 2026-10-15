@@ -75,6 +75,28 @@ router.get('/:client_slug/targets', rbacMiddleware, requireTab('daily_targets'),
 
   if (sErr) return res.status(500).json({ error: 'Failed to load spend actuals.' });
 
+  // 2c. Load return/cancellation reversals processed ON this date —
+  // these are orders originally placed on any earlier date but cancelled
+  // or returned on {date}. Queried by cancelled_date, NOT order_date,
+  // so they do NOT appear in the main revenueRows query above.
+  // This gives the team visibility into same-day return processing
+  // alongside gross revenue, displayed as "(−₹X returns)" in the UI.
+  const REVERSAL_STATUSES = [
+    'cancelled', 'canceled',
+    'shipped - returned to seller',
+    'shipped - returning to seller',
+    'return requested',
+    'refunded', 'voided',
+  ];
+  const { data: reversalRows, error: revErr } = await supabaseAdmin
+    .from('revenue_data')
+    .select('platform, standard_revenue')
+    .eq('client_id', client.id)
+    .eq('cancelled_date', date)
+    .in('standard_status', REVERSAL_STATUSES);
+
+  if (revErr) return res.status(500).json({ error: 'Failed to load reversal actuals.' });
+
   // 3. Aggregate actuals by platform
   //
   // "Achieved" excludes cancelled orders — ported directly from the old
@@ -111,7 +133,14 @@ router.get('/:client_slug/targets', rbacMiddleware, requireTab('daily_targets'),
     actuals[p].spend += Number(row.standard_spend) || 0;
   }
 
-  // 4. Build response shape: { targets: { amazon: { target, achieved, spendTarget, spendActual, roas } } }
+  // Aggregate reversals by platform
+  const reversals = {};
+  for (const row of (reversalRows || [])) {
+    const p = row.platform;
+    reversals[p] = (reversals[p] || 0) + Math.abs(Number(row.standard_revenue) || 0);
+  }
+
+  // 4. Build response shape: { targets: { amazon: { target, achieved, reversals, spendTarget, spendActual, roas } } }
   // targetRows is ordered newest target_date first — only keep the
   // FIRST row seen per platform (skip if already set), so the most
   // recent target wins. Simply overwriting on every row would do the
@@ -124,6 +153,7 @@ router.get('/:client_slug/targets', rbacMiddleware, requireTab('daily_targets'),
     targets[row.platform] = {
       target:      Number(row.revenue_target),
       achieved:    a.revenue,
+      reversals:   reversals[row.platform] || 0,
       units:       a.units,
       spendTarget,
       spendActual: a.spend,
@@ -135,9 +165,19 @@ router.get('/:client_slug/targets', rbacMiddleware, requireTab('daily_targets'),
   for (const [plat, vals] of Object.entries(actuals)) {
     if (!targets[plat]) {
       targets[plat] = {
-        target: 0, achieved: vals.revenue, units: vals.units,
-        spendTarget: 0, spendActual: vals.spend,
+        target: 0, achieved: vals.revenue, reversals: reversals[plat] || 0,
+        units: vals.units, spendTarget: 0, spendActual: vals.spend,
         roas: vals.spend > 0 ? +(vals.revenue / vals.spend).toFixed(2) : null,
+      };
+    }
+  }
+
+  // Attach reversals for platforms that only appear in reversals (no target, no actuals)
+  for (const [plat, rev] of Object.entries(reversals)) {
+    if (!targets[plat]) {
+      targets[plat] = {
+        target: 0, achieved: 0, reversals: rev, units: 0,
+        spendTarget: 0, spendActual: 0, roas: null,
       };
     }
   }
