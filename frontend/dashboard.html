@@ -6641,6 +6641,9 @@ function renderDT(targets, achieved) {
   const attainPct = totalTarget > 0 ? (totalAchieved / totalTarget * 100) : 0;
   const attainCls = attainPct >= 100 ? 'up' : attainPct >= 80 ? '' : 'down';
 
+  // Total reversals processed today (returns/cancellations by cancellation date)
+  const totalReversals = Object.values(targets).reduce((s, t) => s + (t.reversals || 0), 0);
+
   // ROAS is deliberately NOT "all revenue / all spend" — ported from
   // the old dashboard, which defines it as Website revenue / Website
   // ad spend (Meta + Google) ONLY, explicitly excluding Amazon/
@@ -6659,7 +6662,8 @@ function renderDT(targets, achieved) {
   // KPIs
   document.getElementById('dtKpiRevenue').innerHTML    = fmtRevenue(totalAchieved);
   document.getElementById('dtKpiRevenueDelta').innerHTML = '<span class="kpi-delta ' + attainCls + '">' + attainPct.toFixed(1) + '% of target</span>';
-  document.getElementById('dtKpiRevenueSub').innerHTML  = 'Target: ' + fmtRevenue(totalTarget);
+  document.getElementById('dtKpiRevenueSub').innerHTML  = 'Target: ' + fmtRevenue(totalTarget) +
+    (totalReversals > 0 ? '<br><span style="color:#ef4444;font-size:10px;">(−' + fmtRevenue(totalReversals) + ' returns today)</span>' : '');
   document.getElementById('dtKpiUnits').innerHTML      = totalUnits > 0 ? fmtUnits(totalUnits) : '—';
   document.getElementById('dtKpiUnitsDelta').innerHTML  = '';
   document.getElementById('dtKpiUnitsSub').innerHTML    = 'Across all platforms';
@@ -6749,11 +6753,11 @@ function renderDT(targets, achieved) {
       (roasP != null ? ' · ROAS ' + fmtRoas(roasP) : '') + '</div>';
   };
 
-  console.log('[DT attainment] targets:', JSON.stringify(targets), 'achieved:', JSON.stringify(achieved), 'clientSlug:', state.clientSlug);
   document.getElementById('dtPlatformProgress').innerHTML = attainmentGroups.map(group => {
     const childPlatforms = group.children || [group.key];
     const tgt   = childPlatforms.reduce((s, p) => s + (targets[p]?.target   || 0), 0);
     const ach   = childPlatforms.reduce((s, p) => s + (achieved[p]?.revenue || targets[p]?.achieved || 0), 0);
+    const groupRev = childPlatforms.reduce((s, p) => s + (targets[p]?.reversals || 0), 0);
     const spendA = childPlatforms.reduce((s, p) => s + (targets[p]?.spendActual || 0), 0);
     const spendT = childPlatforms.reduce((s, p) => s + (targets[p]?.spendTarget || 0), 0);
     const roasP  = spendA > 0 ? ach / spendA : null;
@@ -6762,7 +6766,9 @@ function renderDT(targets, achieved) {
     let html = '<div class="progress-wrap">' +
       '<div class="progress-header">' +
         '<span class="progress-label"><span class="platform-pill ' + group.pillClass + '" style="font-size:9px;padding:2px 7px;">' + group.label + '</span></span>' +
-        '<div class="progress-vals"><span class="progress-achieved">' + fmtRevenue(ach) + '</span>' +
+        '<div class="progress-vals"><span class="progress-achieved">' + fmtRevenue(ach) +
+          (groupRev > 0 ? '<span style="color:#ef4444;font-size:10px;margin-left:4px;">(−' + fmtRevenue(groupRev) + ')</span>' : '') +
+          '</span>' +
           '<span style="color:#94a3b8;font-size:11px;">/</span>' +
           '<span class="progress-target">' + fmtRevenue(tgt) + '</span>' +
           pctLabel(ach, tgt) +
@@ -6780,15 +6786,18 @@ function renderDT(targets, achieved) {
         const cm    = PLATFORM_META[cp] || { label: cp.toUpperCase(), color: '#94a3b8', pillClass: 'pill-amz' };
         const ctgt  = targets[cp]?.target   || 0;
         const cach  = achieved[cp]?.revenue || targets[cp]?.achieved || 0;
+        const crev  = targets[cp]?.reversals || 0;
         const cspendA = targets[cp]?.spendActual || 0;
         const cspendT = targets[cp]?.spendTarget || 0;
         const croasP  = cspendA > 0 ? cach / cspendA : null;
-        if (!ctgt && !cach && !cspendA) return ''; // skip entirely empty children
+        if (!ctgt && !cach && !cspendA && !crev) return ''; // skip entirely empty children
         return '<div style="padding:8px 0 4px 16px;border-left:2px solid #f1f5f9;">' +
           '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">' +
             '<span class="platform-pill ' + cm.pillClass + '" style="font-size:8.5px;padding:1.5px 6px;">' + cm.label + '</span>' +
             '<div style="display:flex;align-items:center;gap:6px;font-size:11px;">' +
-              '<span style="color:#475569;">' + fmtRevenue(cach) + '</span>' +
+              '<span style="color:#475569;">' + fmtRevenue(cach) +
+                (crev > 0 ? '<span style="color:#ef4444;font-size:9.5px;margin-left:3px;">(−' + fmtRevenue(crev) + ')</span>' : '') +
+              '</span>' +
               '<span style="color:#cbd5e1;">/</span>' +
               '<span style="color:#94a3b8;">' + fmtRevenue(ctgt) + '</span>' +
               pctLabel(cach, ctgt) +
@@ -10393,11 +10402,11 @@ function _exportDT(table, client, date) {
   const dtDate = document.getElementById('dtDate')?.value || date;
   const plats = ['amazon','acutas','flipkart','blinkit','meta','google'];
   const reportDateLabel = 'Report Date: ' + dtDate;
-  const pHdr = ['S.No.','Platform','Target (INR)','Achieved (INR)','Attainment %','Spend Target (INR)','Actual Spend (INR)'];
+  const pHdr = ['S.No.','Platform','Target (INR)','Achieved (INR)','Returns Processed (INR)','Attainment %','Spend Target (INR)','Actual Spend (INR)'];
   const pRows = _dtLastTargets ? plats.map((p,i)=>{
     const t=_dtLastTargets[p]||{}, a=(_dtLastAchieved||{})[p]||{};
-    const tgt=t.target||0, ach=a.revenue||t.achieved||0;
-    return [i+1,p,_fmtN(tgt),_fmtN(ach),tgt>0?(ach/tgt*100).toFixed(1)+'%':'—',_fmtN(t.spendTarget),_fmtN(t.spendActual)];
+    const tgt=t.target||0, ach=a.revenue||t.achieved||0, rev=t.reversals||0;
+    return [i+1,p,_fmtN(tgt),_fmtN(ach),rev>0?('-'+_fmtN(rev)):'0',tgt>0?(ach/tgt*100).toFixed(1)+'%':'—',_fmtN(t.spendTarget),_fmtN(t.spendActual)];
   }) : null;
   const cHdr = ['S.No.','Campaign','Platform','Date','Revenue (INR)','Spend (INR)','ROAS'];
   const cRows = _dtCampaignLast.length ? _dtCampaignLast.map((c,i)=>[i+1,c.campaign_name||'—',c.platform||'—',c.campaign_date||dtDate,_fmtN(c.standard_revenue),_fmtN(c.standard_spend),c.standard_spend>0?(c.standard_revenue/c.standard_spend).toFixed(2):'—']) : null;
