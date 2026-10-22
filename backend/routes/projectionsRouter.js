@@ -163,7 +163,11 @@ async function handleOverview(req, res) {
       .eq('client_id', client.id),
   ]);
 
-  if (e1 || e2 || e3 || e4) return res.status(500).json({ error: 'Failed to fetch projections data.' });
+  // Revenue data is essential; cost/assumption tables are optional (may not be configured yet)
+  if (e1) return res.status(500).json({ error: 'Failed to fetch revenue data.' });
+  if (e2) console.warn('[projections/overview] campaign_data query failed:', e2.message);
+  if (e3) console.warn('[projections/overview] sku_costs query failed:', e3.message);
+  if (e4) console.warn('[projections/overview] platform_cost_assumptions query failed:', e4.message);
 
   const platforms = await getActivePlatforms(client.id);
 
@@ -355,7 +359,11 @@ router.get('/:client_slug/projections/platform-pl', requireTab('projections_insi
       .select('platform, commission_percent, shipping_cost_flat')
       .eq('client_id', client.id),
   ]);
-  if (e1 || e2 || e3 || e4) return res.status(500).json({ error: 'Failed to fetch platform P&L data.' });
+  // Revenue data is essential; cost/assumption tables are optional
+  if (e1) return res.status(500).json({ error: 'Failed to fetch revenue data.' });
+  if (e2) console.warn('[projections/platform-pl] campaign_data query failed:', e2.message);
+  if (e3) console.warn('[projections/platform-pl] sku_costs query failed:', e3.message);
+  if (e4) console.warn('[projections/platform-pl] platform_cost_assumptions query failed:', e4.message);
 
   const costMap = buildCostMap(costRows);
   const assumptions = {};
