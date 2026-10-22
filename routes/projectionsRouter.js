@@ -584,7 +584,12 @@ router.post('/:client_slug/projections/costs/bulk', upload.single('file'), async
   }
 
   if (!upsertRows.length) {
-    return res.status(400).json({ error: 'No valid rows found in upload.', parseErrors: errors });
+    return res.status(400).json({
+      error: 'No valid rows found in upload.',
+      detectedFormat: isInventorySkuFormat ? 'Inventory_SKU' : 'Standard',
+      headersSeen: headerKeys.slice(0, 10),
+      parseErrors: errors.slice(0, 10),
+    });
   }
 
   // Batch upsert in chunks of 500
