@@ -18,6 +18,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="semya_auth_guard.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     /* ─── NEAT EVERYDAY THEME TOKENS — LIGHT ────────────────────── */
     :root {
@@ -11097,16 +11098,66 @@ function handleProjFileDrop(event) {
   if (file) uploadCostFile(file);
 }
 
+// Convert Inventory_SKU.xlsx → standard CSV (SKU, Cost_Price_INR, Effective_From)
+// so any backend version can process it without format-detection logic.
+async function _convertInventorySkuToStandardCsv(file) {
+  const buf = await file.arrayBuffer();
+  const wb  = XLSX.read(buf, { type: 'array' });
+  const ws  = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+  if (!rows.length) return null;
+
+  const headers = Object.keys(rows[0]);
+  const hasSettlement = headers.some(h => /settlement/i.test(h));
+  const hasDealPrice  = headers.some(h => /deal.?price.?amazon/i.test(h));
+  if (!hasSettlement || !hasDealPrice) return null; // not Inventory_SKU format
+
+  const today = new Date().toISOString().slice(0, 10);
+  const csvRows = ['SKU,Cost_Price_INR,Effective_From'];
+  let converted = 0, skipped = 0;
+
+  for (const row of rows) {
+    const sku = String(row['SKU'] || '').trim();
+    if (!sku) { skipped++; continue; }
+
+    const price = parseFloat(String(row['Deal Price Amazon'] || '0').replace(/[₹,\s]/g, ''));
+    if (!price || price <= 0) { skipped++; continue; }
+
+    const settlRaw = parseFloat(String(row['% PRICESettlement'] || '0').replace(/[%,\s]/g, ''));
+    const settlPct = settlRaw > 1 ? settlRaw / 100 : settlRaw; // normalise 16 → 0.16
+    const cogs = Math.round(price * (1 - settlPct) * 100) / 100;
+
+    csvRows.push(`${sku},${cogs},${today}`);
+    converted++;
+  }
+
+  if (!converted) return null;
+  console.log(`[Semya] Converted ${converted} SKUs from Inventory_SKU format (${skipped} skipped, no price)`);
+  return { csvBlob: new Blob([csvRows.join('\n')], { type: 'text/csv' }), converted, skipped };
+}
+
 async function uploadCostFile(file) {
   if (!file) return;
   const statusEl = document.getElementById('projUploadStatus');
-  if (statusEl) { statusEl.style.display = ''; statusEl.innerHTML = '⏳ Uploading…'; }
+  if (statusEl) { statusEl.style.display = ''; statusEl.innerHTML = '⏳ Reading file…'; }
   const { clientSlug } = state;
   try {
+    let uploadFile = file;
+    let conversionNote = '';
+
+    // If SheetJS is available and the file is xlsx/xls, try Inventory_SKU conversion
+    if (typeof XLSX !== 'undefined' && /\.(xlsx?|xls)$/i.test(file.name)) {
+      if (statusEl) statusEl.innerHTML = '⏳ Detecting format…';
+      const converted = await _convertInventorySkuToStandardCsv(file);
+      if (converted) {
+        uploadFile = new File([converted.csvBlob], 'sku_costs_converted.csv', { type: 'text/csv' });
+        conversionNote = ` <span style="color:#6366f1">[Auto-converted from Inventory_SKU: ${converted.converted} SKUs]</span>`;
+        if (statusEl) statusEl.innerHTML = `⏳ Uploading ${converted.converted} SKUs…`;
+      }
+    }
+
     const form = new FormData();
-    form.append('file', file);
-    // Do NOT pass Content-Type here — browser must set it automatically
-    // to multipart/form-data with the correct boundary for multer to work.
+    form.append('file', uploadFile);
     const resp = await fetch(API_BASE + '/clients/' + clientSlug + '/projections/costs/bulk', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${getToken()}` },
@@ -11114,15 +11165,12 @@ async function uploadCostFile(file) {
     });
     const json = await resp.json();
     if (!resp.ok) {
-      // Show diagnostic info so we can debug format issues
       let errMsg = json.error || 'Upload failed';
-      if (json.detectedFormat) errMsg += ` [Format detected: ${json.detectedFormat}]`;
-      if (json.headersSeen?.length) errMsg += `<br><small>Headers seen: ${json.headersSeen.join(', ')}</small>`;
       if (json.parseErrors?.length) errMsg += `<br><small>First error: ${json.parseErrors[0]?.reason || JSON.stringify(json.parseErrors[0])}</small>`;
       if (statusEl) statusEl.innerHTML = '❌ ' + errMsg;
       return;
     }
-    const fmtNote = json.formatType ? ` <span style="color:#6366f1">[${json.formatType}]</span>` : '';
+    const fmtNote = conversionNote || (json.formatType ? ` <span style="color:#6366f1">[${json.formatType}]</span>` : '');
     if (statusEl) statusEl.innerHTML = `✅ Saved ${json.imported || 0} SKU costs${json.skipped ? ', ' + json.skipped + ' skipped' : ''}.${fmtNote} Projections will now use live revenue + these costs.`;
     loadSkuCosts();
     tabCache['projections_insights'] = null;
