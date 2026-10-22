@@ -11112,8 +11112,9 @@ async function _convertInventorySkuToStandardCsv(file) {
   const hasDealPrice  = headers.some(h => /deal.?price.?amazon/i.test(h));
   if (!hasSettlement || !hasDealPrice) return null; // not Inventory_SKU format
 
-  const today = new Date().toISOString().slice(0, 10);
-  const csvRows = ['SKU,Cost_Price_INR,Effective_From'];
+  // Omit Effective_From column — backend defaults to today when absent,
+  // and avoids SheetJS parsing ISO dates as serial numbers on the backend.
+  const csvRows = ['SKU,Cost_Price_INR'];
   let converted = 0, skipped = 0;
 
   for (const row of rows) {
@@ -11127,7 +11128,7 @@ async function _convertInventorySkuToStandardCsv(file) {
     const settlPct = settlRaw > 1 ? settlRaw / 100 : settlRaw; // normalise 16 → 0.16
     const cogs = Math.round(price * (1 - settlPct) * 100) / 100;
 
-    csvRows.push(`${sku},${cogs},${today}`);
+    csvRows.push(`${sku},${cogs}`);
     converted++;
   }
 
