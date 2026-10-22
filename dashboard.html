@@ -4787,6 +4787,26 @@ function _gatherTabData(tabKey) {
     };
   }
 
+  // Projections data for the projections_insights tab
+  if (tabKey === 'projections_insights' && _projLast) {
+    const t = _projLast.totals || {};
+    const pr = _projLast.projection || null;
+    out.totalRevenue = t.revenue || 0;
+    out.projections = {
+      revenue:    t.revenue    || 0,
+      cogs:       t.cogs       || 0,
+      adSpend:    t.adSpend    || 0,
+      returnLoss: t.returnLoss || 0,
+      profit:     t.profit     || 0,
+      marginPct:  t.revenue > 0 ? ((t.profit / t.revenue) * 100).toFixed(1) : null,
+      isProfitable: pr?.isProfitableNow || false,
+      breakevenLinear: pr?.linear?.breakevenPeriodsFromNow ?? null,
+      breakevenGrowth: pr?.growthRate?.breakevenPeriodsFromNow ?? null,
+      trendDirection:  pr?.linear?.trending || null,
+      unpricedSkus:    _projLast.unpricedSkus?.length || 0,
+    };
+  }
+
   return out;
 }
 
@@ -10327,10 +10347,14 @@ async function fetchAndRenderProjections(forceRefresh) {
     _projLast = resp;
     renderProjOverview(resp);
     setBadgeProj(resp?.series?.length ? 'live' : 'empty');
+    updateSidebarForTab('projections_insights');
   } catch (e) {
     console.warn('[projections/overview]', e.message);
     setBadgeProj('empty');
+    // Clear "Loading…" placeholders so they don't stay stuck
+    renderProjSummaries(null);
   }
+  updateSidebarForTab('projections_insights');
   tabCache['projections_insights'] = { data: true, timestamp: Date.now() };
   // If another panel is active, refresh it too
   if (_projCurrentTab === 'sku_breakeven') { _projBERows = []; _fetchBEIfNeeded(); }
@@ -10652,7 +10676,7 @@ async function fetchAndRenderPlatformPL() {
     renderPlatformPL(rows);
   } catch (e) {
     console.warn('[projections/platform-pl]', e.message);
-    if (barsEl) barsEl.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:24px 0;">Failed to load platform data.</div>';
+    if (barsEl) barsEl.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:24px 0;">No platform data available for this period.<br><span style="font-size:11px;">Configure platform fees in ⚙ Cost Structure to see P&amp;L breakdown.</span></div>';
   }
 }
 
