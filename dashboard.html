@@ -11105,9 +11105,11 @@ async function uploadCostFile(file) {
   try {
     const form = new FormData();
     form.append('file', file);
+    // Do NOT pass Content-Type here — browser must set it automatically
+    // to multipart/form-data with the correct boundary for multer to work.
     const resp = await fetch(API_BASE + '/clients/' + clientSlug + '/projections/costs/bulk', {
       method: 'POST',
-      headers: authHeaders(),
+      headers: { 'Authorization': `Bearer ${getToken()}` },
       body: form,
     });
     const json = await resp.json();
