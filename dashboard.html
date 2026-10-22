@@ -2627,19 +2627,64 @@
     </div><!-- /tab-utm_analytics -->
 
     <!-- ══════════════════════════════════════════════════════════════
-         PROJECTIONS INSIGHTS TAB
+         PROJECTIONS INSIGHTS TAB  v2
     ══════════════════════════════════════════════════════════════ -->
+
+    <!-- Projections-specific styles -->
+    <style>
+      /* ── Inner tab bar ─────────────────────────────────────────── */
+      .proj-inner-tabs { display:flex; gap:4px; margin-bottom:14px; border-bottom:2px solid var(--color-border); padding-bottom:0; }
+      .proj-inner-tab  { background:none; border:none; cursor:pointer; padding:8px 16px 10px; font-size:12px; font-weight:600; color:#94a3b8; border-bottom:2px solid transparent; margin-bottom:-2px; transition:color .15s, border-color .15s; }
+      .proj-inner-tab.active, .proj-inner-tab:hover { color:var(--theme-primary, #0284c7); border-bottom-color:var(--theme-primary, #0284c7); }
+      /* ── Platform pills ────────────────────────────────────────── */
+      .proj-pills   { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; }
+      .proj-pill    { padding:5px 14px; border-radius:20px; border:1px solid var(--color-border); font-size:11px; font-weight:600; cursor:pointer; transition:all .18s; color:#64748b; background:var(--color-surface,#fff); text-transform:capitalize; }
+      .proj-pill.active { background:var(--theme-primary,#0284c7); color:#fff; border-color:transparent; }
+      /* ── SKU table ─────────────────────────────────────────────── */
+      .proj-sku-table { width:100%; border-collapse:collapse; font-size:12px; }
+      .proj-sku-table th { padding:7px 10px; text-align:left; font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:.04em; border-bottom:2px solid var(--color-border); cursor:pointer; white-space:nowrap; user-select:none; }
+      .proj-sku-table th:hover { color:var(--theme-primary,#0284c7); }
+      .proj-sku-table td { padding:8px 10px; border-bottom:1px solid var(--color-border); color:#1e293b; vertical-align:middle; }
+      .proj-sku-table tr:hover td { background:var(--color-hover,rgba(0,0,0,.025)); cursor:pointer; }
+      .proj-sku-table .mono { font-family:var(--font-mono,'Fira Mono',monospace); }
+      /* ── Status badges ─────────────────────────────────────────── */
+      .be-badge { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700; }
+      .be-badge.green  { background:#dcfce7; color:#166534; }
+      .be-badge.amber  { background:#fef9c3; color:#854d0e; }
+      .be-badge.red    { background:#fee2e2; color:#991b1b; }
+      .be-badge.grey   { background:#f1f5f9; color:#94a3b8; }
+      /* ── Sliding detail panel ──────────────────────────────────── */
+      .proj-detail-overlay { position:fixed; inset:0; background:rgba(0,0,0,.3); z-index:800; display:none; }
+      .proj-detail-panel   { position:fixed; top:0; right:0; height:100%; width:360px; max-width:90vw; background:var(--color-surface,#fff); box-shadow:-4px 0 24px rgba(0,0,0,.15); z-index:801; transform:translateX(100%); transition:transform .22s cubic-bezier(.4,0,.2,1); overflow-y:auto; padding:20px; }
+      .proj-detail-panel.open { transform:translateX(0); }
+      /* ── Platform P&L bars ─────────────────────────────────────── */
+      .pl-bar-wrap  { margin-bottom:20px; }
+      .pl-bar-label { font-size:11px; font-weight:700; color:#1e293b; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center; }
+      .pl-bar-track { height:18px; border-radius:3px; background:#e2e8f0; overflow:hidden; display:flex; position:relative; }
+      .pl-bar-seg   { height:100%; transition:width .4s; }
+      .pl-legend    { display:flex; gap:12px; flex-wrap:wrap; font-size:10px; color:#64748b; margin-bottom:14px; }
+      .pl-legend-dot { width:8px; height:8px; border-radius:2px; display:inline-block; margin-right:3px; }
+      /* ── Cost modal ────────────────────────────────────────────── */
+      .proj-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:900; display:flex; align-items:center; justify-content:center; }
+      .proj-modal-box     { background:var(--color-surface,#fff); border-radius:var(--radius-lg,12px); padding:24px; width:640px; max-width:95vw; max-height:85vh; overflow-y:auto; box-shadow:0 8px 40px rgba(0,0,0,.2); }
+      .proj-modal-tabs    { display:flex; gap:4px; border-bottom:1px solid var(--color-border); margin-bottom:16px; }
+      .proj-modal-tab     { padding:7px 16px 9px; font-size:12px; font-weight:600; border:none; background:none; cursor:pointer; color:#94a3b8; border-bottom:2px solid transparent; margin-bottom:-1px; transition:all .15s; }
+      .proj-modal-tab.active { color:var(--theme-primary,#0284c7); border-bottom-color:var(--theme-primary,#0284c7); }
+    </style>
+
     <div class="tab-panel" id="tab-projections_insights">
 
-      <div class="card" style="margin-bottom:16px;">
+      <!-- ── Top toolbar ── -->
+      <div class="card" style="margin-bottom:14px;">
         <div class="card-header">
           <span class="card-title">PROJECTIONS INSIGHTS</span>
-          <div style="display:flex;gap:6px;align-items:center;">
-            <select id="projBucket" onchange="fetchAndRenderProjections()" style="font-size:11px;padding:5px 8px;border:1px solid var(--color-border);border-radius:6px;">
-              <option value="week" selected>Weekly</option>
-              <option value="month">Monthly</option>
-              <option value="day">Daily</option>
-            </select>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+            <!-- Date range for all panels -->
+            <span style="font-size:11px;color:#94a3b8;">From</span>
+            <input type="date" id="projDateFrom" class="date-input" style="font-size:11px;" onchange="fetchAndRenderProjections(true)">
+            <span style="font-size:11px;color:#94a3b8;">to</span>
+            <input type="date" id="projDateTo"   class="date-input" style="font-size:11px;" onchange="fetchAndRenderProjections(true)">
+            <button class="btn btn-ghost" style="font-size:10px;padding:4px 10px;" onclick="openProjCostModal()" title="Configure SKU costs &amp; overhead">⚙ Cost Structure</button>
             <span class="fetch-badge" id="projFetchBadge"><span id="projFetchText">Loading…</span></span>
             <div class="export-wrap" id="projExportWrap">
               <button class="export-btn" onclick="toggleExportMenu('proj')">
@@ -2649,7 +2694,9 @@
               <div class="export-menu" id="projExportMenu">
                 <div class="export-menu-header">Download as CSV</div>
                 <div class="export-menu-item all" onclick="exportTable('proj','all')">↓ All tables</div>
-                <div class="export-menu-item" onclick="exportTable('proj','summary')">Projections Summary</div>
+                <div class="export-menu-item" onclick="exportTable('proj','summary')">Overview summary</div>
+                <div class="export-menu-item" onclick="exportTable('proj','breakeven')">SKU Break-Even</div>
+                <div class="export-menu-item" onclick="exportTable('proj','pl')">Platform P&amp;L</div>
               </div>
             </div>
           </div>
@@ -2657,55 +2704,254 @@
         <div id="projUnpricedNote" style="display:none;margin-top:8px;padding:10px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:var(--radius-sm);font-size:12px;color:#92400e;"></div>
       </div>
 
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px;">
-        <div class="card">
-          <div class="card-header"><span class="card-title">Net Profit</span></div>
-          <div style="font-size:24px;font-weight:800;margin-top:6px;" id="projKpiProfit">—</div>
-          <div style="font-size:11px;color:#94a3b8;margin-top:4px;" id="projKpiProfitSub">for selected period</div>
-        </div>
-        <div class="card">
-          <div class="card-header"><span class="card-title">Lost to Returns</span></div>
-          <div style="font-size:24px;font-weight:800;margin-top:6px;color:#dc2626;" id="projKpiReturnLoss">—</div>
-          <div style="font-size:11px;color:#94a3b8;margin-top:4px;">COGS + shipping sunk on cancelled orders</div>
-        </div>
-        <div class="card">
-          <div class="card-header"><span class="card-title">Ad Spend</span></div>
-          <div style="font-size:24px;font-weight:800;margin-top:6px;" id="projKpiAdSpend">—</div>
-          <div style="font-size:11px;color:#94a3b8;margin-top:4px;" id="projKpiAdSpendSub">—</div>
-        </div>
-        <div class="card">
-          <div class="card-header"><span class="card-title">Status</span></div>
-          <div style="font-size:18px;font-weight:800;margin-top:6px;" id="projKpiStatus">—</div>
-          <div style="font-size:11px;color:#94a3b8;margin-top:4px;" id="projKpiStatusSub">—</div>
-        </div>
+      <!-- ── Inner tab nav ── -->
+      <div class="proj-inner-tabs">
+        <button class="proj-inner-tab active" data-ptab="overview"     onclick="switchProjTab('overview')">Overview</button>
+        <button class="proj-inner-tab"        data-ptab="sku_breakeven" onclick="switchProjTab('sku_breakeven')">SKU Break-Even</button>
+        <button class="proj-inner-tab"        data-ptab="platform_pl"  onclick="switchProjTab('platform_pl')">Platform P&amp;L</button>
       </div>
 
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Cumulative Profit — Actual + Projected</span>
-        </div>
-        <div style="display:flex;gap:16px;margin:6px 0 4px;font-size:11px;">
-          <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:2px;background:#0284c7;display:inline-block;"></span>Actual</span>
-          <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:2px;background:#94a3b8;display:inline-block;"></span>Steady trend (all history)</span>
-          <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:2px;background:#059669;display:inline-block;"></span>Recent momentum (revenue growth + margin trend)</span>
-        </div>
-        <div class="chart-wrap" style="height:260px;">
-          <canvas id="projChart"></canvas>
-        </div>
-      </div>
+      <!-- ══════════ PANEL: OVERVIEW ══════════ -->
+      <div id="projPanel_overview">
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;">
-        <div class="card">
-          <div class="card-header"><span class="card-title">Steady Trend Projection</span></div>
-          <div id="projLinearSummary" style="margin-top:8px;font-size:12px;color:#64748b;line-height:1.7;">Loading…</div>
+        <!-- KPI cards -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px;">
+          <div class="card">
+            <div class="card-header"><span class="card-title">Net Profit</span></div>
+            <div style="font-size:24px;font-weight:800;margin-top:6px;" id="projKpiProfit">—</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:4px;" id="projKpiProfitSub">selected period</div>
+          </div>
+          <div class="card">
+            <div class="card-header"><span class="card-title">Lost to Returns</span></div>
+            <div style="font-size:24px;font-weight:800;margin-top:6px;color:#dc2626;" id="projKpiReturnLoss">—</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:4px;">COGS sunk on cancelled orders</div>
+          </div>
+          <div class="card">
+            <div class="card-header"><span class="card-title">Ad Spend</span></div>
+            <div style="font-size:24px;font-weight:800;margin-top:6px;" id="projKpiAdSpend">—</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:4px;" id="projKpiAdSpendSub">—</div>
+          </div>
+          <div class="card">
+            <div class="card-header"><span class="card-title">Profitability</span></div>
+            <div style="font-size:18px;font-weight:800;margin-top:6px;" id="projKpiStatus">—</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:4px;" id="projKpiStatusSub">—</div>
+          </div>
         </div>
-        <div class="card">
-          <div class="card-header"><span class="card-title">Recent Momentum Projection</span></div>
-          <div id="projGrowthSummary" style="margin-top:8px;font-size:12px;color:#64748b;line-height:1.7;">Loading…</div>
+
+        <!-- Cumulative profit chart -->
+        <div class="card" style="margin-bottom:14px;">
+          <div class="card-header">
+            <span class="card-title">Cumulative Profit — Actual + Projected</span>
+          </div>
+          <div style="display:flex;gap:16px;margin:6px 0 4px;font-size:11px;flex-wrap:wrap;">
+            <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:2px;background:#0284c7;display:inline-block;"></span>Actual</span>
+            <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:2px;background:#94a3b8;display:inline-block;"></span>Steady trend</span>
+            <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:2px;background:#059669;display:inline-block;"></span>Recent momentum</span>
+          </div>
+          <div class="chart-wrap" style="height:240px;">
+            <canvas id="projChart"></canvas>
+          </div>
         </div>
-      </div>
+
+        <!-- Projection summaries -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div class="card">
+            <div class="card-header"><span class="card-title">Steady Trend</span></div>
+            <div id="projLinearSummary" style="margin-top:8px;font-size:12px;color:#64748b;line-height:1.7;">Loading…</div>
+          </div>
+          <div class="card">
+            <div class="card-header"><span class="card-title">Recent Momentum</span></div>
+            <div id="projGrowthSummary" style="margin-top:8px;font-size:12px;color:#64748b;line-height:1.7;">Loading…</div>
+          </div>
+        </div>
+
+      </div><!-- /projPanel_overview -->
+
+      <!-- ══════════ PANEL: SKU BREAK-EVEN ══════════ -->
+      <div id="projPanel_sku_breakeven" style="display:none;">
+
+        <!-- Platform pill switcher -->
+        <div class="proj-pills" id="projBEPills"></div>
+
+        <!-- Search + table -->
+        <div class="card">
+          <div class="card-header" style="flex-wrap:wrap;gap:8px;">
+            <span class="card-title" id="projBETableTitle">SKU Break-Even</span>
+            <input type="search" id="projBESearch" placeholder="Search SKU…"
+              oninput="filterProjBETable()"
+              style="font-size:11px;padding:5px 10px;border:1px solid var(--color-border);border-radius:6px;width:180px;margin-left:auto;">
+          </div>
+          <!-- Empty / no-cost state -->
+          <div id="projBEEmpty" style="display:none;padding:32px 0;text-align:center;color:#94a3b8;font-size:13px;">
+            <div style="font-size:28px;margin-bottom:8px;">📦</div>
+            <div style="font-weight:600;color:#475569;margin-bottom:6px;">No cost data configured yet</div>
+            <div style="margin-bottom:16px;">Add SKU cost prices to see break-even analysis</div>
+            <button class="btn" onclick="openProjCostModal()">⚙ Set Up Cost Structure</button>
+          </div>
+          <!-- Table -->
+          <div id="projBETableWrap" style="overflow-x:auto;">
+            <table class="proj-sku-table" id="projBETable">
+              <thead>
+                <tr>
+                  <th onclick="sortProjBETable('sku')">SKU ↕</th>
+                  <th onclick="sortProjBETable('avgPrice')" style="text-align:right;">Avg Price ↕</th>
+                  <th onclick="sortProjBETable('cogsPerUnit')" style="text-align:right;">COGS/unit ↕</th>
+                  <th onclick="sortProjBETable('commissionPerUnit')" style="text-align:right;">Platform Fee ↕</th>
+                  <th onclick="sortProjBETable('overheadPerUnit')" style="text-align:right;">Overhead ↕</th>
+                  <th onclick="sortProjBETable('contributionMargin')" style="text-align:right;">CM/unit ↕</th>
+                  <th onclick="sortProjBETable('breakEvenUnits')" style="text-align:right;">BEP Units ↕</th>
+                  <th onclick="sortProjBETable('unitsSold')" style="text-align:right;">Sold ↕</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="projBETbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div><!-- /projPanel_sku_breakeven -->
+
+      <!-- ══════════ PANEL: PLATFORM P&L ══════════ -->
+      <div id="projPanel_platform_pl" style="display:none;">
+
+        <div class="card">
+          <div class="card-header"><span class="card-title">Platform Contribution After Fees</span></div>
+          <div class="pl-legend">
+            <span><span class="pl-legend-dot" style="background:#6ee7b7;"></span>Revenue</span>
+            <span><span class="pl-legend-dot" style="background:#fca5a5;"></span>COGS</span>
+            <span><span class="pl-legend-dot" style="background:#fcd34d;"></span>Platform Fees</span>
+            <span><span class="pl-legend-dot" style="background:#a5b4fc;"></span>Ad Spend</span>
+            <span><span class="pl-legend-dot" style="background:#34d399;"></span>Net</span>
+          </div>
+          <div id="projPLBars" style="padding:4px 0 8px;">
+            <div style="text-align:center;color:#94a3b8;padding:24px 0;">Loading…</div>
+          </div>
+        </div>
+
+        <!-- Platform-level table -->
+        <div class="card" style="margin-top:14px;">
+          <div class="card-header"><span class="card-title">Platform Summary</span></div>
+          <div style="overflow-x:auto;">
+            <table class="proj-sku-table" id="projPLTable">
+              <thead>
+                <tr>
+                  <th>Platform</th>
+                  <th style="text-align:right;">Revenue</th>
+                  <th style="text-align:right;">COGS</th>
+                  <th style="text-align:right;">Fees</th>
+                  <th style="text-align:right;">Ad Spend</th>
+                  <th style="text-align:right;">Net</th>
+                  <th style="text-align:right;">Margin %</th>
+                </tr>
+              </thead>
+              <tbody id="projPLTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div><!-- /projPanel_platform_pl -->
 
     </div><!-- /tab-projections_insights -->
+
+    <!-- ══ SKU Detail slide-in panel + overlay ══ -->
+    <div class="proj-detail-overlay" id="projDetailOverlay" onclick="closeProjDetail()"></div>
+    <div class="proj-detail-panel" id="projDetailPanel">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <span style="font-size:13px;font-weight:700;" id="projDetailSku">—</span>
+        <button onclick="closeProjDetail()" style="background:none;border:none;cursor:pointer;font-size:18px;color:#94a3b8;line-height:1;">✕</button>
+      </div>
+      <div id="projDetailBody"></div>
+    </div>
+
+    <!-- ══ Cost Structure modal ══ -->
+    <div class="proj-modal-overlay" id="projCostModal" style="display:none;" onclick="if(event.target===this)closeProjCostModal()">
+      <div class="proj-modal-box">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <span style="font-size:14px;font-weight:700;">⚙ Cost Structure</span>
+          <button onclick="closeProjCostModal()" style="background:none;border:none;cursor:pointer;font-size:18px;color:#94a3b8;">✕</button>
+        </div>
+        <div class="proj-modal-tabs">
+          <button class="proj-modal-tab active" data-mtab="overhead" onclick="switchCostModalTab('overhead')">Overhead</button>
+          <button class="proj-modal-tab" data-mtab="platforms"  onclick="switchCostModalTab('platforms')">Platform Fees</button>
+          <button class="proj-modal-tab" data-mtab="skucosts"   onclick="switchCostModalTab('skucosts')">SKU Costs</button>
+          <button class="proj-modal-tab" data-mtab="upload"     onclick="switchCostModalTab('upload')">Bulk Upload</button>
+        </div>
+
+        <!-- Overhead tab -->
+        <div id="costModalTab_overhead">
+          <p style="font-size:12px;color:#64748b;margin-bottom:12px;">Enter your total monthly salary + fixed overhead. The system will auto-allocate costs across SKUs proportional to their revenue share. You can override individual SKUs in the SKU Break-Even table.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+            <div>
+              <label style="font-size:11px;color:#64748b;display:block;margin-bottom:4px;">Total Salary / Month (₹)</label>
+              <input type="number" id="ohSalary" min="0" step="1000" placeholder="0"
+                style="width:100%;padding:8px 10px;border:1px solid var(--color-border);border-radius:6px;font-size:13px;">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#64748b;display:block;margin-bottom:4px;">Other Fixed Overhead / Month (₹)</label>
+              <input type="number" id="ohFixed" min="0" step="1000" placeholder="0"
+                style="width:100%;padding:8px 10px;border:1px solid var(--color-border);border-radius:6px;font-size:13px;">
+            </div>
+          </div>
+          <div id="ohTotalDisplay" style="font-size:12px;color:#475569;margin-bottom:14px;"></div>
+          <button class="btn" onclick="saveOverheadConfig()">Save Overhead Config</button>
+        </div>
+
+        <!-- Platform fees tab -->
+        <div id="costModalTab_platforms" style="display:none;">
+          <p style="font-size:12px;color:#64748b;margin-bottom:12px;">Set commission % and flat shipping cost per platform. These are used for break-even and P&L calculations.</p>
+          <div id="costModalPlatformGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;"></div>
+        </div>
+
+        <!-- SKU costs manual tab -->
+        <div id="costModalTab_skucosts" style="display:none;">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:12px;">
+            <div>
+              <label style="font-size:11px;color:#64748b;display:block;margin-bottom:3px;">SKU</label>
+              <input type="text" id="skuCostSku" placeholder="e.g. PROD-001"
+                style="width:100%;padding:7px 9px;border:1px solid var(--color-border);border-radius:6px;font-size:12px;">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#64748b;display:block;margin-bottom:3px;">Cost Price (₹/unit)</label>
+              <input type="number" id="skuCostPrice" min="0" step="0.5" placeholder="0"
+                style="width:100%;padding:7px 9px;border:1px solid var(--color-border);border-radius:6px;font-size:12px;">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#64748b;display:block;margin-bottom:3px;">Effective From</label>
+              <input type="date" id="skuCostDate"
+                style="width:100%;padding:7px 9px;border:1px solid var(--color-border);border-radius:6px;font-size:12px;">
+            </div>
+            <button class="btn" onclick="addSkuCost()" style="white-space:nowrap;">+ Add</button>
+          </div>
+          <div style="overflow-x:auto;max-height:340px;">
+            <table class="proj-sku-table">
+              <thead><tr><th>SKU</th><th>Cost (₹)</th><th>Effective From</th><th></th></tr></thead>
+              <tbody id="skuCostsTbody"><tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:16px;">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Bulk upload tab -->
+        <div id="costModalTab_upload" style="display:none;">
+          <p style="font-size:12px;color:#64748b;margin-bottom:10px;">Upload an Excel (.xlsx) or CSV file with columns: <strong>SKU</strong>, <strong>Cost_Price_INR</strong>, <strong>Effective_From</strong> (YYYY-MM-DD). The template below is pre-filled with all your active SKUs.</p>
+          <div style="display:flex;gap:8px;margin-bottom:14px;">
+            <a id="projTemplateLink" href="#" onclick="downloadCostTemplate(event)"
+              class="btn btn-ghost" style="font-size:11px;">↓ Download Template</a>
+          </div>
+          <div id="projUploadDrop" style="border:2px dashed var(--color-border);border-radius:8px;padding:28px;text-align:center;cursor:pointer;transition:border-color .15s;"
+            onclick="document.getElementById('projUploadFile').click()"
+            ondragover="event.preventDefault();this.style.borderColor='#0284c7'"
+            ondragleave="this.style.borderColor=''"
+            ondrop="handleProjFileDrop(event)">
+            <div style="font-size:28px;margin-bottom:6px;">📂</div>
+            <div style="font-size:13px;font-weight:600;color:#475569;">Drop file here or click to browse</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:4px;">.xlsx or .csv — max 5 MB</div>
+            <input type="file" id="projUploadFile" accept=".xlsx,.xls,.csv" style="display:none;" onchange="uploadCostFile(this.files[0])">
+          </div>
+          <div id="projUploadStatus" style="margin-top:10px;font-size:12px;display:none;"></div>
+        </div>
+
+      </div>
+    </div><!-- /projCostModal -->
 
     <!-- All Clients comparison panel (shown when "All Clients" selected in switcher) -->
     <div id="allClientsPanel" style="display:none;">
@@ -9342,7 +9588,7 @@ async function fetchAndRenderAllClients(tabKey) {
         case 'inventory':
           return apiFetch('/clients/' + slug + '/inventory/stock').catch(() => null);
         case 'projections_insights':
-          return apiFetch('/clients/' + slug + '/projections?bucket=week&periodsAhead=4').catch(() => null);
+          return apiFetch('/clients/' + slug + '/projections/overview?periodsAhead=4').catch(() => null);
         default:
           return apiFetch('/clients/' + slug + '/platform-sales' + qMain).catch(() => null);
       }
@@ -10014,29 +10260,85 @@ function setBadgeUTM(mode) {
   if (t) t.textContent = mode === 'loading' ? 'Loading…' : mode === 'live' ? 'Live data' : 'No data — upload a file';
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  PROJECTIONS INSIGHTS — v2  (Overview | SKU Break-Even | Platform P&L)
+// ══════════════════════════════════════════════════════════════════
+
+// ── State ─────────────────────────────────────────────────────────
+let _projLast          = null;  // last overview response
+let _projBERows        = [];    // raw break-even rows (current platform)
+let _projBEPlatform    = null;  // currently selected platform pill
+let _projBESortCol     = 'breakEvenUnits';
+let _projBESortDir     = 1;     // 1 = asc, -1 = desc
+let _projCurrentTab    = 'overview';
+
+// ── Badge helper ──────────────────────────────────────────────────
 function setBadgeProj(mode) {
-  const b = document.getElementById('projFetchBadge'); const t = document.getElementById('projFetchText');
+  const b = document.getElementById('projFetchBadge');
+  const t = document.getElementById('projFetchText');
   if (b) b.className = 'fetch-badge ' + mode;
-  if (t) t.textContent = mode === 'loading' ? 'Loading…' : mode === 'live' ? 'Live data' : 'No data — upload a file';
+  if (t) t.textContent = mode === 'loading' ? 'Loading…' : mode === 'live' ? 'Live data' : 'No data';
 }
 
-async function fetchAndRenderProjections() {
+// ── Inner tab switcher ────────────────────────────────────────────
+function switchProjTab(tab) {
+  _projCurrentTab = tab;
+  document.querySelectorAll('.proj-inner-tab').forEach(el => {
+    el.classList.toggle('active', el.dataset.ptab === tab);
+  });
+  ['overview', 'sku_breakeven', 'platform_pl'].forEach(p => {
+    const el = document.getElementById('projPanel_' + p);
+    if (el) el.style.display = p === tab ? '' : 'none';
+  });
+  // Lazy-load panel data
+  if (tab === 'sku_breakeven') _fetchBEIfNeeded();
+  if (tab === 'platform_pl')   fetchAndRenderPlatformPL();
+}
+
+// ── Date range helpers ────────────────────────────────────────────
+function _projDateParams() {
+  const from = document.getElementById('projDateFrom')?.value;
+  const to   = document.getElementById('projDateTo')?.value;
+  const params = new URLSearchParams();
+  if (from) params.set('from', from);
+  if (to)   params.set('to', to);
+  return params.toString() ? '?' + params.toString() : '';
+}
+
+function _projDefaultDates() {
+  // Default: last 90 days
+  const to   = new Date();
+  const from = new Date(to); from.setDate(from.getDate() - 89);
+  const fmt  = d => d.toISOString().slice(0, 10);
+  const fromEl = document.getElementById('projDateFrom');
+  const toEl   = document.getElementById('projDateTo');
+  if (fromEl && !fromEl.value) fromEl.value = fmt(from);
+  if (toEl   && !toEl.value)   toEl.value   = fmt(to);
+}
+
+// ── Main entry: fetch overview ────────────────────────────────────
+async function fetchAndRenderProjections(forceRefresh) {
   const { clientSlug } = state; if (!clientSlug) return;
+  _projDefaultDates();
   setBadgeProj('loading');
-  const bucket = document.getElementById('projBucket')?.value || 'week';
   try {
-    const resp = await apiFetch('/clients/' + clientSlug + '/projections?bucket=' + bucket + '&periodsAhead=8');
-    _projLast = resp; // stored for CSV export
-    renderProjections(resp);
+    const qs = _projDateParams();
+    const resp = await apiFetch('/clients/' + clientSlug + '/projections/overview' + qs + (qs ? '&' : '?') + 'periodsAhead=8');
+    _projLast = resp;
+    renderProjOverview(resp);
     setBadgeProj(resp?.series?.length ? 'live' : 'empty');
   } catch (e) {
-    console.warn('[projections]', e.message);
+    console.warn('[projections/overview]', e.message);
     setBadgeProj('empty');
   }
   tabCache['projections_insights'] = { data: true, timestamp: Date.now() };
+  // If another panel is active, refresh it too
+  if (_projCurrentTab === 'sku_breakeven') { _projBERows = []; _fetchBEIfNeeded(); }
+  if (_projCurrentTab === 'platform_pl')   fetchAndRenderPlatformPL();
 }
 
-function renderProjections(resp) {
+// ── Overview render ───────────────────────────────────────────────
+function renderProjOverview(resp) {
   if (!resp) return;
   const { totals, projection, unpricedSkus, unpricedRevenue, series } = resp;
 
@@ -10044,22 +10346,24 @@ function renderProjections(resp) {
   if (unpricedSkus && unpricedSkus.length) {
     note.style.display = '';
     note.innerHTML = '⚠ ' + unpricedSkus.length + ' SKU' + (unpricedSkus.length !== 1 ? 's have' : ' has') +
-      ' no cost price set (' + fmtRevenue(unpricedRevenue) + ' in revenue excluded from this calculation) — add pricing below for a complete picture. Missing: ' +
+      ' no cost price set (' + fmtRevenue(unpricedRevenue) + ' revenue excluded) — add pricing in ⚙ Cost Structure for a complete picture. Missing: ' +
       unpricedSkus.slice(0, 6).join(', ') + (unpricedSkus.length > 6 ? '…' : '');
-  } else {
-    note.style.display = 'none';
-  }
+  } else { note.style.display = 'none'; }
 
-  document.getElementById('projKpiProfit').innerHTML = fmtRevenue(totals.profit);
-  document.getElementById('projKpiProfit').style.color = totals.profit >= 0 ? '#059669' : '#dc2626';
-  document.getElementById('projKpiReturnLoss').innerHTML = fmtRevenue(totals.returnLoss);
-  document.getElementById('projKpiAdSpend').innerHTML = fmtRevenue(totals.adSpend);
-  document.getElementById('projKpiAdSpendSub').textContent = totals.revenue > 0 ? (((totals.adSpend / totals.revenue) * 100).toFixed(1) + '% of revenue') : '—';
+  const profEl = document.getElementById('projKpiProfit');
+  if (profEl) { profEl.innerHTML = fmtRevenue(totals.profit); profEl.style.color = totals.profit >= 0 ? '#059669' : '#dc2626'; }
+  const rlEl = document.getElementById('projKpiReturnLoss');
+  if (rlEl) rlEl.innerHTML = fmtRevenue(totals.returnLoss);
+  const asEl = document.getElementById('projKpiAdSpend');
+  if (asEl) asEl.innerHTML = fmtRevenue(totals.adSpend);
+  const asSubEl = document.getElementById('projKpiAdSpendSub');
+  if (asSubEl) asSubEl.textContent = totals.revenue > 0 ? (((totals.adSpend / totals.revenue) * 100).toFixed(1) + '% of revenue') : '—';
 
   if (projection) {
-    document.getElementById('projKpiStatus').textContent = projection.isProfitableNow ? '✓ Profitable' : 'Not yet profitable';
-    document.getElementById('projKpiStatus').style.color = projection.isProfitableNow ? '#059669' : '#dc2626';
-    document.getElementById('projKpiStatusSub').textContent = fmtRevenue(projection.currentCumulativeProfit) + ' cumulative';
+    const stEl = document.getElementById('projKpiStatus');
+    if (stEl) { stEl.textContent = projection.isProfitableNow ? '✓ Profitable' : 'Not yet profitable'; stEl.style.color = projection.isProfitableNow ? '#059669' : '#dc2626'; }
+    const stSubEl = document.getElementById('projKpiStatusSub');
+    if (stSubEl) stSubEl.textContent = fmtRevenue(projection.currentCumulativeProfit) + ' cumulative';
   }
 
   renderProjChart(series, projection);
@@ -10067,43 +10371,46 @@ function renderProjections(resp) {
 }
 
 function renderProjSummaries(projection) {
-  const linEl = document.getElementById('projLinearSummary');
+  const linEl  = document.getElementById('projLinearSummary');
   const growEl = document.getElementById('projGrowthSummary');
+  if (!linEl || !growEl) return;
   if (!projection) { linEl.textContent = growEl.textContent = 'Not enough data yet.'; return; }
 
   const l = projection.linear;
   if (!l?.available) {
     linEl.textContent = l?.reason || 'Not enough history.';
   } else {
-    linEl.innerHTML = 'Fits a straight line through your <strong>entire</strong> history — conservative, doesn\'t weight recent weeks more than early ones.<br><br>' +
+    linEl.innerHTML = 'OLS fit across <strong>all</strong> history — conservative.<br><br>' +
       'Trend: <strong style="color:' + (l.trending === 'up' ? '#059669' : l.trending === 'down' ? '#dc2626' : '#64748b') + ';">' + l.trending + '</strong> · ' +
-      fmtRevenue(l.slopePerPeriod) + ' per period<br>' +
+      fmtRevenue(l.slopePerPeriod) + '/period<br>' +
       (l.breakevenPeriodsFromNow != null
-        ? 'Projected breakeven in <strong>~' + l.breakevenPeriodsFromNow + ' periods</strong>.'
-        : (projection.isProfitableNow ? 'Already profitable on this basis.' : 'No breakeven in sight on this trend — the whole-history slope isn\'t currently pointing toward zero.'));
+        ? 'Breakeven in ~<strong>' + l.breakevenPeriodsFromNow + ' periods</strong>.'
+        : (projection.isProfitableNow ? 'Already profitable.' : 'No breakeven visible on this trend.'));
   }
 
   const g = projection.growthRate;
   if (!g?.available) {
     growEl.textContent = g?.reason || 'Not enough history.';
   } else {
-    growEl.innerHTML = 'Grows revenue at its recent rate and trends the profit margin forward — more responsive to recent improvement (or decline), more volatile with limited history.<br><br>' +
-      'Revenue growth: <strong>' + g.avgRevenueGrowthRatePerPeriod + '%</strong>/period · Margin trend: <strong style="color:' + (g.marginTrendPerPeriod > 0 ? '#059669' : g.marginTrendPerPeriod < 0 ? '#dc2626' : '#64748b') + ';">' + (g.marginTrendPerPeriod > 0 ? '+' : '') + g.marginTrendPerPeriod + 'pp</strong>/period<br>' +
+    growEl.innerHTML = 'Compounds recent revenue growth + margin trend.<br><br>' +
+      'Revenue growth: <strong>' + g.avgRevenueGrowthRatePerPeriod + '%</strong>/period · Margin trend: <strong style="color:' +
+      (g.marginTrendPerPeriod > 0 ? '#059669' : g.marginTrendPerPeriod < 0 ? '#dc2626' : '#64748b') + ';">' +
+      (g.marginTrendPerPeriod > 0 ? '+' : '') + g.marginTrendPerPeriod + 'pp</strong>/period<br>' +
       (g.breakevenPeriodsFromNow != null
-        ? 'Projected breakeven in <strong>~' + g.breakevenPeriodsFromNow + ' periods</strong>.'
-        : (projection.isProfitableNow ? 'Already profitable on this basis.' : 'No breakeven projected within this window on current momentum.'));
+        ? 'Breakeven in ~<strong>' + g.breakevenPeriodsFromNow + ' periods</strong>.'
+        : (projection.isProfitableNow ? 'Already profitable.' : 'No breakeven in this window.'));
   }
 }
 
 function renderProjChart(series, projection) {
   const actualLabels = (series || []).map(s => s.period);
-  const actualCum = [];
+  const actualCum    = [];
   let running = 0;
   (series || []).forEach(s => { running += s.profit; actualCum.push(+running.toFixed(2)); });
 
-  const futureCount = projection?.linear?.projectedCumulative?.length || 0;
+  const futureCount  = projection?.linear?.projectedCumulative?.length || 0;
   const futureLabels = Array.from({ length: futureCount }, (_, i) => '+' + (i + 1));
-  const labels = [...actualLabels, ...futureLabels];
+  const labels       = [...actualLabels, ...futureLabels];
 
   const actualData = [...actualCum, ...Array(futureCount).fill(null)];
   const linearData = projection?.linear?.available
@@ -10118,9 +10425,9 @@ function renderProjChart(series, projection) {
     data: {
       labels,
       datasets: [
-        { label: 'Actual', data: actualData, borderColor: '#0284c7', backgroundColor: 'rgba(2,132,199,.08)', pointRadius: 3, tension: 0.3, fill: true, borderWidth: 2 },
-        { label: 'Steady trend', data: linearData, borderColor: '#94a3b8', borderDash: [5, 4], pointRadius: 0, tension: 0, fill: false, borderWidth: 2 },
-        { label: 'Recent momentum', data: growthData, borderColor: '#059669', borderDash: [2, 3], pointRadius: 0, tension: 0.3, fill: false, borderWidth: 2 },
+        { label: 'Actual',           data: actualData, borderColor: '#0284c7', backgroundColor: 'rgba(2,132,199,.08)', pointRadius: 3, tension: 0.3, fill: true,  borderWidth: 2 },
+        { label: 'Steady trend',     data: linearData, borderColor: '#94a3b8', borderDash: [5, 4], pointRadius: 0, tension: 0,   fill: false, borderWidth: 2 },
+        { label: 'Recent momentum',  data: growthData, borderColor: '#059669', borderDash: [2, 3], pointRadius: 0, tension: 0.3, fill: false, borderWidth: 2 },
       ],
     },
     options: {
@@ -10141,76 +10448,359 @@ function renderProjChart(series, projection) {
   });
 }
 
-// ── SKU cost price settings ─────────────────────────────────────
-async function loadSkuCosts() {
+// ══════════════════════════════════════════════════════════════════
+//  SKU BREAK-EVEN PANEL
+// ══════════════════════════════════════════════════════════════════
+
+async function _fetchBEIfNeeded() {
+  if (_projBERows.length > 0) return; // already loaded for this platform
+  await _loadBEPills(); // build pills first so we know which platform to request
+}
+
+async function _loadBEPills() {
   const { clientSlug } = state; if (!clientSlug) return;
-  const tbody = document.getElementById('skuCostsTbody');
+  const pillsEl = document.getElementById('projBEPills');
+  if (!pillsEl) return;
   try {
-    const resp = await apiFetch('/clients/' + clientSlug + '/sku-costs');
-    const costs = resp?.costs || [];
-    if (!costs.length) {
-      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:16px 0;">No SKU pricing set yet.</td></tr>';
-      return;
-    }
-    tbody.innerHTML = costs.map(c => (
-      '<tr><td style="font-family:var(--font-mono);font-weight:600;">' + c.sku + '</td>' +
-      '<td style="font-family:var(--font-mono);">' + fmtRevenue(c.cost_price) + '</td>' +
-      '<td>' + c.effective_from + '</td>' +
-      '<td><button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;color:#dc2626;" onclick="deleteSkuCost(' + jsAttr(c.id) + ')">Delete</button></td></tr>'
-    )).join('');
+    // Hit break-even endpoint for "all" to discover platforms dynamically
+    const qs = _projDateParams();
+    const resp = await apiFetch('/clients/' + clientSlug + '/projections/sku-breakeven' + qs);
+    // Backend returns { rows, platforms } or just { rows } — handle both
+    const platforms = resp?.platforms || [...new Set((resp?.rows || []).map(r => r.platform).filter(Boolean))];
+    const allRows   = resp?.rows || [];
+
+    // Build pills: "All" + each platform
+    const pills = ['all', ...platforms];
+    pillsEl.innerHTML = pills.map(p =>
+      '<button class="proj-pill' + (p === (_projBEPlatform || 'all') ? ' active' : '') + '" ' +
+      'onclick="selectBEPlatform(' + jsAttr(p) + ')">' +
+      (p === 'all' ? 'All Platforms' : getPlatformMeta(p).label) + '</button>'
+    ).join('');
+
+    // Default to "all"
+    if (!_projBEPlatform) _projBEPlatform = 'all';
+    _renderBETable(allRows, _projBEPlatform);
+    _projBERows = allRows;
   } catch (e) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:16px 0;">Failed to load.</td></tr>';
+    console.warn('[projections/sku-breakeven]', e.message);
+    const empty = document.getElementById('projBEEmpty');
+    const wrap  = document.getElementById('projBETableWrap');
+    if (empty) empty.style.display = '';
+    if (wrap)  wrap.style.display  = 'none';
   }
 }
 
-async function addSkuCost() {
-  const { clientSlug } = state;
-  const sku = document.getElementById('skuCostSku')?.value.trim();
-  const cost_price = document.getElementById('skuCostPrice')?.value;
-  const effective_from = document.getElementById('skuCostDate')?.value;
-  if (!sku || cost_price === '' || !effective_from) { alert('Fill in SKU, cost price, and effective date.'); return; }
+async function selectBEPlatform(platform) {
+  _projBEPlatform = platform;
+  document.querySelectorAll('.proj-pill').forEach(el => {
+    el.classList.toggle('active', el.textContent.trim().toLowerCase().replace(/\s+/g,'') ===
+      (platform === 'all' ? 'allplatforms' : getPlatformMeta(platform).label.toLowerCase().replace(/\s+/g,'')));
+  });
+  // Re-fetch for the specific platform
+  const { clientSlug } = state; if (!clientSlug) return;
   try {
-    await apiFetch('/clients/' + clientSlug + '/sku-costs', {
+    const qs = _projDateParams();
+    const sep = qs ? '&' : '?';
+    const url = '/clients/' + clientSlug + '/projections/sku-breakeven' + qs +
+                (platform !== 'all' ? sep + 'platform=' + encodeURIComponent(platform) : '');
+    const resp = await apiFetch(url);
+    _projBERows = resp?.rows || [];
+    _renderBETable(_projBERows, platform);
+  } catch (e) { console.warn('[BE platform switch]', e.message); }
+}
+
+function _renderBETable(rows, platform) {
+  const empty  = document.getElementById('projBEEmpty');
+  const wrap   = document.getElementById('projBETableWrap');
+  const tbody  = document.getElementById('projBETbody');
+  const title  = document.getElementById('projBETableTitle');
+
+  if (!rows || !rows.length) {
+    if (empty) empty.style.display = '';
+    if (wrap)  wrap.style.display  = 'none';
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  if (wrap)  wrap.style.display  = '';
+  if (title) title.textContent = 'SKU Break-Even' + (platform && platform !== 'all' ? ' — ' + getPlatformMeta(platform).label : '');
+
+  const search = (document.getElementById('projBESearch')?.value || '').toLowerCase();
+  let filtered = search ? rows.filter(r => r.sku && r.sku.toLowerCase().includes(search)) : [...rows];
+
+  // Sort
+  filtered.sort((a, b) => {
+    const av = a[_projBESortCol] ?? 0, bv = b[_projBESortCol] ?? 0;
+    if (typeof av === 'string') return _projBESortDir * av.localeCompare(bv);
+    return _projBESortDir * (av - bv);
+  });
+
+  tbody.innerHTML = filtered.map(r => {
+    const noCogs = r.noCogs;
+    const cm     = r.contributionMargin;
+    const badge  = noCogs
+      ? '<span class="be-badge grey">No COGS</span>'
+      : cm <= 0
+        ? '<span class="be-badge red">Loss / unit</span>'
+        : r.breakEvenReached
+          ? '<span class="be-badge green">✓ BEP Reached</span>'
+          : r.gapToBreakEven <= 10
+            ? '<span class="be-badge amber">~' + r.gapToBreakEven + ' units away</span>'
+            : '<span class="be-badge red">' + r.gapToBreakEven + ' units away</span>';
+    return '<tr onclick="openSkuDetail(' + jsAttr(r.sku) + ', ' + jsAttr(JSON.stringify(r)) + ')">' +
+      '<td class="mono" style="font-weight:600;">' + r.sku + '</td>' +
+      '<td class="mono" style="text-align:right;">' + fmtRevenue(r.avgPrice) + '</td>' +
+      '<td class="mono" style="text-align:right;">' + (noCogs ? '<span style="color:#94a3b8;">—</span>' : fmtRevenue(r.cogsPerUnit)) + '</td>' +
+      '<td class="mono" style="text-align:right;">' + fmtRevenue(r.commissionPerUnit) + '<span style="font-size:9px;color:#94a3b8;"> (' + (r.commissionPct||0).toFixed(1) + '%)</span></td>' +
+      '<td class="mono" style="text-align:right;">' + fmtRevenue(r.overheadPerUnit) +
+        '<span style="font-size:9px;color:#94a3b8;"> ' + (r.overheadMode === 'manual' ? 'M' : 'A') + '</span></td>' +
+      '<td class="mono" style="text-align:right;color:' + (cm < 0 ? '#dc2626' : cm === 0 ? '#94a3b8' : '#059669') + ';font-weight:700;">' +
+        (noCogs ? '—' : fmtRevenue(cm)) + '</td>' +
+      '<td class="mono" style="text-align:right;">' + (noCogs || cm <= 0 ? '—' : (r.breakEvenUnits ?? '—')) + '</td>' +
+      '<td class="mono" style="text-align:right;">' + (r.unitsSold ?? 0) + '</td>' +
+      '<td>' + badge + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+function filterProjBETable() {
+  _renderBETable(_projBERows, _projBEPlatform);
+}
+
+function sortProjBETable(col) {
+  if (_projBESortCol === col) _projBESortDir *= -1;
+  else { _projBESortCol = col; _projBESortDir = 1; }
+  _renderBETable(_projBERows, _projBEPlatform);
+}
+
+// ── SKU Detail panel ─────────────────────────────────────────────
+function openSkuDetail(sku, rowDataStr) {
+  let r;
+  try { r = typeof rowDataStr === 'string' ? JSON.parse(rowDataStr) : rowDataStr; } catch { return; }
+  const panel   = document.getElementById('projDetailPanel');
+  const overlay = document.getElementById('projDetailOverlay');
+  const skuEl   = document.getElementById('projDetailSku');
+  const bodyEl  = document.getElementById('projDetailBody');
+  if (!panel || !bodyEl) return;
+
+  skuEl.textContent = sku;
+  const row = (name, val, sub) =>
+    '<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--color-border);font-size:12px;">' +
+    '<span style="color:#64748b;">' + name + '</span>' +
+    '<span style="font-weight:600;font-family:var(--font-mono);">' + val + (sub ? '<span style="font-size:10px;color:#94a3b8;font-weight:400;"> ' + sub + '</span>' : '') + '</span></div>';
+
+  const cm      = r.contributionMargin;
+  const noCogs  = r.noCogs;
+  bodyEl.innerHTML =
+    row('Avg Selling Price',     fmtRevenue(r.avgPrice)) +
+    row('COGS / unit',           noCogs ? 'Not set' : fmtRevenue(r.cogsPerUnit)) +
+    row('Platform Commission',   fmtRevenue(r.commissionPerUnit), '(' + (r.commissionPct||0).toFixed(1) + '%)') +
+    row('Shipping / unit',       fmtRevenue(r.shippingPerUnit)) +
+    row('Overhead / unit',       fmtRevenue(r.overheadPerUnit), r.overheadMode === 'manual' ? '(manual)' : '(auto)') +
+    '<div style="padding:9px 0;font-size:12px;font-weight:700;display:flex;justify-content:space-between;border-bottom:2px solid var(--color-border);">' +
+      '<span>Contribution Margin</span><span style="color:' + (cm < 0 ? '#dc2626' : '#059669') + ';font-family:var(--font-mono);">' + (noCogs ? '—' : fmtRevenue(cm)) + '</span></div>' +
+    row('Break-Even Units',      noCogs || cm <= 0 ? '—' : (r.breakEvenUnits ?? '—')) +
+    row('Units Sold',            r.unitsSold ?? 0) +
+    row('Orders',                r.orderCount ?? 0) +
+    row('Revenue',               fmtRevenue(r.revenue)) +
+    (r.gapToBreakEven != null && !r.breakEvenReached && cm > 0 && !noCogs
+      ? row('Gap to BEP', r.gapToBreakEven + ' units') : '') +
+    (r.overheadMode === 'auto'
+      ? '<div style="margin-top:14px;"><button class="btn btn-ghost" style="font-size:11px;width:100%;" onclick="toggleSkuOverride(' + jsAttr(sku) + ')">Switch to Manual Overhead</button></div>'
+      : '<div style="margin-top:14px;"><button class="btn btn-ghost" style="font-size:11px;width:100%;" onclick="toggleSkuOverride(' + jsAttr(sku) + ')">Switch to Auto Overhead</button></div>') +
+    '';
+
+  overlay.style.display = '';
+  panel.classList.add('open');
+}
+
+function closeProjDetail() {
+  const panel   = document.getElementById('projDetailPanel');
+  const overlay = document.getElementById('projDetailOverlay');
+  if (panel)   panel.classList.remove('open');
+  if (overlay) overlay.style.display = 'none';
+}
+
+async function toggleSkuOverride(sku) {
+  const { clientSlug } = state; if (!clientSlug) return;
+  const row = _projBERows.find(r => r.sku === sku);
+  if (!row) return;
+  const isManual = row.overheadMode === 'manual';
+  try {
+    await apiFetch('/clients/' + clientSlug + '/projections/sku-overhead', {
+      method: 'PATCH',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sku, is_manual_override: !isManual, overhead_per_unit: row.overheadPerUnit }),
+    });
+    closeProjDetail();
+    _projBERows = []; // invalidate cache
+    await selectBEPlatform(_projBEPlatform || 'all');
+  } catch (e) { alert('Failed to save: ' + e.message); }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  PLATFORM P&L PANEL
+// ══════════════════════════════════════════════════════════════════
+async function fetchAndRenderPlatformPL() {
+  const { clientSlug } = state; if (!clientSlug) return;
+  const barsEl = document.getElementById('projPLBars');
+  const tbody  = document.getElementById('projPLTbody');
+  if (barsEl) barsEl.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:24px 0;">Loading…</div>';
+  try {
+    const qs   = _projDateParams();
+    const resp = await apiFetch('/clients/' + clientSlug + '/projections/platform-pl' + qs);
+    const rows = resp?.rows || [];
+    renderPlatformPL(rows);
+  } catch (e) {
+    console.warn('[projections/platform-pl]', e.message);
+    if (barsEl) barsEl.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:24px 0;">Failed to load platform data.</div>';
+  }
+}
+
+function renderPlatformPL(rows) {
+  const barsEl = document.getElementById('projPLBars');
+  const tbody  = document.getElementById('projPLTbody');
+  if (!rows.length) {
+    if (barsEl) barsEl.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:24px 0;">No platform data in this range.</div>';
+    if (tbody)  tbody.innerHTML  = '';
+    return;
+  }
+
+  const maxRev = Math.max(...rows.map(r => r.revenue || 0), 1);
+  if (barsEl) {
+    barsEl.innerHTML = rows.map(r => {
+      const pct   = v => ((v / maxRev) * 100).toFixed(1) + '%';
+      const net   = r.netContribution || 0;
+      const netCol = net >= 0 ? '#34d399' : '#f87171';
+      const m     = getPlatformMeta(r.platform);
+      return '<div class="pl-bar-wrap">' +
+        '<div class="pl-bar-label"><span>' + m.label + '</span><span style="color:' + netCol + ';font-weight:700;">' + fmtRevenue(net) + ' net</span></div>' +
+        '<div class="pl-bar-track">' +
+          '<div class="pl-bar-seg" style="width:' + pct(r.revenue) + ';background:#6ee7b7;" title="Revenue ' + fmtRevenue(r.revenue) + '"></div>' +
+        '</div>' +
+        '<div class="pl-bar-track" style="margin-top:3px;height:12px;">' +
+          '<div class="pl-bar-seg" style="width:' + pct(r.cogs) + ';background:#fca5a5;" title="COGS ' + fmtRevenue(r.cogs) + '"></div>' +
+          '<div class="pl-bar-seg" style="width:' + pct(r.totalFees) + ';background:#fcd34d;" title="Fees ' + fmtRevenue(r.totalFees) + '"></div>' +
+          '<div class="pl-bar-seg" style="width:' + pct(r.adSpend) + ';background:#a5b4fc;" title="Ad Spend ' + fmtRevenue(r.adSpend) + '"></div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  if (tbody) {
+    tbody.innerHTML = rows.map(r => {
+      const net = r.netContribution || 0;
+      const m   = getPlatformMeta(r.platform);
+      return '<tr>' +
+        '<td style="font-weight:700;text-transform:capitalize;">' + m.label + '</td>' +
+        '<td class="mono" style="text-align:right;">' + fmtRevenue(r.revenue) + '</td>' +
+        '<td class="mono" style="text-align:right;color:#dc2626;">' + fmtRevenue(r.cogs) + '</td>' +
+        '<td class="mono" style="text-align:right;color:#d97706;">' + fmtRevenue(r.totalFees) + '</td>' +
+        '<td class="mono" style="text-align:right;color:#6366f1;">' + fmtRevenue(r.adSpend) + '</td>' +
+        '<td class="mono" style="text-align:right;color:' + (net >= 0 ? '#059669' : '#dc2626') + ';font-weight:700;">' + fmtRevenue(net) + '</td>' +
+        '<td class="mono" style="text-align:right;">' + (r.marginPct != null ? r.marginPct.toFixed(1) + '%' : '—') + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  COST STRUCTURE MODAL
+// ══════════════════════════════════════════════════════════════════
+function openProjCostModal() {
+  const modal = document.getElementById('projCostModal');
+  if (modal) modal.style.display = 'flex';
+  switchCostModalTab('overhead');
+  loadOverheadConfig();
+  loadSkuCosts();
+  loadPlatformAssumptions();
+}
+
+function closeProjCostModal() {
+  const modal = document.getElementById('projCostModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function switchCostModalTab(tab) {
+  ['overhead', 'platforms', 'skucosts', 'upload'].forEach(t => {
+    const panelEl = document.getElementById('costModalTab_' + t);
+    const btnEl   = document.querySelector('.proj-modal-tab[data-mtab="' + t + '"]');
+    if (panelEl) panelEl.style.display = t === tab ? '' : 'none';
+    if (btnEl)   btnEl.classList.toggle('active', t === tab);
+  });
+}
+
+// ── Overhead config ───────────────────────────────────────────────
+async function loadOverheadConfig() {
+  const { clientSlug } = state; if (!clientSlug) return;
+  try {
+    const resp = await apiFetch('/clients/' + clientSlug + '/projections/overhead-config');
+    const cfg  = resp?.config || {};
+    const salEl = document.getElementById('ohSalary');
+    const fixEl = document.getElementById('ohFixed');
+    if (salEl) salEl.value = cfg.total_salary    || '';
+    if (fixEl) fixEl.value = cfg.total_fixed_overhead || '';
+    _updateOhTotal();
+  } catch (e) { console.warn('[overhead-config load]', e.message); }
+}
+
+function _updateOhTotal() {
+  const sal    = parseFloat(document.getElementById('ohSalary')?.value || 0) || 0;
+  const fix    = parseFloat(document.getElementById('ohFixed')?.value  || 0) || 0;
+  const totEl  = document.getElementById('ohTotalDisplay');
+  if (totEl) totEl.textContent = 'Total: ' + fmtRevenue(sal + fix) + ' / month allocated revenue-weighted across SKUs';
+}
+
+// Wire up overhead inputs — safe even if modal not yet in DOM (delegated via oninput on HTML elements)
+// The HTML inputs already use oninput inline where needed; these are belt-and-suspenders:
+function _wireOhListeners() {
+  document.getElementById('ohSalary')?.addEventListener('input', _updateOhTotal);
+  document.getElementById('ohFixed')?.addEventListener('input',  _updateOhTotal);
+}
+// Run after DOM is ready (called from boot / first modal open)
+if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', _wireOhListeners); }
+else { _wireOhListeners(); }
+
+async function saveOverheadConfig() {
+  const { clientSlug } = state;
+  const sal = parseFloat(document.getElementById('ohSalary')?.value || 0) || 0;
+  const fix = parseFloat(document.getElementById('ohFixed')?.value  || 0) || 0;
+  try {
+    await apiFetch('/clients/' + clientSlug + '/projections/overhead-config', {
       method: 'POST',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sku, cost_price, effective_from }),
+      body: JSON.stringify({ total_salary: sal, total_fixed_overhead: fix }),
     });
-    document.getElementById('skuCostSku').value = '';
-    document.getElementById('skuCostPrice').value = '';
-    loadSkuCosts();
-    tabCache['projections_insights'] = null; // pricing changed — profit numbers need recalculating
-  } catch (e) {
-    alert('Failed to save: ' + e.message);
-  }
-}
-
-async function deleteSkuCost(id) {
-  const { clientSlug } = state;
-  try {
-    await apiFetch('/clients/' + clientSlug + '/sku-costs/' + id, { method: 'DELETE' });
-    loadSkuCosts();
     tabCache['projections_insights'] = null;
-  } catch (e) { alert('Failed to delete: ' + e.message); }
+    _projBERows = []; // invalidate break-even cache
+    closeProjCostModal();
+    if (_projCurrentTab === 'sku_breakeven') _fetchBEIfNeeded();
+  } catch (e) { alert('Failed to save overhead config: ' + e.message); }
 }
 
-// ── Platform cost assumption settings ───────────────────────────
+// ── Platform assumptions ──────────────────────────────────────────
 async function loadPlatformAssumptions() {
   const { clientSlug } = state; if (!clientSlug) return;
-  const grid = document.getElementById('platformAssumptionsGrid');
+  const grid = document.getElementById('costModalPlatformGrid');
+  if (!grid) return;
   try {
-    const resp = await apiFetch('/clients/' + clientSlug + '/platform-assumptions');
+    const resp       = await apiFetch('/clients/' + clientSlug + '/platform-assumptions');
     const assumptions = resp?.assumptions || {};
     grid.innerHTML = Object.entries(assumptions).map(([platform, a]) => {
       const m = getPlatformMeta(platform);
       return '<div style="border:1px solid var(--color-border);border-radius:var(--radius-sm);padding:10px;">' +
-        '<div style="font-size:11px;font-weight:700;color:#1e293b;margin-bottom:8px;">' + m.label + '</div>' +
+        '<div style="font-size:11px;font-weight:700;color:#1e293b;margin-bottom:8px;text-transform:capitalize;">' + m.label + '</div>' +
         '<label style="font-size:10px;color:#94a3b8;">Commission %</label>' +
-        '<input type="number" min="0" max="100" step="0.1" value="' + (a.commission_percent || 0) + '" id="assump_comm_' + platform + '" style="width:100%;padding:5px 8px;margin:2px 0 6px;border:1px solid var(--color-border);border-radius:6px;font-size:12px;" />' +
+        '<input type="number" min="0" max="100" step="0.1" value="' + (a.commission_percent || 0) +
+        '" id="assump_comm_' + platform + '" style="width:100%;padding:5px 8px;margin:2px 0 6px;border:1px solid var(--color-border);border-radius:6px;font-size:12px;" />' +
         '<label style="font-size:10px;color:#94a3b8;">Shipping ₹/order</label>' +
-        '<input type="number" min="0" step="1" value="' + (a.shipping_cost_flat || 0) + '" id="assump_ship_' + platform + '" style="width:100%;padding:5px 8px;margin:2px 0 8px;border:1px solid var(--color-border);border-radius:6px;font-size:12px;" />' +
+        '<input type="number" min="0" step="1" value="' + (a.shipping_cost_flat || 0) +
+        '" id="assump_ship_' + platform + '" style="width:100%;padding:5px 8px;margin:2px 0 8px;border:1px solid var(--color-border);border-radius:6px;font-size:12px;" />' +
         '<button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;width:100%;" onclick="savePlatformAssumption(' + jsAttr(platform) + ')">Save</button>' +
-      '</div>';
+        '</div>';
     }).join('');
+    if (!Object.keys(assumptions).length) {
+      grid.innerHTML = '<div style="color:#94a3b8;font-size:12px;">No active platforms found. Upload revenue data first.</div>';
+    }
   } catch (e) {
     grid.innerHTML = '<div style="color:#94a3b8;font-size:12px;">Failed to load.</div>';
   }
@@ -10227,9 +10817,99 @@ async function savePlatformAssumption(platform) {
       body: JSON.stringify({ platform, commission_percent, shipping_cost_flat }),
     });
     tabCache['projections_insights'] = null;
+    _projBERows = [];
+  } catch (e) { alert('Failed to save: ' + e.message); }
+}
+
+// ── SKU costs (manual) ────────────────────────────────────────────
+async function loadSkuCosts() {
+  const { clientSlug } = state; if (!clientSlug) return;
+  const tbody = document.getElementById('skuCostsTbody');
+  if (!tbody) return;
+  try {
+    const resp  = await apiFetch('/clients/' + clientSlug + '/sku-costs');
+    const costs = resp?.costs || [];
+    if (!costs.length) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:16px 0;">No SKU pricing set yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = costs.map(c =>
+      '<tr><td class="mono" style="font-weight:600;">' + c.sku + '</td>' +
+      '<td class="mono">' + fmtRevenue(c.cost_price) + '</td>' +
+      '<td>' + c.effective_from + '</td>' +
+      '<td><button class="btn btn-ghost" style="font-size:10px;padding:4px 8px;color:#dc2626;" onclick="deleteSkuCost(' + jsAttr(c.id) + ')">Delete</button></td></tr>'
+    ).join('');
   } catch (e) {
-    alert('Failed to save: ' + e.message);
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:16px 0;">Failed to load.</td></tr>';
   }
+}
+
+async function addSkuCost() {
+  const { clientSlug } = state;
+  const sku           = document.getElementById('skuCostSku')?.value.trim();
+  const cost_price    = document.getElementById('skuCostPrice')?.value;
+  const effective_from = document.getElementById('skuCostDate')?.value;
+  if (!sku || cost_price === '' || !effective_from) { alert('Fill in SKU, cost price, and effective date.'); return; }
+  try {
+    await apiFetch('/clients/' + clientSlug + '/sku-costs', {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sku, cost_price, effective_from }),
+    });
+    document.getElementById('skuCostSku').value   = '';
+    document.getElementById('skuCostPrice').value = '';
+    loadSkuCosts();
+    tabCache['projections_insights'] = null;
+    _projBERows = [];
+  } catch (e) { alert('Failed to save: ' + e.message); }
+}
+
+async function deleteSkuCost(id) {
+  const { clientSlug } = state;
+  try {
+    await apiFetch('/clients/' + clientSlug + '/sku-costs/' + id, { method: 'DELETE' });
+    loadSkuCosts();
+    tabCache['projections_insights'] = null;
+    _projBERows = [];
+  } catch (e) { alert('Failed to delete: ' + e.message); }
+}
+
+// ── Bulk upload ───────────────────────────────────────────────────
+function handleProjFileDrop(event) {
+  event.preventDefault();
+  document.getElementById('projUploadDrop').style.borderColor = '';
+  const file = event.dataTransfer?.files?.[0];
+  if (file) uploadCostFile(file);
+}
+
+async function uploadCostFile(file) {
+  if (!file) return;
+  const statusEl = document.getElementById('projUploadStatus');
+  if (statusEl) { statusEl.style.display = ''; statusEl.innerHTML = '⏳ Uploading…'; }
+  const { clientSlug } = state;
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    const resp = await fetch(API_BASE + '/clients/' + clientSlug + '/projections/costs/bulk', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: form,
+    });
+    const json = await resp.json();
+    if (!resp.ok) throw new Error(json.error || 'Upload failed');
+    if (statusEl) statusEl.innerHTML = '✅ Uploaded: ' + (json.inserted || 0) + ' rows' + (json.skipped ? ', ' + json.skipped + ' skipped' : '');
+    loadSkuCosts();
+    tabCache['projections_insights'] = null;
+    _projBERows = [];
+  } catch (e) {
+    if (statusEl) statusEl.innerHTML = '❌ ' + e.message;
+  }
+}
+
+function downloadCostTemplate(e) {
+  e.preventDefault();
+  const { clientSlug } = state; if (!clientSlug) return;
+  window.open(API_BASE + '/clients/' + clientSlug + '/projections/costs/template', '_blank');
 }
 
 
