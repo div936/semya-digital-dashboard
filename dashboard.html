@@ -11113,7 +11113,15 @@ async function uploadCostFile(file) {
       body: form,
     });
     const json = await resp.json();
-    if (!resp.ok) throw new Error(json.error || 'Upload failed');
+    if (!resp.ok) {
+      // Show diagnostic info so we can debug format issues
+      let errMsg = json.error || 'Upload failed';
+      if (json.detectedFormat) errMsg += ` [Format detected: ${json.detectedFormat}]`;
+      if (json.headersSeen?.length) errMsg += `<br><small>Headers seen: ${json.headersSeen.join(', ')}</small>`;
+      if (json.parseErrors?.length) errMsg += `<br><small>First error: ${json.parseErrors[0]?.reason || JSON.stringify(json.parseErrors[0])}</small>`;
+      if (statusEl) statusEl.innerHTML = '❌ ' + errMsg;
+      return;
+    }
     const fmtNote = json.formatType ? ` <span style="color:#6366f1">[${json.formatType}]</span>` : '';
     if (statusEl) statusEl.innerHTML = `✅ Saved ${json.imported || 0} SKU costs${json.skipped ? ', ' + json.skipped + ' skipped' : ''}.${fmtNote} Projections will now use live revenue + these costs.`;
     loadSkuCosts();
