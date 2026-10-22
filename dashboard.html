@@ -2685,7 +2685,7 @@
             <span style="font-size:11px;color:#94a3b8;">to</span>
             <input type="date" id="projDateTo"   class="date-input" style="font-size:11px;" onchange="fetchAndRenderProjections(true)">
             <button class="btn btn-ghost" style="font-size:10px;padding:4px 10px;" onclick="openProjCostModal()" title="Configure SKU costs &amp; overhead">⚙ Cost Structure</button>
-            <span class="fetch-badge" id="projFetchBadge"><span id="projFetchText">Loading…</span></span>
+<span class="fetch-badge" id="projFetchBadge"><span id="projFetchText">Loading…</span></span>
             <div class="export-wrap" id="projExportWrap">
               <button class="export-btn" onclick="toggleExportMenu('proj')">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -10326,14 +10326,203 @@ function _projDateParams() {
 }
 
 function _projDefaultDates() {
-  // Default: last 90 days
+  // Default: last 3 months → today
   const to   = new Date();
-  const from = new Date(to); from.setDate(from.getDate() - 89);
+  const from = new Date(to); from.setMonth(from.getMonth() - 3);
   const fmt  = d => d.toISOString().slice(0, 10);
   const fromEl = document.getElementById('projDateFrom');
   const toEl   = document.getElementById('projDateTo');
   if (fromEl && !fromEl.value) fromEl.value = fmt(from);
   if (toEl   && !toEl.value)   toEl.value   = fmt(to);
+}
+
+// ── SKU Excel upload → Projections ───────────────────────────────
+async function uploadSkuExcel(inputEl) {
+  const file = inputEl.files[0];
+  if (!file) return;
+  inputEl.value = ''; // allow re-upload of same file
+
+  const { clientSlug } = state;
+  if (!clientSlug) { alert('No client selected.'); return; }
+
+  setBadgeProj('loading');
+  const btn = document.getElementById('projExcelBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Parsing…'; }
+
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+
+    const res = await fetch(`${API_BASE}/clients/${clientSlug}/projections/from-excel`, {
+      method: 'POST',
+      credentials: 'include',
+      body: fd,
+    });
+    const resp = await res.json();
+    if (!res.ok) throw new Error(resp.error || 'Upload failed');
+
+    // Store as last projections response so sidebar / exports work
+    _projLast = resp;
+
+    // Render overview using existing function
+    renderProjOverview(resp);
+    setBadgeProj(resp.totals?.revenue > 0 ? 'live' : 'empty');
+
+    // Override badge text to show "From Excel"
+    const badgeText = document.getElementById('projFetchText');
+    if (badgeText) {
+      badgeText.textContent = `📊 ${resp.rowsParsed} SKUs`;
+      badgeText.style.color = '#6366f1';
+    }
+    const badge = document.getElementById('projFetchBadge');
+    if (badge) badge.style.borderColor = '#6366f1';
+
+    // Render SKU break-even tab using Excel skuDetails
+    if (resp.skuDetails?.length) _renderProjBEFromExcel(resp.skuDetails);
+
+    // Render Platform P&L from Excel platformPL
+    if (resp.platformPL?.length) _renderProjPLFromExcel(resp.platformPL, resp.totals);
+
+    // Trigger AI sidebar
+    updateSidebarForTab('projections_insights');
+
+    // Show unpriced note if any
+    const note = document.getElementById('projUnpricedNote');
+    if (note && resp.unpricedSkus?.length) {
+      note.style.display = '';
+      note.innerHTML = `⚠️ <b>${resp.unpricedSkus.length} SKU(s)</b> skipped — no selling price found: ${resp.unpricedSkus.map(s => s.sku).join(', ')}`;
+    } else if (note) {
+      note.style.display = 'none';
+    }
+
+  } catch (e) {
+    setBadgeProj('empty');
+    const badgeText = document.getElementById('projFetchText');
+    if (badgeText) { badgeText.textContent = 'Upload failed'; badgeText.style.color = '#ef4444'; }
+    console.error('[uploadSkuExcel]', e.message);
+    alert('Failed to parse Excel: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '📊 Upload SKU Excel'; }
+  }
+}
+
+// ── Render SKU Break-Even table from Excel data ──────────────────
+function _renderProjBEFromExcel(skuDetails) {
+  const tbody = document.getElementById('projBETbody');
+  if (!tbody) return;
+
+  const fmt = v => '₹' + Math.round(v).toLocaleString('en-IN');
+  const pct = v => v != null ? (v * 100).toFixed(1) + '%' : '—';
+
+  tbody.innerHTML = skuDetails.map(s => {
+    const profClass = s.profit >= 0 ? 'color:#16a34a' : 'color:#dc2626';
+    const beUnits   = s.settlePct > 0 && s.price > 0
+      ? Math.ceil(s.adSpendDay / (s.price * s.settlePct))
+      : null;
+
+    return `<tr onclick="openProjDetailFromExcel(${JSON.stringify(s).replace(/"/g,'&quot;')})">
+      <td><b>${s.sku}</b><br><span style="font-size:10px;color:#94a3b8;">${s.name}</span></td>
+      <td>${s.asin || '—'}</td>
+      <td>${fmt(s.price)}</td>
+      <td>${pct(s.settlePct)}</td>
+      <td>${fmt(s.revPerDay)}/day</td>
+      <td>${fmt(s.adSpendDay)}/day</td>
+      <td style="${profClass}">${fmt(s.netProfitDay)}/day</td>
+      <td>${beUnits != null ? beUnits + ' units' : '—'}</td>
+      <td><span style="font-size:10px;padding:2px 6px;border-radius:4px;background:${s.inventoryStatus?.includes('Sufficient') ? '#dcfce7' : '#fef9c3'};color:${s.inventoryStatus?.includes('Sufficient') ? '#166534' : '#854d0e'}">${s.inventoryStatus}</span></td>
+    </tr>`;
+  }).join('');
+
+  // Update table header to match Excel columns
+  const titleEl = document.getElementById('projBETableTitle');
+  if (titleEl) titleEl.textContent = 'SKU Break-Even (from Excel)';
+
+  // Show pills for team members
+  const teams = [...new Set(skuDetails.map(s => s.teamMember).filter(Boolean))];
+  const pillsEl = document.getElementById('projBEPills');
+  if (pillsEl && teams.length) {
+    pillsEl.innerHTML = '<span style="font-size:11px;color:#94a3b8;margin-right:4px;">Team:</span>'
+      + teams.map(t => `<span class="proj-pill" style="cursor:default;">${t}</span>`).join('');
+  }
+}
+
+// ── Render Platform P&L from Excel data ─────────────────────────
+function _renderProjPLFromExcel(platformPL, totals) {
+  const barsEl = document.getElementById('projPLBars');
+  const tbodyEl = document.getElementById('projPLTbody');
+  if (!barsEl || !tbodyEl) return;
+
+  const fmt = v => '₹' + Math.round(v).toLocaleString('en-IN');
+  const totalRev = totals?.revenue || platformPL.reduce((a, p) => a + p.revenue, 0);
+
+  barsEl.innerHTML = platformPL.map(p => {
+    const pct  = totalRev > 0 ? ((p.revenue / totalRev) * 100).toFixed(1) : 0;
+    const mPct = p.revenue > 0 ? ((p.profit / p.revenue) * 100).toFixed(1) : 0;
+    const color = p.profit >= 0 ? '#6366f1' : '#ef4444';
+    return `
+      <div style="margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
+          <b>${p.platform}</b>
+          <span>${fmt(p.revenue)} &nbsp;·&nbsp; <span style="color:${color}">${mPct}% margin</span></span>
+        </div>
+        <div style="background:#e2e8f0;border-radius:4px;height:8px;">
+          <div style="background:${color};width:${pct}%;height:100%;border-radius:4px;transition:width .3s;"></div>
+        </div>
+      </div>`;
+  }).join('');
+
+  tbodyEl.innerHTML = platformPL.map(p => {
+    const mPct = p.revenue > 0 ? ((p.profit / p.revenue) * 100).toFixed(1) : 0;
+    const profClass = p.profit >= 0 ? 'color:#16a34a' : 'color:#dc2626';
+    return `<tr>
+      <td><b>${p.platform}</b></td>
+      <td>${fmt(p.revenue)}</td>
+      <td>${fmt(p.cogs)}</td>
+      <td>${fmt(p.adSpend)}</td>
+      <td style="${profClass}">${fmt(p.profit)}</td>
+      <td style="${profClass}">${mPct}%</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Open per-SKU detail panel from Excel data ────────────────────
+function openProjDetailFromExcel(s) {
+  const panel = document.getElementById('projDetailPanel');
+  const overlay = document.getElementById('projDetailOverlay');
+  const skuEl = document.getElementById('projDetailSku');
+  const body = document.getElementById('projDetailBody');
+  if (!panel) return;
+
+  if (skuEl) skuEl.textContent = s.sku + ' · ' + s.name;
+
+  const fmt = v => '₹' + Math.round(v).toLocaleString('en-IN');
+  const pct = v => v != null ? (v * 100).toFixed(1) + '%' : '—';
+
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:4px 0 12px;">
+      <div><div style="font-size:10px;color:#94a3b8">Daily Revenue</div><div style="font-size:18px;font-weight:700">${fmt(s.revPerDay)}</div></div>
+      <div><div style="font-size:10px;color:#94a3b8">Daily Ad Spend</div><div style="font-size:18px;font-weight:700;color:#dc2626">${fmt(s.adSpendDay)}</div></div>
+      <div><div style="font-size:10px;color:#94a3b8">Gross Profit/Day</div><div style="font-size:16px;font-weight:600">${fmt(s.grossProfitDay)}</div></div>
+      <div><div style="font-size:10px;color:#94a3b8">Net Profit/Day</div><div style="font-size:16px;font-weight:600;color:${s.netProfitDay >= 0 ? '#16a34a' : '#dc2626'}">${fmt(s.netProfitDay)}</div></div>
+      <div><div style="font-size:10px;color:#94a3b8">Selling Price</div><div style="font-size:14px">${fmt(s.price)}</div></div>
+      <div><div style="font-size:10px;color:#94a3b8">Margin %</div><div style="font-size:14px">${pct(s.settlePct)}</div></div>
+      <div><div style="font-size:10px;color:#94a3b8">FBA Stock</div><div style="font-size:14px">${Math.round(s.fbaStock)} units</div></div>
+      <div><div style="font-size:10px;color:#94a3b8">Days on Hand</div><div style="font-size:14px">${Math.round(s.doh)} days</div></div>
+    </div>
+    <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">Monthly Run-Rate (×30)</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px;background:var(--color-bg-subtle,#f8fafc);border-radius:6px;margin-bottom:12px;">
+      <div><div style="font-size:10px;color:#94a3b8">Revenue</div><b>${fmt(s.revenue)}</b></div>
+      <div><div style="font-size:10px;color:#94a3b8">Ad Spend</div><b style="color:#dc2626">${fmt(s.adSpend)}</b></div>
+      <div><div style="font-size:10px;color:#94a3b8">COGS</div><b>${fmt(s.cogs)}</b></div>
+      <div><div style="font-size:10px;color:#94a3b8">Net Profit</div><b style="color:${s.profit >= 0 ? '#16a34a' : '#dc2626'}">${fmt(s.profit)}</b></div>
+    </div>
+    ${s.targetROAS ? `<div style="font-size:11px;margin-bottom:4px;">Target ROAS: <b>${s.targetROAS}</b> &nbsp;·&nbsp; Target ACOS: <b>${pct(s.targetACOS)}</b></div>` : ''}
+    ${s.nextSteps  ? `<div style="font-size:11px;padding:8px;background:#fffbeb;border-radius:6px;color:#92400e;"><b>Next Steps:</b> ${s.nextSteps}</div>` : ''}
+    <div style="font-size:11px;margin-top:8px;color:#94a3b8">ASIN: ${s.asin || '—'} &nbsp;·&nbsp; Team: ${s.teamMember || '—'} &nbsp;·&nbsp; Status: ${s.inventoryStatus}</div>
+  `;
+
+  if (overlay) overlay.style.display = 'block';
+  panel.classList.add('open');
 }
 
 // ── Main entry: fetch overview ────────────────────────────────────
@@ -10365,6 +10554,8 @@ async function fetchAndRenderProjections(forceRefresh) {
 function renderProjOverview(resp) {
   if (!resp) return;
   const { totals, projection, unpricedSkus, unpricedRevenue, series } = resp;
+
+
 
   const note = document.getElementById('projUnpricedNote');
   if (unpricedSkus && unpricedSkus.length) {
@@ -10921,7 +11112,8 @@ async function uploadCostFile(file) {
     });
     const json = await resp.json();
     if (!resp.ok) throw new Error(json.error || 'Upload failed');
-    if (statusEl) statusEl.innerHTML = '✅ Uploaded: ' + (json.inserted || 0) + ' rows' + (json.skipped ? ', ' + json.skipped + ' skipped' : '');
+    const fmtNote = json.formatType ? ` <span style="color:#6366f1">[${json.formatType}]</span>` : '';
+    if (statusEl) statusEl.innerHTML = `✅ Saved ${json.imported || 0} SKU costs${json.skipped ? ', ' + json.skipped + ' skipped' : ''}.${fmtNote} Projections will now use live revenue + these costs.`;
     loadSkuCosts();
     tabCache['projections_insights'] = null;
     _projBERows = [];
