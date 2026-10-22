@@ -2665,6 +2665,17 @@
       .pl-bar-seg   { height:100%; transition:width .4s; }
       .pl-legend    { display:flex; gap:12px; flex-wrap:wrap; font-size:10px; color:#64748b; margin-bottom:14px; }
       .pl-legend-dot { width:8px; height:8px; border-radius:2px; display:inline-block; margin-right:3px; }
+      /* ── Break-Even Projection ────────────────────────────────── */
+      .be-proj-grid   { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:16px; }
+      @media(max-width:640px){ .be-proj-grid { grid-template-columns:1fr 1fr; } }
+      .be-stat-card   { background:var(--color-surface-alt,#f8fafc); border:1px solid var(--color-border,#e2e8f0); border-radius:8px; padding:12px 14px; }
+      .be-stat-label  { font-size:10px; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px; }
+      .be-stat-val    { font-size:18px; font-weight:700; color:#1e293b; line-height:1.1; }
+      .be-stat-sub    { font-size:10px; color:#94a3b8; margin-top:3px; }
+      .be-input-grid  { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+      @media(max-width:640px){ .be-input-grid { grid-template-columns:1fr 1fr; } }
+      .be-input-group label { font-size:11px; color:#64748b; display:block; margin-bottom:3px; }
+      .be-input-group input { width:100%; padding:7px 10px; border:1px solid var(--color-border,#e2e8f0); border-radius:6px; font-size:12px; background:var(--color-surface,#fff); color:var(--color-text,#1e293b); box-sizing:border-box; }
       /* ── Cost modal ────────────────────────────────────────────── */
       .proj-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:900; display:flex; align-items:center; justify-content:center; }
       .proj-modal-box     { background:var(--color-surface,#fff); border-radius:var(--radius-lg,12px); padding:24px; width:640px; max-width:95vw; max-height:85vh; overflow-y:auto; box-shadow:0 8px 40px rgba(0,0,0,.2); }
@@ -2849,6 +2860,44 @@
             </table>
           </div>
         </div>
+
+        <!-- ── Break-Even Projection ── -->
+        <div class="card" style="margin-top:14px;" id="projBreakevenCard">
+          <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+            <span class="card-title">📈 Break-Even Projection</span>
+            <button onclick="toggleBEInputs()" id="projBEToggle"
+              style="font-size:11px;color:#6366f1;background:none;border:1px solid #6366f1;border-radius:4px;padding:3px 10px;cursor:pointer;white-space:nowrap;">
+              ⚙ Configure Expenses
+            </button>
+          </div>
+
+          <!-- Expense input panel -->
+          <div id="projBEInputs" style="display:none;border-top:1px solid var(--color-border,#e2e8f0);margin-top:12px;padding-top:14px;">
+            <p style="font-size:12px;color:#64748b;margin-bottom:12px;">Enter your monthly fixed costs. These will be used to calculate your real break-even point.</p>
+            <div class="be-input-grid" style="margin-bottom:12px;">
+              <div class="be-input-group"><label>Warehouse &amp; Storage (₹/mo)</label><input type="number" id="beWarehouse" min="0" step="100" placeholder="0" oninput="_updateBETotal()"></div>
+              <div class="be-input-group"><label>Transportation &amp; Logistics (₹/mo)</label><input type="number" id="beTransport" min="0" step="100" placeholder="0" oninput="_updateBETotal()"></div>
+              <div class="be-input-group"><label>Labor (₹/mo)</label><input type="number" id="beLabor" min="0" step="100" placeholder="0" oninput="_updateBETotal()"></div>
+              <div class="be-input-group"><label>Salary (₹/mo)</label><input type="number" id="beSalary" min="0" step="1000" placeholder="0" oninput="_updateBETotal()"></div>
+              <div class="be-input-group"><label>Monthly Ad Spend Budget (₹/mo)</label><input type="number" id="beAdSpend" min="0" step="1000" placeholder="0" oninput="_updateBETotal()"></div>
+              <div class="be-input-group"><label>Other Overhead (₹/mo)</label><input type="number" id="beOther" min="0" step="100" placeholder="0" oninput="_updateBETotal()"></div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+              <span style="font-size:12px;color:#64748b;">Total monthly fixed costs: <strong id="beTotalDisplay" style="color:#1e293b;">₹0</strong></span>
+              <button onclick="saveBEConfig()"
+                style="background:#6366f1;color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;">
+                Save &amp; Calculate
+              </button>
+            </div>
+          </div>
+
+          <!-- Projection output -->
+          <div id="projBESummary" style="margin-top:12px;">
+            <div style="text-align:center;color:#94a3b8;padding:14px 0;font-size:12px;">
+              Click <strong>⚙ Configure Expenses</strong> to enter your monthly costs and see the break-even projection.
+            </div>
+          </div>
+        </div><!-- /break-even card -->
 
       </div><!-- /projPanel_platform_pl -->
 
@@ -10872,7 +10921,192 @@ async function fetchAndRenderPlatformPL() {
   }
 }
 
+// ── Break-Even Projection ─────────────────────────────────────────
+let _lastPLRows = [];
+
+function toggleBEInputs() {
+  const panel = document.getElementById('projBEInputs');
+  const btn   = document.getElementById('projBEToggle');
+  if (!panel) return;
+  const opening = panel.style.display === 'none';
+  panel.style.display = opening ? '' : 'none';
+  if (btn) btn.textContent = opening ? '✕ Close' : '⚙ Configure Expenses';
+  if (opening) _loadBEConfig();
+}
+
+function _loadBEConfig() {
+  const key = 'semya_be_' + (state.clientSlug || 'default');
+  let cfg = {};
+  try { cfg = JSON.parse(localStorage.getItem(key) || '{}'); } catch {}
+  const fields = { beWarehouse:'warehouse', beTransport:'transport', beLabor:'labor',
+                   beSalary:'salary', beAdSpend:'adspend', beOther:'other' };
+  Object.entries(fields).forEach(([id, k]) => {
+    const el = document.getElementById(id);
+    if (el) el.value = cfg[k] || '';
+  });
+  _updateBETotal();
+}
+
+function _updateBETotal() {
+  const ids = ['beWarehouse','beTransport','beLabor','beSalary','beAdSpend','beOther'];
+  const total = ids.reduce((s, id) => s + (parseFloat(document.getElementById(id)?.value || 0) || 0), 0);
+  const el = document.getElementById('beTotalDisplay');
+  if (el) el.textContent = '₹' + total.toLocaleString('en-IN', {maximumFractionDigits:0});
+}
+
+function saveBEConfig() {
+  const key = 'semya_be_' + (state.clientSlug || 'default');
+  const cfg = {
+    warehouse: parseFloat(document.getElementById('beWarehouse')?.value) || 0,
+    transport: parseFloat(document.getElementById('beTransport')?.value) || 0,
+    labor:     parseFloat(document.getElementById('beLabor')?.value)     || 0,
+    salary:    parseFloat(document.getElementById('beSalary')?.value)    || 0,
+    adspend:   parseFloat(document.getElementById('beAdSpend')?.value)   || 0,
+    other:     parseFloat(document.getElementById('beOther')?.value)     || 0,
+  };
+  try { localStorage.setItem(key, JSON.stringify(cfg)); } catch {}
+  // close panel and re-render
+  const panel = document.getElementById('projBEInputs');
+  const btn   = document.getElementById('projBEToggle');
+  if (panel) panel.style.display = 'none';
+  if (btn)   btn.textContent = '⚙ Configure Expenses';
+  _renderBEProjection(_lastPLRows);
+}
+
+function _renderBEProjection(rows) {
+  const el = document.getElementById('projBESummary');
+  if (!el) return;
+
+  const key = 'semya_be_' + (state.clientSlug || 'default');
+  let cfg = {};
+  try { cfg = JSON.parse(localStorage.getItem(key) || '{}'); } catch {}
+
+  const fixedMonthly = (cfg.warehouse||0)+(cfg.transport||0)+(cfg.labor||0)+
+                       (cfg.salary||0)+(cfg.adspend||0)+(cfg.other||0);
+
+  if (!fixedMonthly) {
+    el.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:14px 0;font-size:12px;">Click <strong>⚙ Configure Expenses</strong> above to enter your monthly costs and see the break-even projection.</div>';
+    return;
+  }
+  if (!rows.length) {
+    el.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:14px 0;font-size:12px;">No platform data loaded yet — load the Platform P&amp;L tab first.</div>';
+    return;
+  }
+
+  // Aggregate across platforms
+  const totalRev     = rows.reduce((s,r) => s+(r.revenue||0), 0);
+  const totalCOGS    = rows.reduce((s,r) => s+(r.cogs||0), 0);
+  const totalFees    = rows.reduce((s,r) => s+(r.totalFees||0), 0);
+  const totalAdAct   = rows.reduce((s,r) => s+(r.adSpend||0), 0);
+
+  // Date range → monthly run-rate multiplier
+  const fromVal = document.getElementById('projFrom')?.value || '';
+  const toVal   = document.getElementById('projTo')?.value   || '';
+  let periodDays = 30;
+  if (fromVal && toVal) {
+    const diff = (new Date(toVal) - new Date(fromVal)) / 86400000;
+    if (diff > 0) periodDays = Math.round(diff) + 1;
+  }
+  const mf = 30 / periodDays;   // multiply actuals → monthly run rate
+
+  const mRev   = totalRev   * mf;
+  const mCOGS  = totalCOGS  * mf;
+  const mFees  = totalFees  * mf;
+  const mAdAct = totalAdAct * mf;
+  const mVarCost = mCOGS + mFees + mAdAct;
+  const mGross   = mRev - mVarCost;           // gross profit before fixed costs
+  const mNet     = mGross - fixedMonthly;     // true net after all costs
+  const grossPct = mRev > 0 ? mGross / mRev : 0;
+
+  // Break-even revenue needed = fixed costs / gross margin %
+  const beRevNeeded = grossPct > 0 ? fixedMonthly / grossPct : 0;
+  const revGap      = Math.max(0, beRevNeeded - mRev);
+
+  const fL = (v, forceSign) => {
+    const sign   = v < 0 ? '−' : (forceSign && v > 0 ? '+' : '');
+    const abs    = Math.abs(v);
+    const s      = abs >= 100000 ? '₹'+(abs/100000).toFixed(2)+' L' : '₹'+abs.toLocaleString('en-IN',{maximumFractionDigits:0});
+    return sign + s;
+  };
+
+  const plCol  = mNet >= 0 ? '#059669' : '#dc2626';
+  const grossCol = mGross >= 0 ? '#059669' : '#dc2626';
+
+  el.innerHTML = `
+    <div class="be-proj-grid">
+      <div class="be-stat-card">
+        <div class="be-stat-label">Monthly Revenue (run rate)</div>
+        <div class="be-stat-val" style="color:#059669;">${fL(mRev)}</div>
+        <div class="be-stat-sub">Extrapolated from ${periodDays}-day period</div>
+      </div>
+      <div class="be-stat-card">
+        <div class="be-stat-label">Monthly Variable Costs</div>
+        <div class="be-stat-val" style="color:#dc2626;">${fL(mVarCost)}</div>
+        <div class="be-stat-sub">COGS + platform fees + actual ad spend</div>
+      </div>
+      <div class="be-stat-card">
+        <div class="be-stat-label">Monthly Gross Profit</div>
+        <div class="be-stat-val" style="color:${grossCol};">${fL(mGross)}</div>
+        <div class="be-stat-sub">Gross margin ${(grossPct*100).toFixed(1)}% — before fixed costs</div>
+      </div>
+      <div class="be-stat-card">
+        <div class="be-stat-label">Monthly Fixed Costs</div>
+        <div class="be-stat-val" style="color:#d97706;">${fL(fixedMonthly)}</div>
+        <div class="be-stat-sub">Warehouse + labor + salary + overhead</div>
+      </div>
+      <div class="be-stat-card" style="border:2px solid ${plCol};">
+        <div class="be-stat-label">Monthly Net P&amp;L</div>
+        <div class="be-stat-val" style="color:${plCol};font-size:20px;">${fL(mNet)}</div>
+        <div class="be-stat-sub">${mNet >= 0 ? '✅ Profitable at current run rate' : '⚠️ Loss at current run rate'}</div>
+      </div>
+      <div class="be-stat-card">
+        <div class="be-stat-label">Break-Even Revenue Needed</div>
+        <div class="be-stat-val" style="color:#6366f1;">${beRevNeeded > 0 ? fL(beRevNeeded)+'/mo' : '—'}</div>
+        <div class="be-stat-sub">${mNet>=0 ? 'Already achieved ✓' : 'To cover all fixed + variable costs'}</div>
+      </div>
+    </div>
+
+    ${mNet < 0 ? `
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:14px;margin-bottom:10px;">
+      <div style="font-size:12px;font-weight:700;color:#dc2626;margin-bottom:10px;">📍 What needs to change to break even?</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px;">
+        <div>
+          <div style="color:#64748b;margin-bottom:2px;">Current monthly shortfall</div>
+          <div style="font-size:16px;font-weight:700;color:#dc2626;">${fL(mNet)}/mo</div>
+        </div>
+        <div>
+          <div style="color:#64748b;margin-bottom:2px;">Additional revenue needed</div>
+          <div style="font-size:16px;font-weight:700;color:#d97706;">${fL(revGap, true)}/mo</div>
+        </div>
+        <div>
+          <div style="color:#64748b;margin-bottom:2px;">Revenue increase required</div>
+          <div style="font-size:16px;font-weight:700;color:#1e293b;">${beRevNeeded>0&&mRev>0 ? ((beRevNeeded/mRev-1)*100).toFixed(0)+'% more revenue' : '—'}</div>
+        </div>
+        <div>
+          <div style="color:#64748b;margin-bottom:2px;">Or reduce fixed costs by</div>
+          <div style="font-size:16px;font-weight:700;color:#1e293b;">${fL(-mNet)}/mo to break even</div>
+        </div>
+      </div>
+    </div>` : `
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px;margin-bottom:10px;">
+      <div style="font-size:12px;font-weight:700;color:#059669;margin-bottom:4px;">✅ Already Profitable at current run rate</div>
+      <div style="font-size:12px;color:#166534;">Covering all fixed + variable costs with <strong>${fL(mNet)}/month</strong> net remaining. Keep scaling.</div>
+    </div>`}
+
+    <div style="background:#f8fafc;border-radius:8px;padding:9px 12px;">
+      <div style="font-size:10px;color:#94a3b8;line-height:1.5;">
+        💡 <strong>How this is calculated:</strong> Revenue and COGS from the selected date range are extrapolated to a 30-day run rate.
+        Fixed costs (warehouse, transport, labor, salary, overhead) are taken from your inputs above.
+        Ad spend used is the <em>actual</em> spend in your order data, not the budgeted figure in the inputs.
+        Note: ${159 - rows.length > 0 ? 'some' : 'no'} SKUs are excluded due to missing cost prices — add them in ⚙ Cost Structure → Bulk Upload to improve accuracy.
+      </div>
+    </div>
+  `;
+}
+
 function renderPlatformPL(rows) {
+  _lastPLRows = rows;
+  _renderBEProjection(rows);   // refresh projection whenever PL data reloads
   const barsEl = document.getElementById('projPLBars');
   const tbody  = document.getElementById('projPLTbody');
   if (!rows.length) {
