@@ -14,9 +14,24 @@ import { Router } from 'express';
 import { rbacMiddleware, requireTab } from '../middleware/rbac.js';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { detectSuspiciousPatterns } from '../lib/fraudDetector.js';
-import { backfillLocationByOrder, normaliseStateName, inferCategory, CATEGORY_KEYWORDS } from '../lib/columnMapper.js';
+import { backfillLocationByOrder, normaliseStateName, inferCategory } from '../lib/columnMapper.js';
 
 const router = Router({ mergeParams: true });
+
+// ── Load per-client product categories from DB (cached per request) ──
+// Returns array of { category, keywords, sku_prefixes } sorted by sort_order.
+// Cached on req._clientCategories after first call within a request.
+async function loadClientCategories(clientId, req) {
+  if (req && req._clientCategories) return req._clientCategories;
+  const { data } = await supabaseAdmin
+    .from('client_product_categories')
+    .select('category, keywords, sku_prefixes')
+    .eq('client_id', clientId)
+    .order('sort_order');
+  const cats = data || [];
+  if (req) req._clientCategories = cats;
+  return cats;
+}
 
 // ─── PAGINATED FETCH ──────────────────────────────────────────────
 // Supabase free tier caps rows at 1000 per request (project-level Max Rows setting).
@@ -205,6 +220,8 @@ router.get(
   async (req, res) => {
     const { client } = req.semya;
     const { from, to, platform } = req.query;
+    // Load per-client product categories once — used by inferCategory below
+    await loadClientCategories(client.id, req);
 
     const applyDiscounts = req.query.applyDiscounts === 'true';
 
@@ -260,7 +277,7 @@ router.get(
     // the chart it's driven from always agree.
     const categoryFilter = req.query.category || null;
     const dataForSummary = categoryFilter
-      ? data.filter(row => inferCategory(row.standard_product_name, row.standard_sku) === categoryFilter)
+      ? data.filter(row => inferCategory(row.standard_product_name, row.standard_sku, req._clientCategories || []) === categoryFilter)
       : data;
 
     // Apply per-line discount (Lineitem discount from Shopify raw_extras)
@@ -274,12 +291,12 @@ router.get(
       }
     }
 
-    const summary = aggregatePlatformSales(dataForSummary, excludeStatuses, excludeFulfillStatuses);
+    const summary = await aggregatePlatformSales(dataForSummary, excludeStatuses, excludeFulfillStatuses, req, client, platform);
     // Dropdown needs the FULL category list regardless of which one is
     // currently selected — computed from unfiltered `data`, not
     // dataForSummary, so the options never shrink to just the active one.
     if (categoryFilter) {
-      const unfilteredSummary = aggregatePlatformSales(data, excludeStatuses, excludeFulfillStatuses);
+      const unfilteredSummary = await aggregatePlatformSales(data, excludeStatuses, excludeFulfillStatuses, req, client, platform);
       summary.availableCategories = unfilteredSummary.categories.map(c => c.category);
     } else {
       summary.availableCategories = summary.categories.map(c => c.category);
@@ -320,7 +337,7 @@ router.get(
         prevFrom2 += prevPageSize;
       }
       // Revenue: exclude cancelled. Orders: count all (including cancelled).
-      const prevNonCancel = (prevRows || []).filter(r => r.standard_status !== 'Cancelled' && Number(r.standard_revenue) > 0);
+      const prevNonCancel = (prevRows || []).filter(r => r.standard_status !== 'Cancelled' && r.standard_status !== 'Returned' && Number(r.standard_revenue) > 0);
       const prevAllMain   = (prevRows || []).filter(r => Number(r.standard_revenue) > 0);
       summary.prevGrandTotal = prevNonCancel.reduce((s, r) => s + Number(r.standard_revenue), 0);
       summary.prevUnits      = prevNonCancel.reduce((s, r) => s + Number(r.standard_units  || 0), 0);
@@ -335,10 +352,15 @@ router.get(
     // Count cancelled orders and their gross value for the note
     // under the Total Orders card on Platform Sales.
     // Cancelled orders — count unique order IDs with Cancelled status
-    const cancelledRows     = data.filter(r => r.standard_status === 'Cancelled');
+    const cancelledRows     = data.filter(r => {
+      const fs = (r.financial_status || '').toLowerCase();
+      const ss = (r.standard_status  || '').toLowerCase();
+      return fs === 'voided' || fs === 'refunded' || ss === 'cancelled' || ss === 'returned';
+    });
     const cancelledOrderIds = new Set(cancelledRows.map(r => r.standard_order_id).filter(Boolean));
     summary.cancelledOrders  = cancelledOrderIds.size;
-    summary.cancelledRevenue = 0; // shown in AI Insights Cancellation Tracker
+    // Sum the revenue of cancelled rows (positive values represent what was lost)
+    summary.cancelledRevenue = cancelledRows.reduce((s, r) => s + (Number(r.standard_revenue) || 0), 0);
 
     // Date-aligned ROAS — was previously computed on the frontend as
     // "this platform's ENTIRE selected-range revenue ÷ whatever
@@ -367,6 +389,8 @@ router.get(
 
     const revenueOnSpendDatesByPlatform = {};
     for (const row of dataForSummary) {
+      // Exclude cancelled/returned orders — same logic as aggregatePlatformSales
+      if (row.standard_status === 'Cancelled' || row.standard_status === 'Returned') continue;
       const p = row.platform;
       const spendDates = spendDatesByPlatform[p];
       if (spendDates && row.order_date && spendDates.has(row.order_date)) {
@@ -397,6 +421,7 @@ router.get(
   async (req, res) => {
     const { client } = req.semya;
     const { sku, platform, from, to } = req.query;
+    await loadClientCategories(client.id, req);
 
     // includeAllStatuses=true: used by AI Insights Cancellation Tracker
     // and High Risk cards — they need voided/refunded rows too.
@@ -406,23 +431,31 @@ router.get(
 
     const [revenueRows, campaignRows] = await Promise.all([
       fetchAllRows((rangeFrom, rangeTo) => {
+        // Include raw_extras only when fetching all statuses (AI Insights
+        // cancellation tracker) — it's large JSONB and not needed for
+        // normal sku-performance aggregation.
+        const cols = includeAllStatuses
+          ? 'standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, cancelled_date, standard_status, standard_product_name, standard_order_id, financial_status, risk_level, tags, raw_extras'
+          : 'standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status, standard_product_name, standard_order_id, financial_status, risk_level, tags';
         let q = supabaseAdmin
           .from('revenue_data')
-          .select('standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status, standard_product_name, standard_order_id, financial_status, risk_level, tags')
+          .select(cols)
           .eq('client_id', client.id)
-          .order('id')
+          .order('order_date', { ascending: false, nullsFirst: false })
           .range(rangeFrom, rangeTo);
         if (sku)      q = q.eq('standard_sku', sku);
         if (platform) q = q.in('platform', expandPlatform(platform));
-        // FIX: combined into single .or() — see platform-sales fix above
-        if (from || to) {
-          if (from && to) {
-            q = q.or(`and(order_date.gte.${from},order_date.lte.${to}),order_date.is.null`);
-          } else if (from) {
-            q = q.or(`order_date.gte.${from},order_date.is.null`);
-          } else {
-            q = q.or(`order_date.lte.${to},order_date.is.null`);
-          }
+        // Date filter — apply as hard bounds (not OR-with-null) for performance.
+        // Rows with null order_date are edge cases (undated uploads); including
+        // them regardless of date range keeps historical behaviour but costs
+        // a full table scan. Only rows with null date get the OR-with-null
+        // treatment; rows with a real date get a direct range filter.
+        if (from && to) {
+          q = q.or(`and(order_date.gte.${from},order_date.lte.${to}),order_date.is.null`);
+        } else if (from) {
+          q = q.or(`order_date.gte.${from},order_date.is.null`);
+        } else if (to) {
+          q = q.or(`order_date.lte.${to},order_date.is.null`);
         }
         return q;
       }),
@@ -483,9 +516,9 @@ router.get(
     let campaignsMatchedToProduct = [];
     if (sku) {
       const skuRow = filteredRevenue.find(r => r.standard_sku === sku);
-      productCategory = inferCategory(skuRow?.standard_product_name, sku);
-      const catEntry = CATEGORY_KEYWORDS.find(([cat]) => cat === productCategory);
-      const keywords = catEntry ? catEntry[1] : [];
+      productCategory = inferCategory(skuRow?.standard_product_name, sku, req._clientCategories || []);
+      const catEntry = (req._clientCategories || []).find(c => c.category === productCategory);
+      const keywords = catEntry ? catEntry.keywords : [];
       if (keywords.length) {
         campaignsMatchedToProduct = campaignRows.filter(c => {
           const name = (c.campaign_name || '').toLowerCase();
@@ -533,32 +566,23 @@ router.get(
       ? new Set(req.query.excludeStatuses.split(',').map(s => s.trim()).filter(Boolean))
       : new Set();
 
-    let query = supabaseAdmin
-      .from('campaign_data')
-      .select('*')
-      .eq('client_id', client.id)
-      .order('campaign_date', { ascending: false });
-
-    // Undated campaign rows (campaign_date IS NULL) used to be included
-    // via an "OR campaign_date IS NULL" fallback on BOTH the gte and lte
-    // filters — which, combined, is equivalent to
-    // "(date in range) OR (date is null)". That means any undated
-    // campaign silently matched every possible date range, so if a
-    // meaningful share of campaign_data rows have no campaign_date set,
-    // picking a narrow range (or even a single day) still pulls in the
-    // full all-time total for those rows — the date filter becomes a
-    // no-op for exactly the rows that most need it to work. Now: when a
-    // date filter is actually active, apply it strictly (undated rows
-    // are excluded, since we genuinely don't know if they belong in the
-    // selected window); only fall back to "everything" when no filter
-    // is applied at all.
-    if (from && to) query = query.gte('campaign_date', from).lte('campaign_date', to);
-    else if (from)  query = query.gte('campaign_date', from);
-    else if (to)    query = query.lte('campaign_date', to);
-    if (platform) query = query.in('platform', expandPlatform(platform));
-
-    const { data: campaigns, error } = await query;
-    if (error) return res.status(500).json({ error: 'Failed to fetch campaigns.' });
+    // Use fetchAllRows (paginated) instead of a plain query — Supabase's
+    // default 1,000-row limit was silently truncating large campaign datasets
+    // (18,120+ Meta rows), causing the ROAS date range note to only show
+    // the most recent ~1,000 rows instead of the full selected period.
+    const campaigns = await fetchAllRows((rangeFrom, rangeTo) => {
+      let query = supabaseAdmin
+        .from('campaign_data')
+        .select('*')
+        .eq('client_id', client.id)
+        .order('campaign_date', { ascending: false })
+        .range(rangeFrom, rangeTo);
+      if (from && to) query = query.gte('campaign_date', from).lte('campaign_date', to);
+      else if (from)  query = query.gte('campaign_date', from);
+      else if (to)    query = query.lte('campaign_date', to);
+      if (platform) query = query.in('platform', expandPlatform(platform));
+      return query;
+    }).catch(e => { throw e; });
 
     // Surface how many campaigns were excluded for having no date at
     // all, whenever a date filter is active — otherwise a narrow range
@@ -650,6 +674,11 @@ function aggregateCampaignInsights(campaignRows, revenueRows) {
   for (const row of revenueRows) {
     const p = row.platform;
     if (!byPlatform[p]) byPlatform[p] = { platform: p, spend: 0, campaignRevenue: 0 };
+    // Exclude cancelled/returned orders from ROAS revenue — same logic as
+    // aggregatePlatformSales. Including them inflates the revenue side of
+    // the ratio, making ROAS look better than it actually is.
+    const isCancelled = row.standard_status === 'Cancelled' || row.standard_status === 'Returned';
+    if (isCancelled) continue;
     const coveredDates = campaignDatesByPlatform[p];
     const inCoverage = !coveredDates || coveredDates.size === 0 || coveredDates.has(row.order_date);
     if (inCoverage) {
@@ -686,8 +715,12 @@ function aggregateCampaignInsights(campaignRows, revenueRows) {
   const byFulfillment = {};
   for (const row of revenueRows) {
     const isAware = FULFILLMENT_AWARE_PLATFORMS.has((row.platform || '').toLowerCase());
+    // Amazon/Acutas FBA rows always have the channel populated in their
+    // export; rows with null channel are overwhelmingly Merchant-fulfilled.
+    // Default null Amazon/Acutas rows to "Merchant" rather than "Not specified"
+    // to avoid an uninformative bucket in the Fulfillment Channel split.
     const ch = row.standard_fulfillment_channel
-      || (isAware ? 'Not specified' : (row.platform || 'Unknown platform'));
+      || (isAware ? 'Merchant' : (row.platform || 'Unknown platform'));
     if (!byFulfillment[ch]) byFulfillment[ch] = { channel: ch, revenue: 0, units: 0, orders: 0, _orderIds: new Set(), _rowsWithoutOrderId: 0 };
     byFulfillment[ch].revenue += Number(row.standard_revenue) || 0;
     byFulfillment[ch].units   += Number(row.standard_units)   || 0;
@@ -709,24 +742,113 @@ function aggregateCampaignInsights(campaignRows, revenueRows) {
     // is more useful than grouping everything into a single "No SKU"
     // bucket, which hid ₹60L+ of Meta revenue behind a meaningless
     // label and made the Top Products table almost useless for Meta.
-    const displayKey = (row.standard_sku && row.standard_sku.trim())
-      ? row.standard_sku.trim()
-      : (row.standard_product_name && row.standard_product_name.trim())
-        ? row.standard_product_name.trim()
-        : 'Unknown product';
+    // Prefer SKU, fall back to product name, then campaign name (for Meta/Google
+    // rows that have no product-level signal but have a campaign name that 
+    // gives meaningful context), and finally a platform-labelled placeholder.
+    const skuVal  = row.standard_sku && row.standard_sku.trim();
+    const nameVal = row.standard_product_name && row.standard_product_name.trim();
+    const displayKey = skuVal || nameVal || '(Ad platform revenue — no product data)';
     const key = row.platform + '|' + displayKey;
-    if (!byProduct[key]) byProduct[key] = { sku: displayKey, platform: row.platform, revenue: 0, units: 0 };
+    if (!byProduct[key]) byProduct[key] = { sku: displayKey, platform: row.platform, revenue: 0, units: 0, orders: 0, _orderIds: new Set() };
     byProduct[key].revenue += Number(row.standard_revenue) || 0;
     byProduct[key].units   += Number(row.standard_units)   || 0;
+    if (row.standard_order_id) {
+      byProduct[key]._orderIds.add(row.standard_order_id);
+    } else {
+      byProduct[key].orders += 1; // no order ID — count the row itself
+    }
   }
-  const topProducts = Object.values(byProduct).sort((a, b) => b.revenue - a.revenue).slice(0, 15);
+  // Resolve distinct order counts from Sets
+  for (const p of Object.values(byProduct)) {
+    p.orders += p._orderIds.size;
+    delete p._orderIds;
+  }
+  const topProducts = Object.values(byProduct)
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 15);
+
+  // ── Weekly ROAS trend using ACTUAL order revenue ──────────────
+  // Group ad spend by week (from campaign rows) and actual order
+  // revenue by week (from revenue rows, scoped to campaign-covered
+  // dates per platform — same logic as overallRoas above).
+  // This ensures the chart matches the KPI blendedRoas number.
+  const byWeekSpend  = {};
+  const byWeekActRev = {};
+  const byMonthSpend  = {};
+  const byMonthActRev = {};
+  const byYearSpend   = {};
+  const byYearActRev  = {};
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  // Build campaign date coverage per platform (same as platformSummary above)
+  for (const row of campaignRows) {
+    if (!row.campaign_date) continue;
+    const d      = new Date(row.campaign_date);
+    const yr     = d.getFullYear();
+    const jan1   = new Date(yr, 0, 1);
+    const wkNum  = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+    const wk     = yr + '-W' + String(wkNum).padStart(2, '0');
+    const mo     = yr + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    const ye     = String(yr);
+    byWeekSpend[wk]   = (byWeekSpend[wk]   || 0) + (Number(row.standard_spend) || 0);
+    byMonthSpend[mo]  = (byMonthSpend[mo]  || 0) + (Number(row.standard_spend) || 0);
+    byYearSpend[ye]   = (byYearSpend[ye]   || 0) + (Number(row.standard_spend) || 0);
+  }
+
+  // Map actual order revenue to week/month/year buckets (cancelled/returned excluded)
+  for (const row of revenueRows) {
+    if (!row.order_date) continue;
+    if (row.standard_status === 'Cancelled' || row.standard_status === 'Returned') continue;
+    const p            = row.platform;
+    const coveredDates = campaignDatesByPlatform[p];
+    const inCoverage   = !coveredDates || coveredDates.size === 0 ||
+                         coveredDates.has(row.order_date);
+    if (!inCoverage) continue;
+    const d      = new Date(row.order_date);
+    const yr     = d.getFullYear();
+    const jan1   = new Date(yr, 0, 1);
+    const wkNum  = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+    const wk     = yr + '-W' + String(wkNum).padStart(2, '0');
+    const mo     = yr + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    const ye     = String(yr);
+    byWeekActRev[wk]  = (byWeekActRev[wk]  || 0) + (Number(row.standard_revenue) || 0);
+    byMonthActRev[mo] = (byMonthActRev[mo] || 0) + (Number(row.standard_revenue) || 0);
+    byYearActRev[ye]  = (byYearActRev[ye]  || 0) + (Number(row.standard_revenue) || 0);
+  }
+
+  const weeklyRoas = Object.keys(byWeekSpend).sort().map(wk => {
+    const spend = byWeekSpend[wk] || 0;
+    const rev   = byWeekActRev[wk] || 0;
+    const [yr, wStr] = wk.split('-W');
+    const wn = parseInt(wStr, 10);
+    const weekStart = new Date(parseInt(yr, 10), 0, 1 + (wn - 1) * 7);
+    const label = 'W' + wn + ' ' + weekStart.toLocaleDateString('en-IN', { month: 'short' });
+    return { key: wk, label, spend, rev, roas: spend > 0 ? +(rev / spend).toFixed(2) : null };
+  });
+
+  const monthlyRoas = Object.keys(byMonthSpend).sort().map(mo => {
+    const spend = byMonthSpend[mo] || 0;
+    const rev   = byMonthActRev[mo] || 0;
+    const [yr, mn] = mo.split('-');
+    const label = MONTHS[parseInt(mn, 10) - 1] + ' \'' + yr.slice(2);
+    return { key: mo, label, spend, rev, roas: spend > 0 ? +(rev / spend).toFixed(2) : null };
+  });
+
+  const yearlyRoas = Object.keys(byYearSpend).sort().map(ye => {
+    const spend = byYearSpend[ye] || 0;
+    const rev   = byYearActRev[ye] || 0;
+    return { key: ye, label: ye, spend, rev, roas: spend > 0 ? +(rev / spend).toFixed(2) : null };
+  });
 
   return {
     platformSummary,
     totalSpend,
     totalRevenue,
     totalFullPeriodRevenue,
-    overallRoas: totalSpend > 0 ? +(totalRevenue / totalSpend).toFixed(2) : null,
+    overallRoas:  totalSpend > 0 ? +(totalRevenue / totalSpend).toFixed(2) : null,
+    weeklyRoas,
+    monthlyRoas,
+    yearlyRoas,
     fulfillmentBreakdown,
     topProducts,
   };
@@ -849,6 +971,41 @@ router.get(
 // includes buyer PII — Amazon/Acutas never do, so their rows are
 // counted in `skippedNoIdentity` rather than silently mis-flagged.
 // ═══════════════════════════════════════════════════════════════════
+// ─── GET /clients/:client_slug/products ──────────────────────────
+// Returns the product catalogue for this client — deduplicated list
+// of all SKUs and product names seen across all uploaded files and
+// API syncs. Isolated by client_id so Neat Everyday never sees Daluci's
+// products and vice versa.
+router.get(
+  '/:client_slug/products',
+  async (req, res) => {
+    const { client } = req.semya;
+    const { platform, search, limit = 200 } = req.query;
+
+    let q = supabaseAdmin
+      .from('products')
+      .select('sku, display_name, platform, first_seen, last_seen')
+      .eq('client_id', client.id)
+      .order('last_seen', { ascending: false, nullsFirst: false })
+      .limit(Math.min(parseInt(limit) || 200, 1000));
+
+    if (platform) q = q.eq('platform', platform);
+    if (search)   q = q.or(`sku.ilike.%${search}%,display_name.ilike.%${search}%`);
+
+    const { data, error } = await q;
+    if (error) {
+      // products table may not exist yet — return empty rather than 500
+      if (error.message.includes('does not exist') || error.code === '42P01') {
+        return res.json({ products: [], count: 0, note: 'Products table not initialised — run products_migration.sql' });
+      }
+      return res.status(500).json({ error: 'Failed to fetch products: ' + error.message });
+    }
+
+    return res.json({ products: data || [], count: data?.length || 0 });
+  }
+);
+
+
 router.get(
   '/:client_slug/fraud-patterns',
   requireTab('ai_insights'),
@@ -902,7 +1059,7 @@ router.get(
 // matching the old dashboard's checkboxes-all-checked default.
 const SUGGESTED_EXCLUDABLE_STATUSES = ['Cancelled','Pending','Unshipped','Shipped - Returned to Seller','Shipped - Returning to Seller'];
 
-function aggregatePlatformSales(rows, excludeStatuses = new Set(), excludeFulfillStatuses = new Set()) {
+async function aggregatePlatformSales(rows, excludeStatuses = new Set(), excludeFulfillStatuses = new Set(), req = null, client = null, platform = null) {
   const byPlatform = {};
   const byDay      = {};
   const byWeek     = {};
@@ -933,7 +1090,7 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set(), excludeFulfil
     // is in the period regardless of order_date — those are collected
     // in the separate cancelledInPeriod set built in the second pass below.
 
-    const isCancelled = row.standard_status === 'Cancelled';
+    const isCancelled = row.standard_status === 'Cancelled' || row.standard_status === 'Returned';
     const isMainRow   = Number(row.standard_revenue ?? 0) > 0;
 
     const p   = row.platform;
@@ -948,18 +1105,23 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set(), excludeFulfil
     byPlatform[p].totalRevenue += isCancelled ? 0 : rev;
     byPlatform[p].totalUnits   += (!isMainRow || isCancelled) ? 0 : u;
 
-    // Orders: count ALL distinct orders including cancelled (matches Shopify)
-    // Fulfilled: standard_status = 'Delivered' (ingestion sets this for any
-    //            order where fulfillment_status = fulfilled, any payment method)
-    if (isMainRow) {
-      if (row.standard_order_id) {
-        byPlatform[p]._orderIds.add(row.standard_order_id);
-        if ((row.standard_status || '').toLowerCase() === 'delivered') {
-          byPlatform[p]._fulfilledIds.add(row.standard_order_id);
-        }
-      } else {
-        byPlatform[p]._rowsWithoutOrderId += 1;
+    // Orders: count ALL distinct orders including cancelled (matches Shopify).
+    // We count on ANY row for this order (not just isMainRow) because
+    // cancelled orders have standard_revenue = 0 so isMainRow is false,
+    // but they should still be counted as orders.
+    if (row.standard_order_id) {
+      byPlatform[p]._orderIds.add(row.standard_order_id);
+      const st = (row.standard_status || '').toLowerCase();
+      if (st === 'delivered' || st === 'paid') {
+        byPlatform[p]._fulfilledIds.add(row.standard_order_id);
+      } else if (st === 'pending') {
+        if (!byPlatform[p]._pendingIds) byPlatform[p]._pendingIds = new Set();
+        byPlatform[p]._pendingIds.add(row.standard_order_id);
       }
+    } else if (isMainRow) {
+      // Only count rows without an order ID if they have revenue
+      // (avoids counting sub-rows from multi-line orders twice)
+      byPlatform[p]._rowsWithoutOrderId += 1;
     }
 
     // Time-bucketed aggregation — day, week, month, year all computed
@@ -996,11 +1158,15 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set(), excludeFulfil
       ? row.standard_sku.trim()
       : (row.standard_product_name && row.standard_product_name.trim())
         ? row.standard_product_name.trim()
-        : 'Unknown product';
+        : '(Ad platform revenue — no product data)';
     const prodKey = p + '|' + displaySku;
-    if (!byProduct[prodKey]) byProduct[prodKey] = { sku: displaySku, platform: p, revenue: 0, units: 0 };
+    if (!byProduct[prodKey]) byProduct[prodKey] = { sku: displaySku, platform: p, revenue: 0, units: 0, orders: 0, _orderIds: new Set() };
     byProduct[prodKey].revenue += isCancelled ? 0 : rev;
     byProduct[prodKey].units   += (!isMainRow || isCancelled) ? 0 : u;
+    if (!isCancelled) {
+      if (row.standard_order_id) byProduct[prodKey]._orderIds.add(row.standard_order_id);
+      else byProduct[prodKey].orders += 1;
+    }
 
     // Category — ported keyword inference from the old dashboard, run
     // against the product name (falls back to SKU internally if the
@@ -1016,7 +1182,7 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set(), excludeFulfil
     // different, fixable problem (the keyword list is missing a
     // product line) and shouldn't be hidden inside the same bucket.
     const hasProductSignal = !!(row.standard_product_name || (row.standard_sku && row.standard_sku.trim()));
-    let category = inferCategory(row.standard_product_name, row.standard_sku);
+    let category = inferCategory(row.standard_product_name, row.standard_sku, req._clientCategories || []);
     if (category === 'Uncategorized' && !hasProductSignal) {
       category = 'No Product Data (Ad Platforms)';
     }
@@ -1030,8 +1196,10 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set(), excludeFulfil
   for (const p of Object.values(byPlatform)) {
     p.orderCount     = p._orderIds.size + p._rowsWithoutOrderId;
     p.fulfilledCount = p._fulfilledIds.size;
+    p.pendingCount   = p._pendingIds ? p._pendingIds.size : 0;
     delete p._orderIds;
     delete p._fulfilledIds;
+    delete p._pendingIds;
     delete p._rowsWithoutOrderId;
   }
 
@@ -1108,6 +1276,11 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set(), excludeFulfil
   const monthly = bucketToArr(byMonth, 'month').map(d => ({ ...d, week: d.month }));
   const yearly  = bucketToArr(byYear,  'year').map(d => ({ ...d, week: d.year }));
 
+  // Resolve distinct order counts from Sets
+  for (const p of Object.values(byProduct)) {
+    if (p._orderIds) { p.orders += p._orderIds.size; delete p._orderIds; }
+  }
+
   const topProducts = Object.values(byProduct)
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 10);
@@ -1144,5 +1317,238 @@ function aggregatePlatformSales(rows, excludeStatuses = new Set(), excludeFulfil
   };
 }
 
+
+
+// ═══════════════════════════════════════════════════════════════════
+// PRODUCT CATEGORIES — confirmed per-client rules
+// ═══════════════════════════════════════════════════════════════════
+router.get('/:client_slug/product-categories', async (req, res) => {
+  const { client } = req.semya;
+  const { data, error } = await supabaseAdmin
+    .from('client_product_categories')
+    .select('id, category, keywords, sku_prefixes, sort_order, created_at')
+    .eq('client_id', client.id)
+    .order('sort_order');
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json(data || []);
+});
+
+router.post('/:client_slug/product-categories', async (req, res) => {
+  if (!req.semya.isAdmin) return res.status(403).json({ error: 'Admin only.' });
+  const { client } = req.semya;
+  const { category, keywords = [], sku_prefixes = [] } = req.body || {};
+  if (!category?.trim()) return res.status(400).json({ error: 'category is required.' });
+
+  // sort_order = max existing + 1
+  const { data: existing } = await supabaseAdmin
+    .from('client_product_categories')
+    .select('sort_order')
+    .eq('client_id', client.id)
+    .order('sort_order', { ascending: false })
+    .limit(1);
+  const nextOrder = ((existing?.[0]?.sort_order) || 0) + 1;
+
+  const { data, error } = await supabaseAdmin
+    .from('client_product_categories')
+    .insert({ client_id: client.id, category: category.trim(), keywords, sku_prefixes, sort_order: nextOrder })
+    .select('id, category, keywords, sku_prefixes, sort_order')
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json(data);
+});
+
+router.patch('/:client_slug/product-categories/:id', async (req, res) => {
+  if (!req.semya.isAdmin) return res.status(403).json({ error: 'Admin only.' });
+  const { client } = req.semya;
+  const { category, keywords, sku_prefixes, sort_order } = req.body || {};
+  const update = {};
+  if (category    !== undefined) update.category    = category.trim();
+  if (keywords    !== undefined) update.keywords    = keywords;
+  if (sku_prefixes!== undefined) update.sku_prefixes= sku_prefixes;
+  if (sort_order  !== undefined) update.sort_order  = sort_order;
+  update.updated_at = new Date().toISOString();
+
+  const { data, error } = await supabaseAdmin
+    .from('client_product_categories')
+    .update(update)
+    .eq('id', req.params.id)
+    .eq('client_id', client.id)
+    .select('id, category, keywords, sku_prefixes, sort_order')
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json(data);
+});
+
+router.delete('/:client_slug/product-categories/:id', async (req, res) => {
+  if (!req.semya.isAdmin) return res.status(403).json({ error: 'Admin only.' });
+  const { client } = req.semya;
+  const { error } = await supabaseAdmin
+    .from('client_product_categories')
+    .delete()
+    .eq('id', req.params.id)
+    .eq('client_id', client.id);
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json({ ok: true });
+});
+
+
+// ═══════════════════════════════════════════════════════════════════
+// CATEGORY SUGGESTIONS — pending auto-suggestions for admin review
+// ═══════════════════════════════════════════════════════════════════
+router.get('/:client_slug/category-suggestions', async (req, res) => {
+  const { client } = req.semya;
+  const status = req.query.status || 'pending';
+  const { data, error } = await supabaseAdmin
+    .from('client_category_suggestions')
+    .select('id, product_name, sku, suggested_cat, status, created_at')
+    .eq('client_id', client.id)
+    .eq('status', status)
+    .order('suggested_cat')
+    .order('created_at');
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json(data || []);
+});
+
+// Count pending suggestions (used by notification bell)
+router.get('/:client_slug/category-suggestions/count', async (req, res) => {
+  const { client } = req.semya;
+  const { count, error } = await supabaseAdmin
+    .from('client_category_suggestions')
+    .select('*', { count: 'exact', head: true })
+    .eq('client_id', client.id)
+    .eq('status', 'pending');
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json({ count: count || 0 });
+});
+
+// Accept / dismiss a suggestion
+router.patch('/:client_slug/category-suggestions/:id', async (req, res) => {
+  if (!req.semya.isAdmin) return res.status(403).json({ error: 'Admin only.' });
+  const { client } = req.semya;
+  const { action, category, keywords, sku_prefixes } = req.body || {};
+  if (!['accept', 'dismiss'].includes(action)) {
+    return res.status(400).json({ error: "action must be 'accept' or 'dismiss'." });
+  }
+
+  // Fetch the suggestion first
+  const { data: sugg } = await supabaseAdmin
+    .from('client_category_suggestions')
+    .select('id, product_name, sku, suggested_cat')
+    .eq('id', req.params.id)
+    .eq('client_id', client.id)
+    .single();
+  if (!sugg) return res.status(404).json({ error: 'Suggestion not found.' });
+
+  if (action === 'accept') {
+    const finalCategory   = (category || sugg.suggested_cat).trim();
+    // The keyword is derived from the product name — cleaned same way as the suggestion
+    let autoKeyword = sugg.product_name.toLowerCase();
+    // Strip brand prefix, pipe suffix, size specs — same as extraction logic
+    autoKeyword = autoKeyword.replace(/^[a-z]{2,}\s+/, '');
+    autoKeyword = autoKeyword.split(/\s*[|(].*$/)[0].trim();
+    autoKeyword = autoKeyword.replace(/\s+\d+\s*(pcs|ml|gm|g|kg|l|pack|set|piece|pieces|nos|x\s*\d+)[\s,]*/gi, '').trim();
+    const finalKeywords     = keywords     || [autoKeyword];
+    const finalSkuPrefixes  = sku_prefixes || (sugg.sku ? [sugg.sku.replace(/\d+$/, '')] : []);
+
+    // Upsert the category — if it already exists, add the new keyword to its array
+    const { data: existing } = await supabaseAdmin
+      .from('client_product_categories')
+      .select('id, keywords, sku_prefixes')
+      .eq('client_id', client.id)
+      .eq('category', finalCategory)
+      .maybeSingle();
+
+    if (existing) {
+      // Merge keywords and sku_prefixes — deduplicate
+      const mergedKw  = [...new Set([...(existing.keywords    || []), ...finalKeywords])];
+      const mergedSku = [...new Set([...(existing.sku_prefixes|| []), ...finalSkuPrefixes])];
+      await supabaseAdmin
+        .from('client_product_categories')
+        .update({ keywords: mergedKw, sku_prefixes: mergedSku, updated_at: new Date().toISOString() })
+        .eq('id', existing.id);
+    } else {
+      const { data: maxOrder } = await supabaseAdmin
+        .from('client_product_categories')
+        .select('sort_order')
+        .eq('client_id', client.id)
+        .order('sort_order', { ascending: false })
+        .limit(1);
+      await supabaseAdmin
+        .from('client_product_categories')
+        .insert({ client_id: client.id, category: finalCategory, keywords: finalKeywords, sku_prefixes: finalSkuPrefixes, sort_order: ((maxOrder?.[0]?.sort_order) || 0) + 1 });
+    }
+  }
+
+  // Mark suggestion as accepted or dismissed
+  await supabaseAdmin
+    .from('client_category_suggestions')
+    .update({ status: action === 'accept' ? 'accepted' : 'dismissed' })
+    .eq('id', req.params.id);
+
+  return res.json({ ok: true });
+});
+
+// Batch accept all pending suggestions
+router.post('/:client_slug/category-suggestions/accept-all', async (req, res) => {
+  if (!req.semya.isAdmin) return res.status(403).json({ error: 'Admin only.' });
+  const { client } = req.semya;
+  const { data: pending } = await supabaseAdmin
+    .from('client_category_suggestions')
+    .select('id, product_name, sku, suggested_cat')
+    .eq('client_id', client.id)
+    .eq('status', 'pending');
+
+  if (!pending?.length) return res.json({ accepted: 0 });
+
+  // Group by suggested_cat to create one category per group
+  const byCategory = new Map();
+  for (const s of pending) {
+    if (!byCategory.has(s.suggested_cat)) byCategory.set(s.suggested_cat, []);
+    byCategory.get(s.suggested_cat).push(s);
+  }
+
+  let accepted = 0;
+  for (const [cat, suggestions] of byCategory) {
+    const keywords = [...new Set(suggestions.map(s => {
+      let kw = s.product_name.toLowerCase();
+      kw = kw.replace(/^[a-z]{2,}\s+/, '');
+      kw = kw.split(/\s*[|(].*$/)[0].trim();
+      kw = kw.replace(/\s+\d+\s*(pcs|ml|gm|g|kg|l|pack|set|piece|pieces|nos|x\s*\d+)[\s,]*/gi, '').trim();
+      return kw;
+    }).filter(Boolean))];
+
+    const { data: existing } = await supabaseAdmin
+      .from('client_product_categories')
+      .select('id, keywords, sku_prefixes')
+      .eq('client_id', client.id)
+      .eq('category', cat)
+      .maybeSingle();
+
+    if (existing) {
+      const merged = [...new Set([...(existing.keywords || []), ...keywords])];
+      await supabaseAdmin
+        .from('client_product_categories')
+        .update({ keywords: merged, updated_at: new Date().toISOString() })
+        .eq('id', existing.id);
+    } else {
+      const { data: maxOrder } = await supabaseAdmin
+        .from('client_product_categories')
+        .select('sort_order').eq('client_id', client.id)
+        .order('sort_order', { ascending: false }).limit(1);
+      await supabaseAdmin
+        .from('client_product_categories')
+        .insert({ client_id: client.id, category: cat, keywords, sku_prefixes: [], sort_order: ((maxOrder?.[0]?.sort_order)||0) + 1 });
+    }
+    accepted++;
+  }
+
+  await supabaseAdmin
+    .from('client_category_suggestions')
+    .update({ status: 'accepted' })
+    .eq('client_id', client.id)
+    .eq('status', 'pending');
+
+  return res.json({ accepted, categories: accepted });
+});
 
 export default router;

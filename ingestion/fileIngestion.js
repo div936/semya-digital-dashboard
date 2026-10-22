@@ -41,6 +41,7 @@ import { parse as parseCsv } from 'csv-parse/sync';
 import { supabaseAdmin }  from '../lib/supabase.js';
 import { REVENUE_MAP, CAMPAIGN_MAP, normaliseBatch, classifyDataType, scoreHeaderRow, detectFallbackMapping } from '../lib/columnMapper.js';
 import { generateInsights, generateNarrativeSummaries } from '../lib/insightGenerator.js';
+import { upsertProductCatalogue } from '../lib/productCatalogue.js';
 import { extractLiteralDate } from '../lib/dateUtils.js';
 import { recordMovement } from '../routes/inventoryRouter.js';
 
@@ -115,13 +116,15 @@ function parseFile(fileBuffer, originalName) {
     || fileBuffer.slice(0, 8).toString('hex') === 'd0cf11e0a1b11ae1';                 // legacy .xls (OLE2)
 
   if (ext !== '.csv' && looksLikeSpreadsheet) {
-    return { rows: parseSpreadsheet(fileBuffer), defaultDate: null };
+    // parseSpreadsheet now returns { rows, defaultDate } — same shape as
+    // parseCsvSmart — so preamble dates work for XLSX files too.
+    return parseSpreadsheet(fileBuffer);
   }
   if (ext === '.csv' || !looksLikeSpreadsheet) {
     return parseCsvSmart(fileBuffer);
   }
 
-  return { rows: parseSpreadsheet(fileBuffer), defaultDate: null };
+  return parseSpreadsheet(fileBuffer);
 }
 
 function parseSpreadsheet(fileBuffer) {
@@ -135,19 +138,78 @@ function parseSpreadsheet(fileBuffer) {
   const sheetName = workbook.SheetNames[0];
   const sheet     = workbook.Sheets[sheetName];
 
-  const rows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: '' });
-  if (rows.length < 2) return [];
+  const allRows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
+  if (allRows.length < 2) return [];
 
-  const headers = rows[0].map(String);
-  const dataRows = rows.slice(1);
+  // Hard limit: reject files with more than 60,000 data rows to prevent OOM.
+  // Amazon exports with 100K+ rows should be split by date range before upload.
+  // Each 60K-row file processes safely within ~300MB RAM on Render free tier.
+  const DATA_ROW_LIMIT = 60000;
+  if (allRows.length - 1 > DATA_ROW_LIMIT) {
+    throw new Error(
+      `File has ${(allRows.length - 1).toLocaleString()} rows — exceeds the ${DATA_ROW_LIMIT.toLocaleString()}-row limit per upload. ` +
+      `Please split the file into smaller date ranges (e.g. one month at a time) and upload each separately.`
+    );
+  }
 
-  return dataRows
-    .filter((row) => row.some((cell) => cell !== ''))   // skip blank rows
+  // Apply the same smart header detection used for CSV files — many
+  // campaign exports (Meta, Google Ads, Amazon) have 1-4 metadata rows
+  // above the real header, including a date range line. Blindly using
+  // row 0 as the header caused those metadata rows to become column names,
+  // so the real date/spend/campaign columns were never found, leaving
+  // campaign_date = NULL for every row in the file.
+  const searchLimit = Math.min(allRows.length, 20);
+  let headerIdx = 0;
+  let bestScore = -1;
+  for (let i = 0; i < searchLimit; i++) {
+    const row = allRows[i];
+    if (!row || !row.length) continue;
+    const cells = row.map(String);
+    if (cells.length < 2) continue;
+    const { total } = scoreHeaderRow(cells);
+    if (total > bestScore) { bestScore = total; headerIdx = i; }
+  }
+
+  // Extract a file-level date from any preamble rows above the header —
+  // same as extractDateFromPreamble() for CSV. Returned alongside rows
+  // so the caller can use it as defaultDate for rows with no date column.
+  const preambleRows = allRows.slice(0, headerIdx).map(r => r.map(String).join(' '));
+  const defaultDate  = extractDateFromPreamble(preambleRows);
+
+  const headers  = allRows[headerIdx].map(String);
+  const dataRows = allRows.slice(headerIdx + 1);
+
+  const rows = dataRows
+    .filter((row) => row.some((cell) => cell !== '' && cell != null))   // skip blank rows
     .map((row) => {
       const obj = {};
-      headers.forEach((h, i) => { obj[h] = row[i] ?? ''; });
+      headers.forEach((h, i) => {
+        let val = row[i] ?? '';
+        // With raw: true, cellDates: true returns JS Date objects for date cells.
+        // Convert them to ISO strings so extractLiteralDate() can parse them normally.
+        if (val instanceof Date) {
+          val = val.toISOString(); // "2026-09-29T00:00:00.000Z"
+        } else if (typeof val === 'number') {
+          // Preserve full integer precision (e.g. 68605913332042, not "6.86059E+13").
+          // Number.isInteger check avoids corrupting decimal revenue values like 162.50.
+          val = Number.isInteger(val) ? String(val) : val;
+        }
+        obj[h] = val;
+      });
       return obj;
     });
+
+  // Free the large intermediate arrays and workbook immediately so the GC
+  // can reclaim memory before the normalise + insert phases.
+  // On Render's free tier (512 MB RAM) a 14 MB xlsx can expand to
+  // 150–250 MB in the workbook + allRows representations; keeping both
+  // alive alongside the mapped rows array risks an OOM crash.
+  workbook.Sheets[sheetName] = null;
+  workbook.SheetNames = [];
+  allRows.length = 0;
+  dataRows.length = 0;
+
+  return { rows, defaultDate };
 }
 
 // ─── Smart CSV/TSV parsing ──────────────────────────────────────
@@ -256,8 +318,8 @@ function extractDateFromPreamble(preambleLines) {
 // large files (10k+ rows) don't take so long that a hosting platform's
 // request/gateway timeout kills the connection before we respond.
 // ═══════════════════════════════════════════════════════════════════
-const CHUNK_SIZE   = 500;
-const CONCURRENCY  = 5; // number of chunk inserts in flight at once
+const CHUNK_SIZE   = 500;  // smaller batches keep per-chunk memory low on Render free tier (512 MB)
+const CONCURRENCY  = 2;    // low concurrency avoids deadlocks and reduces peak memory during inserts
 
 // ═══════════════════════════════════════════════════════════════════
 // MERGE DUPLICATE CAMPAIGN ROWS
@@ -361,18 +423,92 @@ function mergeDuplicateCampaignRows(rows) {
 //
 // SCOPE: only touches rows carrying a "Total" value in their
 // raw_extras (i.e. actually came from a Shopify-shaped export). A
+// ── Flipkart campaign date spread ────────────────────────────────────────
+// Flipkart exports give LIFETIME cumulative stats per campaign, not daily.
+// The Date column contains the campaign start (and optional end date).
+// This expands each campaign row into N daily rows, dividing numeric
+// metrics evenly across the campaign run period.
+// End date rules:
+//   Status=Paused or "Till budget ends" → use today (upload date) as end
+//   Fixed range "DD Mon YY - DD Mon YY"  → parse the end date
+function expandFlipkartCampaignDates(rows, uploadDate) {
+  const MONTHS = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,
+                   jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
+
+  function parseFkDate(s) {
+    const str = String(s || '');
+    const m = str.match(/(\d{1,2})\s+([A-Za-z]{3})\s+[\x27\x60]?(\d{2})\b/);
+    if (!m) return null;
+    const mon = MONTHS[m[2].toLowerCase()];
+    if (!mon) return null;
+    return new Date(parseInt('20'+m[3]), mon-1, parseInt(m[1]));
+  }
+
+  function parseFkEndDate(rawDate) {
+    // Extract end date from "DD Mon YY - DD Mon YY" or null for "Till budget ends"
+    const parts = String(rawDate || '').split(' - ');
+    if (parts.length > 1 && !/till budget/i.test(parts[1])) {
+      return parseFkDate(parts[1]);
+    }
+    return null;
+  }
+
+  const today = uploadDate ? new Date(uploadDate) : new Date();
+  const SPREAD_FIELDS = [
+    'standard_spend', 'standard_revenue', 'standard_impressions',
+    'standard_clicks', 'standard_orders', 'standard_ctr',
+    'standard_acos', 'standard_cpc',
+  ];
+
+  const expanded = [];
+  for (const row of rows) {
+    // campaign_date is already the parsed ISO start date (set during normalisation)
+    // The end date range is preserved in raw_extras under the original "Date" key
+    // OR we use the status to determine end date behaviour
+    const startDate = row.campaign_date ? new Date(row.campaign_date) : null;
+    if (!startDate || isNaN(startDate)) { expanded.push(row); continue; }
+
+    // Read the original date range string preserved by normaliseRow
+    // under raw_extras._raw_date_range (e.g. "24 Aug '26 - Till budget ends")
+    const rawDate = String(row.raw_extras?._raw_date_range || '');
+
+    // Determine end date
+    let endDate = parseFkEndDate(rawDate);
+    if (!endDate) endDate = new Date(today); // Paused / Till budget ends → today
+    if (endDate < startDate) endDate = new Date(startDate);
+
+    const days = Math.round((endDate - startDate) / 86400000) + 1;
+    if (days <= 1) { expanded.push(row); continue; }
+
+    for (let d = 0; d < days; d++) {
+      const dayDate = new Date(startDate);
+      dayDate.setDate(startDate.getDate() + d);
+      const isoDate = dayDate.toISOString().split('T')[0];
+      const dayRow = { ...row, campaign_date: isoDate };
+      for (const field of SPREAD_FIELDS) {
+        const val = parseFloat(dayRow[field]);
+        if (!isNaN(val)) dayRow[field] = +(val / days).toFixed(4);
+      }
+      expanded.push(dayRow);
+    }
+  }
+  return expanded;
+}
+
 // no-op for Amazon/Flipkart/Blinkit files, which don't have this
 // column at all — nothing here changes their behaviour.
 // ═══════════════════════════════════════════════════════════════════
 function allocateOrderLevelDiscount(rows) {
-  // ARCHITECTURE: standard_revenue stores NET line revenue for Shopify rows,
-  // derived from the order Subtotal (product revenue after discounts, before
-  // shipping and taxes). This matches Shopify's "Net Sales" definition.
+  // ARCHITECTURE: standard_revenue stores NET line revenue (total, not per-unit)
+  // for Shopify rows, derived from the order Subtotal (product revenue after
+  // discounts, before shipping and taxes).
   //
-  // For multi-line orders we distribute the Subtotal proportionally by each
-  // line's gross share:  line_rev = subtotal × (line_gross / order_gross)
-  // For single-line orders Subtotal IS the line revenue directly.
-  // Falls back to gross when Subtotal is missing (Amazon/Flipkart/Blinkit).
+  // columnMapper sets standard_revenue = Lineitem price (per-unit).
+  // This function converts it to: total net line revenue = subtotal * (line_gross / order_gross)
+  //
+  // For single-line orders: standard_revenue = Subtotal directly.
+  // For multi-line orders:  standard_revenue = Subtotal * (line_gross / order_gross)
+  // Falls back to gross line total (price * qty) for non-Shopify rows.
 
   // Step 1 — group rows by order to get Subtotal and gross totals
   const byOrder = new Map();
@@ -381,26 +517,44 @@ function allocateOrderLevelDiscount(rows) {
     const oid = row.standard_order_id;
     if (!oid) continue;
     if (!byOrder.has(oid)) {
-      byOrder.set(oid, { subtotal: Number(row.raw_extras.Subtotal || 0), grossTotal: 0, lines: [] });
+      const sub = Number(row.raw_extras.Subtotal);
+      byOrder.set(oid, {
+        subtotal:   isNaN(sub) ? 0 : sub,
+        grossTotal: 0,
+        lines:      [],
+      });
     }
-    const entry = byOrder.get(oid);
-    const units = Number(row.standard_units) || 1;
-    const lineGross = (Number(row.standard_revenue) || 0) * units;
+    const entry    = byOrder.get(oid);
+    const units    = Math.max(Number(row.standard_units) || 1, 1);
+    const price    = Number(row.standard_revenue) || 0;   // per-unit price from columnMapper
+    const lineGross = price * units;
     entry.grossTotal += lineGross;
-    entry.lines.push({ row, units, lineGross });
+    entry.lines.push({ row, units, price, lineGross });
   }
 
-  // Step 2 — allocate Subtotal proportionally, store per-unit amount
+  // Step 2 — set standard_revenue to total net line amount (not per-unit)
   for (const entry of byOrder.values()) {
     const { subtotal, grossTotal, lines } = entry;
-    for (const { row, units, lineGross } of lines) {
+    for (const { row, units, price, lineGross } of lines) {
       if (grossTotal > 0 && subtotal > 0) {
-        const share = (lineGross / grossTotal) * subtotal;
-        row.standard_revenue = Math.round((share / Math.max(units, 1)) * 100) / 100;
+        // Proportional share of Subtotal for this line — store as TOTAL (not per-unit)
+        // so clientRouter can sum standard_revenue directly without multiplying by units.
+        row.standard_revenue = Math.round((lineGross / grossTotal) * subtotal * 100) / 100;
       } else {
-        row.standard_revenue = Math.round((Number(row.standard_revenue) || 0) * units * 100) / 100;
+        // Fallback: gross line total (price × qty) — no Subtotal available
+        row.standard_revenue = Math.round(price * units * 100) / 100;
       }
     }
+  }
+
+  // Step 3 — for non-Shopify rows (no Subtotal in raw_extras), convert
+  // per-unit price to total line amount the same way for consistency.
+  for (const row of rows) {
+    if (row.raw_extras?.Subtotal !== undefined) continue;  // already handled above
+    if (row.standard_order_id) continue;  // skip if we can match by order (shouldn't reach here)
+    const units = Math.max(Number(row.standard_units) || 1, 1);
+    const price = Number(row.standard_revenue) || 0;
+    row.standard_revenue = Math.round(price * units * 100) / 100;
   }
 
   return rows;
@@ -547,23 +701,40 @@ async function bulkInsert(table, rows) {
   const isCampaignTable = table === 'campaign_data';
   const isRevenueTable  = table === 'revenue_data';
 
+  // Helper: upsert one chunk with up to 3 retries on deadlock.
+  // Deadlocks happen when two concurrent uploads write to the same rows
+  // (e.g. overlapping date ranges queued together). Retrying with a
+  // short back-off resolves them — Postgres releases the lock quickly.
+  async function upsertChunk(chunk, attempt = 0) {
+    let result;
+    if (isCampaignTable) {
+      result = await supabaseAdmin.from(table).upsert(chunk, {
+        onConflict: 'client_id,platform,campaign_date,campaign_name',
+      });
+    } else if (isRevenueTable) {
+      result = await supabaseAdmin.from(table).upsert(chunk, {
+        onConflict: 'client_id,row_hash',
+        ignoreDuplicates: true,
+      });
+    } else {
+      result = await supabaseAdmin.from(table).insert(chunk);
+    }
+    if (result.error) {
+      const isDeadlock = result.error.message?.toLowerCase().includes('deadlock');
+      if (isDeadlock && attempt < 3) {
+        // Back off 200ms, 400ms, 800ms then give up
+        await new Promise(r => setTimeout(r, 200 * Math.pow(2, attempt)));
+        return upsertChunk(chunk, attempt + 1);
+      }
+      throw new Error(`Supabase upsert error on ${table}: ${result.error.message}`);
+    }
+    return result;
+  }
+
   let inserted = 0;
   for (let i = 0; i < chunks.length; i += CONCURRENCY) {
     const batch = chunks.slice(i, i + CONCURRENCY);
-    const results = await Promise.all(
-      batch.map((chunk) => {
-        if (isCampaignTable) {
-          return supabaseAdmin.from(table).upsert(chunk, { onConflict: 'client_id,platform,campaign_date,campaign_name' });
-        }
-        if (isRevenueTable) {
-          return supabaseAdmin.from(table).upsert(chunk, { onConflict: 'client_id,row_hash' });
-        }
-        return supabaseAdmin.from(table).insert(chunk);
-      })
-    );
-    for (const { error } of results) {
-      if (error) throw new Error(`Supabase upsert error on ${table}: ${error.message}`);
-    }
+    await Promise.all(batch.map(chunk => upsertChunk(chunk)));
     inserted += batch.reduce((sum, c) => sum + c.length, 0);
   }
   return inserted;
@@ -585,7 +756,7 @@ async function bulkInsert(table, rows) {
 // Returns:
 //   { uploadId, platform, dataType, rowCount, skippedRows }
 // ═══════════════════════════════════════════════════════════════════
-export async function ingestFile({ fileBuffer, originalName, clientId, uploadedBy }) {
+export async function ingestFile({ fileBuffer, originalName, clientId, uploadedBy, existingUploadId = null }) {
 
   // 1. Detect platform + data type
   const route = detectRoute(originalName);
@@ -600,7 +771,11 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
   // 2. Create an uploads audit record in 'processing' state
   //    (dataType may still be corrected by content-detection below —
   //     we update it before finalising if that happens)
-  const { data: uploadRecord, error: uploadErr } = await supabaseAdmin
+  //    If existingUploadId is provided (async large-file path), skip
+  //    creation and use the pre-created placeholder record instead.
+  const { data: uploadRecord, error: uploadErr } = existingUploadId
+    ? { data: { id: existingUploadId }, error: null }
+    : await supabaseAdmin
     .from('uploads')
     .insert({
       client_id:          clientId,
@@ -620,6 +795,18 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
     // 3. Parse file into raw row objects (handles encoding/delimiter/
     //    header-row detection, and a file-level default date if the
     //    report doesn't have a per-row date column)
+    // Pre-check: reject very large files immediately before parsing
+    // to avoid OOM. 15MB is approximately 60K rows of Amazon data.
+    // Users should split larger exports by date range.
+    const fileSizeMB = fileBuffer.length / (1024 * 1024);
+    if (fileSizeMB > 15) {
+      throw new Error(
+        `File is ${fileSizeMB.toFixed(1)}MB — exceeds the 15MB per-upload limit. ` +
+        `Please split the file into smaller date ranges (e.g. one month at a time) and upload each separately. ` +
+        `Amazon exports: filter by purchase date in Seller Central before downloading.`
+      );
+    }
+
     const { rows: rawRows0, defaultDate } = parseFile(fileBuffer, originalName);
     if (rawRows0.length === 0) {
       await finaliseUpload(uploadId, 'success', 0, 0);
@@ -627,23 +814,13 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
     }
 
     // 3a. Drop rollup/summary rows before anything else touches them.
-    // Google Ads campaign exports append several aggregate rows after
-    // the real per-campaign data — "Total: Campaigns", "Total: Account",
-    // "Total: Search", "Total: Performance Max", etc. — each carrying
-    // its own real Cost/spend figure that's a SUM of (some subset of)
-    // the individual campaigns above it, not a new campaign. Left in,
-    // these get treated as ordinary rows and their spend gets summed
-    // right alongside the real campaigns' spend, multiplying the
-    // reported total several times over (confirmed directly against an
-    // uploaded file: real spend ₹4,182.68, but summing every row
-    // including 5 non-zero "Total: ..." rows on top of it produced
-    // ₹16,730.72 — very close to what the affected dashboard actually
-    // showed). Detected generically off the first column's value
-    // starting with "Total" (case-insensitive) — a live campaign name
-    // wouldn't naturally start with that word, and this same "Total:"
-    // row shape hasn't shown up in any other platform's export so far,
-    // so this is safe to apply across the board rather than gating it
-    // to Google specifically.
+    // Drop all "Total: ..." rollup/summary rows — these are subtotals
+    // (Total: Campaigns, Total: Account, Total: Performance Max, etc.)
+    // that represent the same money as the individual campaign rows above
+    // them. Ingesting them alongside real campaigns would double-count spend.
+    // Individual Enabled/Paused campaign rows are always ingested so the
+    // full per-campaign breakdown is available on Campaign Insights and
+    // Daily Targets ranking.
     const rawRows = rawRows0.filter(row => {
       const firstValue = String(Object.values(row)[0] ?? '').trim();
       return !/^total\b/i.test(firstValue);
@@ -675,11 +852,29 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
 
     // 4. Normalise via column mapper
     const map = dataType === 'revenue' ? REVENUE_MAP : CAMPAIGN_MAP;
+
+    // For campaign files: fetch this client's naming patterns so the
+    // normaliser can extract product names from campaign names on platforms
+    // that have no dedicated product column (Meta, Google, Flipkart).
+    // Fetched once per upload — null if not configured for this client.
+    let campaignNamingPatterns = null;
+    if (dataType === 'campaign') {
+      try {
+        const { data: clientRow } = await supabaseAdmin
+          .from('clients')
+          .select('campaign_naming_patterns')
+          .eq('id', clientId)
+          .maybeSingle();
+        campaignNamingPatterns = clientRow?.campaign_naming_patterns || null;
+      } catch (_) { /* column may not exist yet — safe to ignore */ }
+    }
+
     let { rows: normalisedRows, skipped } = normaliseBatch(rawRows, map, {
       clientId,
       platform,
       uploadId,
       defaultDate,
+      campaignNamingPatterns,
     });
 
     // Fallback: the dictionary only recognises exact header text it's
@@ -772,8 +967,11 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
       for (const row of normalisedRows) {
         const oid = row.standard_order_id;
         if (!oid) continue;
-        const fin = String(row.raw_extras?.['Financial Status'] || '').trim();
-        const ca  = String(row.raw_extras?.['Cancelled at']    || '').trim();
+        const fin = String(row.financial_status || row.raw_extras?.['Financial Status'] || '').trim();
+        // Shopify populates 'Cancelled at' for explicit cancellations.
+        // Voided/refunded orders via payment gateway often leave 'Cancelled at'
+        // blank but populate 'Closed at' instead — use that as a fallback.
+        const ca  = String(row.raw_extras?.['Cancelled at'] || row.raw_extras?.['Closed at'] || '').trim();
         if (!orderStatusMap.has(oid)) orderStatusMap.set(oid, { finStatus: '', cancelledAt: '' });
         const entry = orderStatusMap.get(oid);
         if (!entry.finStatus  && fin) entry.finStatus  = fin;
@@ -785,19 +983,11 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
         if (!oid) continue;
         const { finStatus, cancelledAt } = orderStatusMap.get(oid) || {};
         const fin = (finStatus || '').toLowerCase();
-        const ful = String(row.raw_extras?.['Fulfillment Status'] || '').toLowerCase();
+        const ful = String(row.fulfillment_status || row.raw_extras?.['Fulfillment Status'] || '').toLowerCase();
         let status;
         if (fin === 'voided' || fin === 'refunded' || cancelledAt) {
           status = 'Cancelled';
         } else if (ful === 'fulfilled') {
-          // fulfilled = delivered regardless of payment method.
-          // Previously this only matched paid+fulfilled, leaving COD orders
-          // (financial_status='pending', fulfillment_status='fulfilled') mapped
-          // to 'Pending'. COD orders ARE delivered when fulfillment_status is
-          // 'fulfilled' — they just haven't been collected yet or payment is
-          // confirmed on delivery. Counting them as Pending understated the
-          // fulfilled count significantly (599 of 973 Jul-Aug17 fulfilled orders
-          // were COD and were invisible to the fulfilled counter).
           status = 'Delivered';
         } else if (fin === 'paid') {
           status = 'Paid';
@@ -805,12 +995,9 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
           status = 'Pending';
         }
         row.standard_status = status;
-        // Store the cancel/void date separately so clientRouter can count
-        // Sales Reversals by WHEN they happened (matching Shopify Analytics)
-        // rather than by order placed date.
-        if (entry.cancelledAt) {
-          const cancelDateStr = entry.cancelledAt.substring(0, 10); // 'YYYY-MM-DD'
-          row.cancelled_date = cancelDateStr || null;
+        // Store the cancel/void date using cancelledAt from the destructured entry
+        if (cancelledAt) {
+          row.cancelled_date = cancelledAt.substring(0, 10) || null;
         } else {
           row.cancelled_date = null;
         }
@@ -839,8 +1026,24 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
     // include it in the tier-2 hash, preventing collisions when the
     // same order has multiple line-items with the same SKU.
     const orderSeqCounter = new Map();
+    // For Flipkart campaigns: expand each row into daily rows before merging.
+    // Only applies to the OLD campaign export format where the Date column
+    // contains a lifetime range like "24 Aug '26 - Till budget ends".
+    // The Consolidated Daily Report already has one row per campaign per day
+    // with a clean ISO date (e.g. "2026-09-05") — no spreading needed.
+    // If every row's _raw_date_range has no " - " separator it's the daily
+    // format → skip expansion to avoid dividing spend/impressions across days
+    // which produces decimals that fail bigint DB columns.
+    const isAlreadyDailyFormat = (dataType === 'campaign' && platform === 'flipkart')
+      && normalisedRows.length > 0
+      && normalisedRows.every(r => !String(r.raw_extras?._raw_date_range || '').includes(' - '));
+
+    const campaignRowsToMerge = (dataType === 'campaign' && platform === 'flipkart' && !isAlreadyDailyFormat)
+      ? expandFlipkartCampaignDates(normalisedRows, new Date().toISOString().split('T')[0])
+      : normalisedRows;
+
     const rows = dataType === 'campaign'
-      ? mergeDuplicateCampaignRows(normalisedRows)
+      ? mergeDuplicateCampaignRows(campaignRowsToMerge)
       : discountAdjustedRows.map(row => {
           const orderKey = (row.platform || '') + '|' + (row.standard_order_id || '');
           const seq = orderSeqCounter.get(orderKey) || 0;
@@ -851,7 +1054,24 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
 
     // 5. Bulk insert into the correct table
     const table     = dataType === 'revenue' ? 'revenue_data' : 'campaign_data';
-    const inserted  = await bulkInsert(table, rows);
+
+    // Whitelist campaign_data columns — any extra normalised fields
+    // (e.g. standard_cpc, standard_roas from Flipkart) that aren't in
+    // the DB schema must be stripped here; they're already in raw_extras.
+    const CAMPAIGN_DB_COLS = new Set([
+      'client_id', 'platform', 'upload_id', 'campaign_date', 'campaign_name',
+      'standard_spend', 'standard_revenue', 'standard_impressions',
+      'standard_clicks', 'standard_orders', 'raw_extras',
+    ]);
+    const filteredRows = dataType === 'campaign'
+      ? rows.map(row => {
+          const out = {};
+          for (const k of CAMPAIGN_DB_COLS) if (row[k] !== undefined) out[k] = row[k];
+          return out;
+        })
+      : rows;
+
+    const inserted  = await bulkInsert(table, filteredRows);
 
     // 5a. Populate standard_discount column from raw_extras for Shopify rows.
     // The audit clientRouter.js reads standard_discount as a real DB column
@@ -900,13 +1120,29 @@ export async function ingestFile({ fileBuffer, originalName, clientId, uploadedB
       (usedFallbackMapping ? ` | used fallback column detection` : '')
     );
 
-    // 7. Fire-and-forget insight generation (non-blocking)
+    // 7a. Update product catalogue — revenue rows only (campaigns have no SKUs)
+    // Fire-and-forget: a failure here is logged but never fails the upload.
+    if (dataType === 'revenue') {
+      upsertProductCatalogue(rows, clientId).catch(err =>
+        console.warn('[ingestion] Product catalogue update failed (non-fatal):', err.message)
+      );
+    }
+
+    // 7b. Fire-and-forget insight generation (non-blocking)
     generateInsights({ clientId, uploadId, platform }).catch(err =>
       console.error('[ingestion] Insight generation failed (non-fatal):', err.message)
     );
     generateNarrativeSummaries({ clientId }).catch(err =>
       console.error('[ingestion] Narrative summary generation failed (non-fatal):', err.message)
     );
+
+    // 7c. Auto-suggest product categories for any new product names seen
+    //     in this upload that aren't already confirmed or pending.
+    if (dataType === 'revenue') {
+      extractCategorySuggestions(clientId, rows, uploadId).catch(err =>
+        console.warn('[ingestion] Category suggestion extraction failed (non-fatal):', err.message)
+      );
+    }
 
     return {
       uploadId, platform, dataType,
@@ -941,4 +1177,90 @@ async function finaliseUpload(uploadId, status, rowCount, skippedRows, errorMess
   if (error) {
     console.error(`[ingestion] Failed to finalise upload ${uploadId}:`, error.message);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// AUTO-CATEGORY SUGGESTION EXTRACTION
+//
+// Runs after every revenue file ingestion. For each unique product
+// name in the upload:
+//   1. Skip if it already matches a confirmed category keyword
+//   2. Skip if a suggestion (pending/accepted/dismissed) already exists
+//   3. Otherwise generate a cleaned label and insert as 'pending'
+//
+// Non-blocking — called with .catch() so any failure is logged only.
+// ─────────────────────────────────────────────────────────────────
+async function extractCategorySuggestions(clientId, rows, uploadId) {
+  // Load client's confirmed categories to check for existing matches
+  const { data: confirmedCats } = await supabaseAdmin
+    .from('client_product_categories')
+    .select('category, keywords, sku_prefixes')
+    .eq('client_id', clientId);
+  const cats = confirmedCats || [];
+
+  // Load all existing suggestions (any status) to avoid duplicates
+  const { data: existingSuggestions } = await supabaseAdmin
+    .from('client_category_suggestions')
+    .select('product_name')
+    .eq('client_id', clientId);
+  const existingNames = new Set((existingSuggestions || []).map(s => s.product_name));
+
+  // Collect unique product name + sku pairs from this upload
+  const seen = new Map(); // product_name → sku
+  for (const row of rows) {
+    const name = (row.standard_product_name || '').trim();
+    const sku  = (row.standard_sku || '').trim();
+    if (!name || seen.has(name)) continue;
+    seen.set(name, sku);
+  }
+
+  const toInsert = [];
+  for (const [productName, sku] of seen) {
+    // Skip if already in suggestions table
+    if (existingNames.has(productName)) continue;
+
+    const nameLower = productName.toLowerCase();
+    const skuLower  = sku.toLowerCase();
+
+    // Skip if already matched by a confirmed category
+    const alreadyMatched = cats.some(c =>
+      (c.keywords  || []).some(kw => nameLower.includes(kw.toLowerCase())) ||
+      (c.sku_prefixes || []).some(p  => skuLower.startsWith(p.toLowerCase()))
+    );
+    if (alreadyMatched) continue;
+
+    // Generate suggested category label from product name
+    let label = productName.trim();
+    // Remove brand prefix — leading ALL-CAPS word (e.g. "DALUCI ", "NEAT ")
+    label = label.replace(/^[A-Z]{2,}\s+/, '');
+    // Remove everything after | or ( — pipe is common in Amazon titles
+    label = label.split(/\s*[|(].*$/)[0].trim();
+    // Remove trailing count/size specs: "100 PCS", "500ml", "Set of 2", "2 Pack"
+    label = label.replace(/\s+(\d+\s*)?(pcs|ml|gm|g|kg|l|pack|set|piece|pieces|nos|x\s*\d+)[\s,]*/gi, '').trim();
+    // Cap at 60 chars
+    if (label.length > 60) label = label.substring(0, 60).trim();
+    if (!label) label = productName.substring(0, 60).trim();
+
+    toInsert.push({
+      client_id:     clientId,
+      product_name:  productName,
+      sku:           sku || null,
+      suggested_cat: label,
+      status:        'pending',
+      upload_id:     uploadId,
+    });
+  }
+
+  if (!toInsert.length) return;
+
+  // Batch upsert — ignoreDuplicates on (client_id, product_name) unique constraint
+  const BATCH = 50;
+  for (let i = 0; i < toInsert.length; i += BATCH) {
+    const { error } = await supabaseAdmin
+      .from('client_category_suggestions')
+      .upsert(toInsert.slice(i, i + BATCH), { onConflict: 'client_id,product_name', ignoreDuplicates: true });
+    if (error) console.warn('[suggestions] batch upsert error:', error.message);
+  }
+
+  console.log(`[suggestions] ${toInsert.length} new suggestions queued for client ${clientId}`);
 }

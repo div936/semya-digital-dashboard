@@ -1,0 +1,19 @@
+-- db/client_brands_migration.sql
+-- ─────────────────────────────────────────────────────────────────
+-- Adds registered brand name(s) per client — used to validate that
+-- an inventory file uploaded to a given client's dashboard actually
+-- belongs to them, by checking the file's own BRAND column against
+-- this list before processing any rows. Prevents uploading Daluci's
+-- inventory into Neat Everyday's account (or vice versa) by mistake.
+--
+-- An array, not a single text field, since a client could plausibly
+-- sell under more than one brand name. Matching is case-insensitive
+-- and trims whitespace — set with whatever casing reads naturally in
+-- Client Administration, comparison doesn't care.
+--
+-- NULL/empty array means "no brand check configured for this
+-- client" — uploads proceed without validation until an admin sets
+-- this, so existing clients aren't suddenly blocked from uploading
+-- until someone remembers to configure it.
+-- ─────────────────────────────────────────────────────────────────
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS registered_brands TEXT[] DEFAULT NULL;
