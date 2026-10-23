@@ -1,3 +1,65 @@
+# This round (2026-10-23): dashboard blank after uploads ("Loading… ₹0")
+
+Three issues, all confirmed against the live site before fixing.
+
+## 1. The dashboard kept asking for a client that no longer exists
+`boot()` in `dashboard.html` fell back to a hardcoded `'neat-everyday'` whenever the signed-in user had no client of their own (every Semya admin). Neat Everyday has since been deleted: `clients` now holds only Daluci, and `revenue_data.client_id` is `ON DELETE CASCADE`, so its rows went with it (0 rows confirmed via SQL). Every tab request returned `404 Client 'neat-everyday' not found`, while the switcher displayed "⭐ All Clients".
+
+**Fix:** the client is now chosen from the server's own list (`/auth/clients`), in this order:
+1. a slug in the URL, or the user's own client
+2. the client this browser last selected, if it still exists
+3. the first client on the list
+
+A deleted client can never be chosen again. "All Clients" only appears when there are 2+ clients. With no clients, the page shows a message and makes no data requests. The leftover "Neat Everyday" text (page title, header, switcher placeholder, Appearance form default, AI prompt) is gone. Platform labels now use the selected client's name ("Daluci Amazon", not "Semya Amazon").
+
+## 2. Platform Sales (and every range-based tab) was too slow to ever finish
+`fetchAllRows()` in `clientRouter.js` paged with LIMIT/OFFSET, one page at a time. Measured live: ~25s per month of Daluci data, so Jan→today (Jan–Mar: ₹74.6L / ₹1.03Cr / ₹1.15Cr) blew through the page's 45s timeout plus retry, and the screen sat on "Loading… ₹0".
+
+**Fix:** new `backend/lib/fetchRows.js`.
+- It finds the first and last day with data, fetches days in parallel (8 at a time), and pages inside each day with `id > lastId` instead of OFFSET.
+- It uses the `(client_id, order_date, id)` index.
+- It now powers Platform Sales (main, previous-period, cancellation-reversal and ROAS-spend queries), SKU Performance, Campaign Insights, Geographic and fraud patterns.
+- Same rows and same totals as before (row order never affected the maths).
+- It adapts automatically to whatever PostgREST "Max rows" cap the project has.
+
+Fixed along the way:
+- The previous-period, reversal and ROAS-spend queries were not paginated at all, so they silently stopped at Supabase's max-rows cap.
+- SKU Performance and Campaign Insights paged on a non-unique sort, which could skip or repeat rows across pages.
+
+## 3. Requests were sent twice, and auto-refresh refreshed the wrong tab
+- `boot()` could run twice (auth-ready event plus a 400ms fallback timer), and `loadTabPermissions()` re-opened Platform Sales right after `boot()` opened it. Every request went out 2× on load. Fixed: boot runs once, and the fallback timer is now 15s and only fires if auth never reports in.
+- The 5-minute auto-refresh always called the **SKU Performance** loader whatever tab was open. It now refreshes the tab on screen.
+
+Verified headless against a mocked backend:
+- Daluci auto-selected; ₹1.15 Cr rendered.
+- 0 neat-everyday requests, 0 duplicate requests.
+- A stale remembered `neat-everyday` falls back to Daluci.
+- A 2-client account remembers the last choice.
+- 0 clients shows the empty state.
+
+## Files changed
+| File | Change |
+|---|---|
+| `backend/lib/fetchRows.js` (+ root `lib/` copy) | **New.** Parallel per-day keyset fetch. |
+| `backend/routes/clientRouter.js` (+ root `routes/` copy) | All range reads use the new helper; old `fetchAllRows` removed. |
+| `backend/db/migrations/2026-10_fetch_performance_indexes.sql` | **New.** Indexes for `revenue_data` (already added by hand) and `campaign_data`. |
+| `frontend/dashboard.html` = `gh-pages/dashboard.html` | Client auto-select, single boot, no duplicate first load, auto-refresh fix, Neat Everyday defaults removed. Build tag `V39-client-autoselect-fast-fetch`. |
+| `frontend/sw.js` = `gh-pages/sw.js` | Cache name `semya-v1` → `semya-v39` so browsers drop the old cached page. |
+| `frontend/semya_auth_guard.js` | Synced to the live gh-pages copy (main still pointed at the old `semya-api.onrender.com`). |
+
+`main/frontend/` was ~540 lines behind the live gh-pages copy (missing the break-even projection work). It is now identical to gh-pages, so deploy either one.
+
+## Deploy order
+1. Run `backend/db/migrations/2026-10_fetch_performance_indexes.sql` in the Supabase SQL editor (safe to re-run).
+2. Deploy the backend (Render).
+3. Deploy the frontend (`gh-pages/dashboard.html`).
+4. Hard-refresh the dashboard (Ctrl+Shift+R). The console should log `Frontend build: V39-client-autoselect-fast-fetch`. `sw.js`'s cache name is bumped to `semya-v39`, so other users' browsers drop the old cached page by their second visit. Before this, the service worker kept serving the cached `dashboard.html` first, and its cache name had never been changed.
+
+## Optional: fewer round-trips
+Supabase → Project Settings → API → **Max rows** (default 1000). Raising it to 5000 lets each request return 5× more rows; the code adapts automatically. No change is needed for correctness.
+
+---
+
 # What's in this package
 
 This is your full `semya-dashboard` project with all fixes from our
