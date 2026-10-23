@@ -6,7 +6,7 @@
 //
 // Version this string whenever you deploy a new build so the old cache is
 // cleared automatically on next load.
-const CACHE_NAME = 'semya-v39'; // bumped 2026-10-23 (client auto-select + fast fetch build)
+const CACHE_NAME = 'semya-v40'; // bumped 2026-10-23 (full numbers + UI polish build)
 
 // Files to pre-cache on install — the app shell
 const SHELL_FILES = [
