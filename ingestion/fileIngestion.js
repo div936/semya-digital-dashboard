@@ -44,6 +44,7 @@ import { generateInsights, generateNarrativeSummaries } from '../lib/insightGene
 import { upsertProductCatalogue } from '../lib/productCatalogue.js';
 import { extractLiteralDate } from '../lib/dateUtils.js';
 import { recordMovement } from '../routes/inventoryRouter.js';
+import { invalidateReportCache } from '../lib/reportCache.js';
 
 // ═══════════════════════════════════════════════════════════════════
 // PREFIX → ROUTING TABLE
@@ -756,7 +757,19 @@ async function bulkInsert(table, rows) {
 // Returns:
 //   { uploadId, platform, dataType, rowCount, skippedRows }
 // ═══════════════════════════════════════════════════════════════════
-export async function ingestFile({ fileBuffer, originalName, clientId, uploadedBy, existingUploadId = null }) {
+// Public entry point: runs the ingestion, then clears the report cache so
+// the dashboard shows the new rows on its next load (uploads can finish in
+// the background after the HTTP response, so clearing on the response
+// alone isn't enough).
+export async function ingestFile(args) {
+  try {
+    return await _ingestFileImpl(args);
+  } finally {
+    invalidateReportCache('ingestion finished: ' + (args && args.originalName));
+  }
+}
+
+async function _ingestFileImpl({ fileBuffer, originalName, clientId, uploadedBy, existingUploadId = null }) {
 
   // 1. Detect platform + data type
   const route = detectRoute(originalName);

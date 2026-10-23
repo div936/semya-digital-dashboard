@@ -25,6 +25,7 @@ import aiSettingsRouter       from './routes/aiSettingsRouter.js';
 import { startScheduler }     from './services/syncScheduler.js';
 import flipkartSyncRouter        from './routes/flipkartSyncRouter.js';
 import { startFlipkartScheduler } from './services/flipkartScheduler.js';
+import { invalidateOnWrite } from './lib/reportCache.js';
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -55,6 +56,8 @@ app.use(cors({
 // low-traffic internal admin tool.
 app.use(express.json({ limit: '5mb' }));
 app.use(cookieParser());
+// Any successful write (upload, import, delete, settings) clears the report cache.
+app.use(invalidateOnWrite);
 
 // ─── Routes ───────────────────────────────────────────────────────
 //   GET   /platform-settings                  — public: admin/login-page branding
@@ -109,7 +112,7 @@ startScheduler();
 startFlipkartScheduler();
 
 // ─── Health check ─────────────────────────────────────────────────
-app.get('/health', (_req, res) => res.json({ ok: true, version: 'V42-fast-fetch-ui' }));
+app.get('/health', (_req, res) => res.json({ ok: true, version: 'V43-report-cache' }));
 
 // ─── 404 ──────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'Route not found.' }));

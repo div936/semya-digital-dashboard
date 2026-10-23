@@ -16,6 +16,7 @@ import { supabaseAdmin } from '../lib/supabase.js';
 import { detectSuspiciousPatterns } from '../lib/fraudDetector.js';
 import { backfillLocationByOrder, normaliseStateName, inferCategory } from '../lib/columnMapper.js';
 import { fetchRowsByDate, fetchAllByKeyset } from '../lib/fetchRows.js';
+import { reportCache } from '../lib/reportCache.js';
 
 const router = Router({ mergeParams: true });
 
@@ -196,6 +197,7 @@ router.patch('/:client_slug/admin/tab-permissions', async (req, res) => {
 router.get(
   '/:client_slug/platform-sales',
   requireTab('platform_sales'),
+  reportCache,
   async (req, res) => {
     const { client } = req.semya;
     const { from, to, platform } = req.query;
@@ -386,6 +388,7 @@ router.get(
 router.get(
   '/:client_slug/sku-performance',
   requireTab('sku_performance'),
+  reportCache,
   async (req, res) => {
     const { client } = req.semya;
     const { sku, platform, from, to } = req.query;
@@ -515,6 +518,7 @@ router.get(
 router.get(
   '/:client_slug/campaign-insights',
   requireTab('campaign_insights'),
+  reportCache,
   async (req, res) => {
     const { client } = req.semya;
     const { from, to, platform } = req.query;
@@ -808,6 +812,7 @@ function aggregateCampaignInsights(campaignRows, revenueRows) {
 router.get(
   '/:client_slug/geographic',
   requireTab('geographic_analysis'),
+  reportCache,
   async (req, res) => {
     const { client } = req.semya;
     const { from, to, sku, platform } = req.query;
@@ -947,6 +952,7 @@ router.get(
 router.get(
   '/:client_slug/fraud-patterns',
   requireTab('ai_insights'),
+  reportCache,
   async (req, res) => {
     const { client } = req.semya;
     const { from, to } = req.query;
