@@ -14,7 +14,7 @@
   <meta name="apple-mobile-web-app-title" content="Semya" />
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="assets/semya-logo.jpg" />
-  <title>Neat Everyday — SKU Performance | Semya Digital</title>
+  <title>Performance Dashboard | Semya Digital</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="semya_auth_guard.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1380,9 +1380,9 @@
   <header class="header">
     <!-- Left: Logo -->
     <div class="header-logo">
-      <div class="logo-mark" id="logoMark" style="overflow:hidden;"><img id="logoImg" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover;border-radius:10px;" /><span id="logoText">NE</span></div>
+      <div class="logo-mark" id="logoMark" style="overflow:hidden;"><img id="logoImg" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover;border-radius:10px;" /><span id="logoText">SD</span></div>
       <div>
-        <div class="logo-text">Neat Everyday</div>
+        <div class="logo-text">Semya Digital</div>
         <div class="logo-sub">Semya Digital</div>
       </div>
       <!-- Only shown to admins while "View as Client" is on (Settings
@@ -1453,7 +1453,7 @@
 
       <!-- Client Switcher -->
       <select class="select-styled" id="clientSwitcher" title="Switch client">
-        <option value="neat-everyday" selected>Neat Everyday</option>
+        <option value="" selected>Loading clients…</option>
       </select>
 
       <!-- Data Upload -->
@@ -3306,7 +3306,7 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
           <div>
             <label id="caBrandNameFieldLabel" style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">Client Name</label>
-            <input type="text" id="brandNameInput" placeholder="Neat Everyday" value="Neat Everyday"
+            <input type="text" id="brandNameInput" placeholder="Client name" value=""
               style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;font-family:var(--font-display);color:#1e293b;" />
           </div>
           <div>
@@ -4237,7 +4237,11 @@ function startAutoRefresh() {
     if (document.hidden) return; // skip while tab is in the background
     if (!state.clientSlug) return;
     tabCache = {}; // force fresh data instead of serving stale cached tabs
-    fetchAndRender().catch(err => console.warn('[auto-refresh] failed:', err.message));
+    // Refresh whichever tab is on screen. This used to call
+    // fetchAndRender() — the SKU Performance loader — no matter which
+    // tab was open, so Platform Sales never auto-refreshed and a hidden
+    // SKU query ran every 5 minutes.
+    try { showTab(activeTab || 'platform_sales', true); } catch (err) { console.warn('[auto-refresh] failed:', err.message); }
   }, AUTO_REFRESH_MS);
 
   // If the tab was hidden and becomes visible again after more than
@@ -4249,7 +4253,7 @@ function startAutoRefresh() {
       hiddenAt = Date.now();
     } else if (hiddenAt && Date.now() - hiddenAt > AUTO_REFRESH_MS && state.clientSlug) {
       tabCache = {};
-      fetchAndRender().catch(() => {});
+      try { showTab(activeTab || 'platform_sales', true); } catch (_) {}
       hiddenAt = null;
     }
   });
@@ -5324,7 +5328,7 @@ async function fetchAndRender() {
       }
     }
   } catch (err) {
-    console.warn('[semya] API fetch failed, using mock data:', err.message);
+    console.warn('[semya] SKU performance fetch failed:', err.message);
   }
 
   // Fall back — don't wipe existing SKU list on empty result
@@ -5448,7 +5452,7 @@ function showTab(tabKey, force) {
 }
 
 // ─── Tab permissions / access lock ─────────────────────────────
-async function loadTabPermissions() {
+async function loadTabPermissions(opts = {}) {
   const { clientSlug } = state; if (!clientSlug) return;
   try {
     const cfg = await apiFetch('/clients/' + clientSlug + '/dashboard-config');
@@ -5456,9 +5460,12 @@ async function loadTabPermissions() {
     _lastDashboardConfig = cfg;
     applyLockBadgesToNav();
     applyBranding(cfg);
-    // If we already landed on a tab before this resolved (unlikely,
-    // but boot() calls this before showTab), re-check the current one.
-    if (activeTab) showTab(activeTab);
+    // If we already landed on a tab before this resolved, re-check the
+    // current one. boot() passes rerender:false because it opens the
+    // first tab itself right after — activeTab defaults to
+    // 'platform_sales', so re-rendering here fired every Platform Sales
+    // request twice on page load.
+    if (activeTab && opts.rerender !== false) showTab(activeTab);
   } catch (e) {
     console.warn('[tab-permissions]', e.message);
   }
@@ -5542,12 +5549,17 @@ async function applyBranding(cfg) {
 function setHeaderBranding(name, tagline, logoUrl, theme) {
   const nameEl = document.querySelector('.logo-text');
   const tagEl  = document.querySelector('.logo-sub');
-  if (nameEl) nameEl.textContent = name || 'Neat Everyday';
+  if (nameEl) nameEl.textContent = name || 'Semya Digital';
   if (tagEl)  tagEl.textContent  = tagline || 'Semya Digital';
 
-  // Keep state.clientName in sync so dynamic labels (platform pills, dropdowns) update
-  state.clientName = name || null;
-  const clientFirst = (name || '').split(' ')[0];
+  // Keep state.clientName in sync so dynamic labels (platform pills, dropdowns) update.
+  // Use the SELECTED CLIENT's name, not the header name — for admins the
+  // header shows Semya's own branding, which turned "Daluci Amazon" into
+  // "Semya Amazon" on every platform label.
+  let selectedClientName = null;
+  try { selectedClientName = (_clientList.find(c => c.slug === state.clientSlug) || {}).name || null; } catch (_) {}
+  state.clientName = selectedClientName || name || null;
+  const clientFirst = (state.clientName || '').split(' ')[0];
   const amzOptEl = document.getElementById('dmRangePlatformAmazonOpt');
   if (amzOptEl) amzOptEl.textContent = clientFirst ? 'Amazon (' + clientFirst + ' Amazon)' : 'Amazon';
   const acutasOptEl = document.getElementById('dmRangePlatformAcutasOpt');
@@ -9266,35 +9278,82 @@ document.getElementById('uploadDrawer').addEventListener('click', e => { if (e.t
 
 
 // ─── CLIENT SWITCHER ────────────────────────────────────────────────
-async function loadClientSwitcher() {
-  const sw = document.getElementById('clientSwitcher');
-  if (!sw) return;
+// The client list always comes from the server (/auth/clients): every
+// client for an admin, or just their own client for a client user. There
+// is NO hardcoded fallback client any more — a hardcoded 'neat-everyday'
+// default kept requesting a client that had been deleted, so every tab
+// got 404s while the switcher showed "All Clients" and nothing loaded.
+const LAST_CLIENT_KEY = 'semya_last_client';
+let _clientList = [];
+
+function rememberClient(slug) {
+  try { if (slug && slug !== '__all__') localStorage.setItem(LAST_CLIENT_KEY, slug); } catch (_) {}
+}
+function recallClient() {
+  try { return localStorage.getItem(LAST_CLIENT_KEY); } catch (_) { return null; }
+}
+function currentClientName() {
+  const c = _clientList.find(x => x.slug === state.clientSlug);
+  return (c && c.name) || 'this brand';
+}
+
+async function fetchClientList() {
   try {
     const resp = await apiFetch('/auth/clients');
-    const clients = resp?.clients || [];
-    if (clients.length) {
-      sw.innerHTML =
-        '<option value="__all__"' + (state.clientSlug === '__all__' ? ' selected' : '') + '>⭐ All Clients</option>' +
-        clients.map(c =>
-          '<option value="' + c.slug + '"' + (c.slug === state.clientSlug ? ' selected' : '') + '>' + c.name + '</option>'
-        ).join('');
-    } else {
-      // Fetch succeeded but returned nothing usable — still show
-      // something rather than leaving the switcher blank.
-      sw.innerHTML = '<option value="' + state.clientSlug + '" selected>' + (document.querySelector('.logo-text')?.textContent || state.clientSlug) + '</option>';
-    }
+    _clientList = Array.isArray(resp?.clients) ? resp.clients : [];
   } catch (e) {
     console.warn('[client-switcher] failed to load client list:', e.message);
-    // Fall back to showing just the current client rather than an
-    // empty/hidden control — the switcher should never just vanish.
-    sw.innerHTML = '<option value="' + state.clientSlug + '" selected>' + (document.querySelector('.logo-text')?.textContent || state.clientSlug) + '</option>';
   }
+  return _clientList;
+}
+
+// Decide which client to open on page load, in priority order:
+//   1. a slug in the URL (/clients/<slug>/…) or the user's own client
+//   2. the client this browser last had selected, if it still exists
+//   3. the first client the server returns
+// Anything not in the server's list is ignored, so a deleted client can
+// never be selected again.
+function pickInitialClient(preferredSlug) {
+  const valid = slug => !!slug && _clientList.some(c => c.slug === slug);
+  if (valid(preferredSlug)) return preferredSlug;
+  const last = recallClient();
+  if (valid(last)) return last;
+  if (_clientList.length) return _clientList[0].slug;
+  // Server unreachable or returned nothing: keep a URL/user slug if we
+  // have one so the tabs can still try; otherwise nothing to load.
+  return preferredSlug || null;
+}
+
+function renderClientSwitcher() {
+  const sw = document.getElementById('clientSwitcher');
+  if (!sw) return;
+  if (!_clientList.length) {
+    sw.innerHTML = state.clientSlug
+      ? '<option value="' + state.clientSlug + '" selected>' + state.clientSlug + '</option>'
+      : '<option value="" selected>No clients</option>';
+    return;
+  }
+  // "All Clients" only makes sense when there's more than one to compare.
+  const allOpt = _clientList.length > 1
+    ? '<option value="__all__"' + (state.clientSlug === '__all__' ? ' selected' : '') + '>⭐ All Clients</option>'
+    : '';
+  sw.innerHTML = allOpt + _clientList.map(c =>
+    '<option value="' + c.slug + '"' + (c.slug === state.clientSlug ? ' selected' : '') + '>' + c.name + '</option>'
+  ).join('');
+  sw.value = state.clientSlug || '';
+}
+
+async function loadClientSwitcher() {
+  await fetchClientList();
+  renderClientSwitcher();
+  return _clientList;
 }
 
 let _fetchGeneration = 0;
 
 async function switchClient(newSlug) {
   if (!newSlug || newSlug === state.clientSlug) return;
+  rememberClient(newSlug);
 
   // ── All Clients overview ────────────────────────────────────────
   if (newSlug === '__all__') {
@@ -11478,10 +11537,16 @@ function downloadCostTemplate(e) {
 
 
 // ─── BOOT ─────────────────────────────────────────────────────────
-const FRONTEND_BUILD = 'V38-onclick-quote-fix'; // bump alongside backend health version
+const FRONTEND_BUILD = 'V39-client-autoselect-fast-fetch'; // bump alongside backend health version
 console.log('[Semya] Frontend build:', FRONTEND_BUILD);
 
+let _bootStarted = false;
 async function boot(user) {
+  // Run once per page load. boot() used to be triggered twice — by the
+  // auth guard's ready event AND by a 400ms fallback timer — so every
+  // tab's requests went out twice, doubling the load on the server.
+  if (_bootStarted) return;
+  _bootStarted = true;
   // Reset dashboard to its own default blue theme at boot so the
   // login-page's Noir theme never bleeds into the admin dashboard.
   // Done with direct CSS variable writes (not applyThemeColour) to
@@ -11495,7 +11560,11 @@ async function boot(user) {
   _r.style.setProperty('--theme-accent-soft',  'rgba(14,165,233,0.09)');
   _r.style.setProperty('--color-border-glow',  'rgba(14,165,233,0.18)');
   state.token      = user && user.token ? user.token : getToken();
-  state.clientSlug = (user && user.clientSlug) || (window.location.pathname.match(/\/clients\/([^/]+)/)||[])[1] || 'neat-everyday';
+  // Client is resolved from the server's list below (after warmServer),
+  // never from a hardcoded default. Remember any URL/user slug as the
+  // preferred choice.
+  const preferredSlug = (user && user.clientSlug) || (window.location.pathname.match(/\/clients\/([^/]+)/)||[])[1] || null;
+  state.clientSlug = null;
   initDates();
   const from = state.dateFrom; const to = state.dateTo;
   const today = todayIST();
@@ -11517,8 +11586,19 @@ async function boot(user) {
   showWakeToast(true, 'Connecting…');
   await warmServer();
   showWakeToast(false);
-  loadClientSwitcher();
-  loadTabPermissions();
+  await fetchClientList();
+  state.clientSlug = pickInitialClient(preferredSlug);
+  rememberClient(state.clientSlug);
+  renderClientSwitcher();
+  if (!state.clientSlug) {
+    setBadge('empty');
+    showWakeToast(true, 'No clients found for this account. Add a client in Client Administration.');
+    return;
+  }
+  // Loads the client's config (tab permissions + branding). Awaited so the
+  // first tab renders once, instead of rendering and then re-rendering
+  // when permissions arrive a moment later.
+  await loadTabPermissions({ rerender: false });
   startAutoRefresh();
   startNotifPolling();
   showTab('platform_sales');
@@ -11542,7 +11622,9 @@ if (window.semyaUser) {
     }
     boot(e.detail);
   });
-  setTimeout(function() { if (!state.clientSlug) boot({}); }, 400);
+  // Safety net only: the auth guard always dispatches semya:auth-ready
+  // (or redirects to login). This fires only if it never does.
+  setTimeout(function() { if (!_bootStarted) boot({}); }, 15000);
 }
 // ═══════════════════════════════════════════════════════════════════
 // UNIFIED EXPORT ENGINE
@@ -13115,7 +13197,7 @@ function _buildPrompt(data) {
     ? data.dateFrom + ' to ' + data.dateTo
     : 'the selected period';
 
-  let prompt = 'You are an expert e-commerce analytics advisor for Neat Everyday, a D2C brand in India.\n';
+  let prompt = 'You are an expert e-commerce analytics advisor for ' + currentClientName() + ', a D2C brand in India.\n';
   prompt += 'Analyse the following dashboard data for the period ' + dateRange + ' and give a concise, sharp, actionable insight.\n\n';
   prompt += 'Tab being viewed: ' + (TAB_LABELS[data.tab] || data.tab) + '\n';
   prompt += 'Date range: ' + dateRange + '\n';
