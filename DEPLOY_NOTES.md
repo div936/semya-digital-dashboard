@@ -1,3 +1,32 @@
+# Round 3 (2026-10-23, 5 pm): "No data" again after another upload
+
+## What was actually wrong (checked live)
+- **The Render backend was fine.** `/health`, which doesn't touch the database, answered in 0.1 s.
+- **The Supabase database was the bottleneck.** A one-row `platform_settings` lookup took 7–16 s, and `dashboard-config` took 12 s. The project page shows **Status: Unhealthy**, **Nano compute (0.5 GB RAM)**, **650–800 MB in swap** all hour, **memory commitment 2.31 GB ("Severe")**, and **IO-wait about 90%** from roughly 5:10 pm, right after the upload.
+- **Query Performance** shows every heavy `revenue_data` read with a worst case of about 8 s per call. Even the new indexed per-day query averaged 1.7 s; it should take milliseconds.
+- **No free-plan quota is exceeded** (database 330/500 MB, egress 1.7/5 GB). The "Grace period is over" banner is a general warning, not the cause. The Supabase status-page incident only affects their Management API, not databases.
+
+**Root cause:** every dashboard load re-reads the client's entire order history 3–4 times (Platform Sales, Campaign Insights, SKU Performance, the last including the large `raw_extras` column). The 5-minute auto-refresh and every open tab repeat that. On a 0.5 GB machine that has to swap, it saturates quickly, and an upload on top tips it over. The 8-way parallel fetch added in round 1 made the memory pressure worse.
+
+## Fix (backend only)
+| File | Change |
+|---|---|
+| `backend/lib/reportCache.js` (+ root `lib/`) | **New.** 15-minute in-memory cache for platform-sales, sku-performance, campaign-insights, geographic and fraud-patterns, per client and exact query. Identical requests arriving at the same time share one database read. Any successful write (upload, import, delete, settings) clears it, and so does the end of every file ingestion, including background ones. Errors are never cached. Add `?nocache=1` to bypass. |
+| `backend/routes/clientRouter.js` (+ root) | `reportCache` added to those 5 routes, after auth and tab-permission checks. |
+| `backend/ingestion/fileIngestion.js` (+ root `ingestion/`) | `ingestFile` clears the cache when it finishes. |
+| `backend/app.js` (+ root) | `invalidateOnWrite` middleware; `/health` → `V43-report-cache`. |
+| `backend/lib/fetchRows.js` (+ root) | Parallel reads 8 → 3 (env `SUPABASE_FETCH_CONCURRENCY` overrides). |
+
+Tested with Express: 3 simultaneous identical requests → 1 database read; repeat → cache hit; different range → new read; after POST → re-read; after ingestion → re-read; error responses not cached.
+
+## Database side: owner's decision
+The cache cuts how often the database is read; it can't make a 0.5 GB instance fit 330 MB of data plus indexes in memory. Options:
+1. **Restart the project** (Settings → General → Restart project). This clears the swap now, with about a minute of downtime.
+2. **Upgrade** to Pro and a bigger compute size if the dashboard has to stay fast as more months are uploaded.
+3. **Longer-term code change:** a daily summary table maintained on upload, so reports read thousands of rows instead of the full history.
+
+---
+
 # Round 2 (2026-10-23, same deploy): full numbers, All Clients, UI polish
 
 Deploy together with the speed fix below: one backend deploy, one frontend deploy, one SQL file.
@@ -87,7 +116,7 @@ Verified headless against a mocked backend:
 
 ## Deploy order
 1. Run `backend/db/migrations/2026-10_fetch_performance_indexes.sql` in the Supabase SQL editor (safe to re-run).
-2. Deploy the backend (Render). Confirm it's live: https://semya-digital-dashboard.onrender.com/health must say `"version":"V42-fast-fetch-ui"`. Any other version means the old code is still running.
+2. Deploy the backend (Render). Confirm it's live: https://semya-digital-dashboard.onrender.com/health must say `"version":"V43-report-cache"`. Any other version means the old code is still running.
 3. Deploy the frontend (`gh-pages/dashboard.html`).
 4. Hard-refresh the dashboard (Ctrl+Shift+R). The console should log `Frontend build: V40-full-numbers-ui-polish`. `sw.js`'s cache name is bumped to `semya-v40`, so other users' browsers drop the old cached page by their second visit. Before this, the service worker kept serving the cached `dashboard.html` first, and its cache name had never been changed.
 
