@@ -1,3 +1,38 @@
+# Round 2 (2026-10-23, same deploy): full numbers, All Clients, UI polish
+
+Deploy together with the speed fix below: one backend deploy, one frontend deploy, one SQL file.
+
+## Full numbers instead of short forms
+Every value a person reads now uses full Indian digit grouping: ₹2,92,42,089 (was ₹2.92 Cr), 1,10,000 (was 1.1 L units), ₹38,00,000 (was ₹38 Lakhs). This covers KPI cards, tables, platform split, categories, chart tooltips, the All Clients cards and the projections panel. Only chart axis ticks keep short labels (₹10L), because full numbers would overlap there. `fmtRevenue` and `fmtUnits` return full numbers; the new `fmtAxisRevenue` is for axes only.
+
+The "vs last period" badge is capped at 999+%. A near-empty previous period (₹10,256 in Dec 2025) produced "▲ 285021.8%".
+
+## All Clients is back
+The switcher shows **All Clients** for every Semya admin, whatever the number of clients. Client users still see only their own client. Each client card shows the client's initial in its theme colour, net revenue with change, units, orders, a per-platform breakdown and an **Open dashboard** button. `/auth/clients` now also returns each client's `theme` (logos are not included, since they're stored as large base64 strings).
+
+## UI polish
+- **Dropdowns.** Every native `<select>` (client switcher, UTM "Last 30 days", stock filter, warehouse pickers, Data Manager, Client Administration, UTM builder) is replaced by one custom dropdown that matches the rest of the app: styled trigger, rounded menu, check mark on the selected option, keyboard support (arrows, Enter, Esc, type-ahead). The original `<select>` stays hidden underneath, so all existing code that reads or sets values keeps working. The client switcher shows the client's initial and has an "All Clients" entry at the top.
+- **One control system.** Date fields, filter-menu buttons (Order status, Fulfillment, Product), Export, text fields and buttons share one height, radius, border, hover and focus ring. The platform pills (All / Amazon / Flipkart / Blinkit / Website), the AI filter pills and Weekly / Monthly / Yearly are segmented controls. All popovers (export, filters, avatar, notifications, SKU picker) share one surface.
+- **Typography.** Inter is now actually loaded; before, the CSS named it but never loaded it, so Windows showed Segoe UI. Figures use aligned digits instead of a code font. Section headings and KPI labels are sentence case, not small grey capitals. The decorative "PERFORMANCE DASHBOARD" header title and the nav bullets are removed.
+- **Revenue by Category.** One theme colour instead of 20 rainbow colours. Wider names, a share-% column, and the top 15 with a "Show all N products" toggle.
+- **Platform Health.** No longer repeats a parent as its only child ("Amazon" twice). The "This SKU" label now matches the tab (Selected range / Selected day / This SKU).
+- **Orders Fulfilled.** Shows the real fulfilled count. It used to fall back to the total order count, which produced "1,17,718 fulfilled · 0% fulfillment rate". The backend now counts Amazon "Shipped…" / "Delivered…" statuses (and Shopify fulfilled/completed) as fulfilled, excluding returns.
+- **Smaller fixes.** "Avg order: 1 unit" (singular). The SKU tab's Export no longer wraps onto its own line. Projections KPI cards and the Inventory and AI stat labels use the shared card style. The SKU tab's doughnut and line charts rebuild instead of throwing when an old chart instance has lost its data, which left those cards blank after switching between All Clients and a client.
+- **Phones.** No more sideways overflow: grids stack, the header compacts (Upload becomes an icon), and the filters scroll.
+
+Checked headless at 1440px and 390px against a mocked backend, before and after, across all 9 tabs, All Clients, the client dropdown and the filter menus: no page errors, no duplicate requests, no neat-everyday requests.
+
+## Files changed this round
+| File | Change |
+|---|---|
+| `frontend/dashboard.html` = `gh-pages/dashboard.html` | Everything above. Build `V40-full-numbers-ui-polish`. |
+| `frontend/sw.js` = `gh-pages/sw.js` | Cache `semya-v40`. |
+| `backend/routes/clientRouter.js` (+ root copy) | Fulfilled-status rule. |
+| `backend/routes/authRouter.js` (+ root copy) | `/auth/clients` returns `theme`. |
+| `backend/app.js` (+ root copy) | `/health` → `V42-fast-fetch-ui`. |
+
+---
+
 # This round (2026-10-23): dashboard blank after uploads ("Loading… ₹0")
 
 Three issues, all confirmed against the live site before fixing.
@@ -42,6 +77,7 @@ Verified headless against a mocked backend:
 |---|---|
 | `backend/lib/fetchRows.js` (+ root `lib/` copy) | **New.** Parallel per-day keyset fetch. |
 | `backend/routes/clientRouter.js` (+ root `routes/` copy) | All range reads use the new helper; old `fetchAllRows` removed. |
+| `backend/app.js` (+ root copy) | `/health` version → `V41-fast-fetch`, so a deploy can be verified. |
 | `backend/db/migrations/2026-10_fetch_performance_indexes.sql` | **New.** Indexes for `revenue_data` (already added by hand) and `campaign_data`. |
 | `frontend/dashboard.html` = `gh-pages/dashboard.html` | Client auto-select, single boot, no duplicate first load, auto-refresh fix, Neat Everyday defaults removed. Build tag `V39-client-autoselect-fast-fetch`. |
 | `frontend/sw.js` = `gh-pages/sw.js` | Cache name `semya-v1` → `semya-v39` so browsers drop the old cached page. |
@@ -51,9 +87,9 @@ Verified headless against a mocked backend:
 
 ## Deploy order
 1. Run `backend/db/migrations/2026-10_fetch_performance_indexes.sql` in the Supabase SQL editor (safe to re-run).
-2. Deploy the backend (Render).
+2. Deploy the backend (Render). Confirm it's live: https://semya-digital-dashboard.onrender.com/health must say `"version":"V42-fast-fetch-ui"`. Any other version means the old code is still running.
 3. Deploy the frontend (`gh-pages/dashboard.html`).
-4. Hard-refresh the dashboard (Ctrl+Shift+R). The console should log `Frontend build: V39-client-autoselect-fast-fetch`. `sw.js`'s cache name is bumped to `semya-v39`, so other users' browsers drop the old cached page by their second visit. Before this, the service worker kept serving the cached `dashboard.html` first, and its cache name had never been changed.
+4. Hard-refresh the dashboard (Ctrl+Shift+R). The console should log `Frontend build: V40-full-numbers-ui-polish`. `sw.js`'s cache name is bumped to `semya-v40`, so other users' browsers drop the old cached page by their second visit. Before this, the service worker kept serving the cached `dashboard.html` first, and its cache name had never been changed.
 
 ## Optional: fewer round-trips
 Supabase → Project Settings → API → **Max rows** (default 1000). Raising it to 5000 lets each request return 5× more rows; the code adapts automatically. No change is needed for correctness.

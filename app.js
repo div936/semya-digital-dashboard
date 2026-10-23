@@ -109,7 +109,7 @@ startScheduler();
 startFlipkartScheduler();
 
 // ─── Health check ─────────────────────────────────────────────────
-app.get('/health', (_req, res) => res.json({ ok: true, version: 'V40-ai-settings' }));
+app.get('/health', (_req, res) => res.json({ ok: true, version: 'V42-fast-fetch-ui' }));
 
 // ─── 404 ──────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'Route not found.' }));
