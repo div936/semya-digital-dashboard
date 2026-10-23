@@ -411,14 +411,14 @@ router.get('/clients', asyncHandler(async (req, res) => {
 
   if (dbUser.role === 'admin' && !dbUser.client_id) {
     const { data: clients, error: cErr } = await supabaseAdmin
-      .from('clients').select('id, slug, name').order('name');
+      .from('clients').select('id, slug, name, theme').order('name');
     if (cErr) return res.status(500).json({ error: 'Failed to load client list.' });
     return res.json({ clients: clients || [] });
   }
 
   if (dbUser.client_id) {
     const { data: client } = await supabaseAdmin
-      .from('clients').select('id, slug, name').eq('id', dbUser.client_id).single();
+      .from('clients').select('id, slug, name, theme').eq('id', dbUser.client_id).single();
     return res.json({ clients: client ? [client] : [] });
   }
 

@@ -15,6 +15,9 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="assets/semya-logo.jpg" />
   <title>Performance Dashboard | Semya Digital</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="semya_auth_guard.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1368,6 +1371,317 @@
       .mobile-bottom-nav-item.active svg { stroke: var(--theme-primary); }
     }
 
+
+    /* ═════════════════════════════════════════════════════════════════
+       DESIGN LAYER v2 (2026-10-23)
+       One control system for every input, dropdown, pill and button;
+       quieter section headings; full-number figures with aligned digits.
+       Everything below refines the rules above — theme colours still
+       come from --theme-* so each client's branding keeps working.
+       ═════════════════════════════════════════════════════════════════ */
+    :root {
+      --ink:        #0f172a;
+      --ink-2:      #475569;
+      --ink-3:      #8393a7;
+      --line:       #e2e9f1;
+      --ctl-h:      34px;
+      --ctl-r:      8px;
+      --ctl-border: #d6dfe9;
+      --ctl-hover:  #b9c7d6;
+      --pop-shadow: 0 14px 36px -10px rgba(15,23,42,.22), 0 3px 8px rgba(15,23,42,.06);
+      --card-shadow: 0 1px 2px rgba(15,23,42,.04);
+    }
+    body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; color: var(--ink); }
+    :focus-visible { outline: 2px solid var(--theme-primary); outline-offset: 2px; }
+
+    /* Figures: aligned digits so columns of numbers line up */
+    .kpi-value, .stat-bar-rev, .city-val, .cat-val, .ac-metric-value, td, .roas-tag, .conf-val { font-variant-numeric: tabular-nums; }
+    .stat-bar-rev, .city-val, .roas-tag, .conf-val { font-family: inherit; }
+
+    /* ── Header ─────────────────────────────────────────────────────── */
+    .header { box-shadow: none; border-bottom-color: var(--line); gap: 16px; }
+    .header-title { display: none; }                 /* decorative caps title removed; the client switcher says what you're viewing */
+    .logo-text { font-size: 14px; font-weight: 650; letter-spacing: -.01em; }
+    .logo-sub  { text-transform: none; letter-spacing: 0; font-size: 11px; color: var(--ink-3); }
+    .header-controls { gap: 8px; }
+    .tag-admin { font-size: 10px; letter-spacing: .02em; text-transform: none; font-weight: 650; padding: 3px 9px; background: var(--color-surface-2); border-color: var(--ctl-border); color: var(--ink-2); }
+    #notifBadge { background: #e5484d !important; font-size: 9px !important; min-width: 17px !important; height: 17px !important; line-height: 14px !important; top: -1px !important; right: -2px !important; }
+    .avatar { border: none; box-shadow: none; background: var(--theme-primary); }
+
+    /* ── Nav ────────────────────────────────────────────────────────── */
+    .nav { border-bottom-color: var(--line); gap: 2px; }
+    .nav-tab { font-size: 13px; font-weight: 550; letter-spacing: 0; color: #64748b; padding: 0 14px; }
+    .nav-tab .dot { display: none; }
+    .nav-tab:hover { color: var(--ink); border-bottom-color: transparent; }
+    .nav-tab.active { color: var(--ink); border-bottom-color: var(--theme-primary); font-weight: 650; }
+
+    /* ── Cards & headings ───────────────────────────────────────────── */
+    .main { padding: 20px 20px 32px 24px; }
+    .card, .kpi-card { border-color: var(--line); border-radius: 14px; box-shadow: var(--card-shadow); }
+    .kpi-card:hover { border-color: var(--ctl-hover); box-shadow: 0 4px 14px -6px rgba(15,23,42,.12); }
+    .kpi-card::before { height: 3px; background: var(--theme-primary); opacity: .9; }
+    .card-title, .tab-toolbar .tab-title {
+      font-size: 13.5px; font-weight: 650; text-transform: none; letter-spacing: -.005em; color: var(--ink);
+    }
+    .tab-toolbar .tab-title { margin-right: 4px; }
+    .card-badge { background: var(--color-surface-2); color: var(--ink-2); border: 1px solid var(--line); font-weight: 550; font-size: 10.5px; }
+    .kpi-label { font-size: 12px; font-weight: 550; text-transform: none; letter-spacing: 0; color: #64748b; }
+    .kpi-value, .kpi-value.revenue-kpi { font-size: clamp(21px, 1.75vw, 28px); font-weight: 720; letter-spacing: -.025em; color: var(--ink); white-space: nowrap; }
+    .kpi-sub { font-size: 11px; color: var(--ink-3); line-height: 1.5; }
+    .kpi-delta { font-size: 10.5px; font-weight: 650; }
+    .kpi-icon { background: var(--color-surface-2) !important; border: 1px solid var(--line); }
+    .empty-note { font-size: 12px; color: var(--ink-3); padding: 8px 0; }
+    .ai-stat-label { font-size: 12px !important; font-weight: 550 !important; text-transform: none !important; letter-spacing: 0 !important; color: #64748b !important; }
+    .ai-tab-title { font-size: 15px; font-weight: 650; letter-spacing: -.01em; color: var(--ink); }
+    .proj-inner-tab { font-weight: 550; letter-spacing: 0; }
+
+    /* ── Toolbars ───────────────────────────────────────────────────── */
+    .tab-toolbar { gap: 10px; row-gap: 10px; }
+    .date-range-wrap { gap: 6px; }
+    .date-sep { color: var(--ink-3); }
+    .fetch-badge { font-size: 11px; padding: 4px 10px; font-weight: 600; }
+
+    /* ── One control system ─────────────────────────────────────────── */
+    .date-input,
+    .sd-trigger,
+    .status-filter-wrap > .sku-pill,
+    .export-btn {
+      height: var(--ctl-h);
+      border: 1px solid var(--ctl-border) !important;
+      border-radius: var(--ctl-r) !important;
+      background-color: #fff;
+      color: var(--ink);
+      font: 550 12.5px/1 'Inter', system-ui, sans-serif;
+      padding: 0 12px;
+      transition: border-color .15s, box-shadow .15s, background .15s;
+      box-shadow: 0 1px 1px rgba(15,23,42,.03);
+    }
+    .date-input:hover, .sd-trigger:hover, .status-filter-wrap > .sku-pill:hover, .export-btn:hover {
+      border-color: var(--ctl-hover) !important; background-color: #fff; color: var(--ink);
+    }
+    .date-input:focus, .sd-trigger:focus-visible, .sd-select.open .sd-trigger {
+      outline: none; border-color: var(--theme-primary) !important; box-shadow: 0 0 0 3px var(--theme-primary-glow);
+    }
+    .date-input::-webkit-calendar-picker-indicator { opacity: .5; cursor: pointer; }
+    .date-input::-webkit-calendar-picker-indicator:hover { opacity: .9; }
+
+    /* filter-menu triggers ("Order status", "Fulfillment", "Product") */
+    .status-filter-wrap > .sku-pill {
+      display: inline-flex; align-items: center; gap: 6px; padding-right: 30px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238393a7' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 10px center;
+    }
+    .status-filter-wrap > .sku-pill [id$="FilterCount"]:not(:empty) { color: var(--theme-primary); font-weight: 650; }
+    .status-filter-wrap > .sku-pill [id$="FilterLabel"] { color: inherit; font-weight: inherit; }
+
+    .export-btn { min-width: 0; gap: 6px; }
+    .export-btn:hover { background-color: var(--color-surface-2); }
+
+    /* Platform pills → one segmented control */
+    .sku-pills {
+      display: inline-flex; gap: 2px; padding: 3px; flex-wrap: wrap;
+      background: var(--color-surface-2); border: 1px solid var(--line); border-radius: 10px;
+    }
+    .sku-pills .sku-pill {
+      height: 28px; display: inline-flex; align-items: center; padding: 0 12px;
+      border: none; border-radius: 7px; background: transparent;
+      font-size: 12.5px; font-weight: 550; color: #5b6b80; user-select: none;
+    }
+    .sku-pills .sku-pill:hover { background: rgba(255,255,255,.7); color: var(--ink); border: none; }
+    .sku-pills .sku-pill.active { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(15,23,42,.10), 0 0 0 1px rgba(15,23,42,.04); }
+
+    .insight-filter-pills { display: inline-flex; gap: 2px; padding: 3px; background: var(--color-surface-2); border: 1px solid var(--line); border-radius: 10px; }
+    .insight-filter-pills .insight-filter-pill { height: 28px; display: inline-flex; align-items: center; padding: 0 11px; border: none !important; border-radius: 7px; background: transparent !important; font-size: 12.5px; font-weight: 550; color: #5b6b80; cursor: pointer; }
+    .insight-filter-pills .insight-filter-pill:hover { color: var(--ink); background: rgba(255,255,255,.7) !important; }
+    .insight-filter-pills .insight-filter-pill.active { background: #fff !important; color: var(--ink); box-shadow: 0 1px 2px rgba(15,23,42,.10), 0 0 0 1px rgba(15,23,42,.04); }
+    /* Weekly / Monthly / Yearly → same segmented look */
+    .trend-period-btn {
+      height: 28px; padding: 0 11px; border-radius: 7px; border: 1px solid transparent;
+      background: transparent; color: #5b6b80; font-size: 12px; font-weight: 550;
+    }
+    .trend-period-btn:hover { color: var(--ink); border-color: transparent; background: var(--color-surface-2); }
+    .trend-period-btn.active { background: var(--theme-primary); color: #fff; border-color: var(--theme-primary); }
+
+    /* Buttons */
+    .btn { border-radius: var(--ctl-r); font-size: 12.5px; min-height: var(--ctl-h); padding-top: 0; padding-bottom: 0; }
+    .btn-primary { box-shadow: 0 1px 2px rgba(15,23,42,.18); }
+    .btn-primary:hover { box-shadow: 0 2px 6px rgba(15,23,42,.2); filter: brightness(1.08); background: var(--theme-primary); }
+    .btn-ghost { background: #fff; border-color: var(--ctl-border); color: var(--ink); }
+    .btn-ghost:hover { border-color: var(--ctl-hover); background: var(--color-surface-2); color: var(--ink); }
+
+    /* Text fields (including ones with inline styles) */
+    .main input[type="text"], .main input[type="number"], .main input[type="search"], .main input[type="email"],
+    .modal-overlay input[type="text"], .modal-overlay input[type="number"], .modal-overlay input[type="email"], .modal-overlay input[type="search"],
+    .modal-overlay input[type="date"], .main textarea, .modal-overlay textarea {
+      border: 1px solid var(--ctl-border) !important;
+      border-radius: var(--ctl-r) !important;
+      font-family: 'Inter', system-ui, sans-serif !important;
+      background-color: #fff;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .main input[type="text"]:focus, .main input[type="number"]:focus, .main input[type="search"]:focus, .main input[type="email"]:focus,
+    .modal-overlay input:focus, .main textarea:focus, .modal-overlay textarea:focus {
+      outline: none; border-color: var(--theme-primary) !important; box-shadow: 0 0 0 3px var(--theme-primary-glow);
+    }
+    input[type="checkbox"], input[type="radio"] { accent-color: var(--theme-primary); }
+
+    /* ── Popovers: every menu shares one surface ───────────────────── */
+    .export-menu, .avatar-dropdown, #notifPanel, .sku-custom-panel,
+    [id$="FilterMenu"] {
+      border: 1px solid var(--line) !important;
+      border-radius: 12px !important;
+      box-shadow: var(--pop-shadow) !important;
+      background: #fff !important;
+    }
+    [id$="FilterMenu"] { padding: 10px !important; }
+    [id$="FilterMenu"] label { border-radius: 6px; padding: 5px 6px !important; }
+    [id$="FilterMenu"] label:hover { background: var(--color-surface-2); }
+    .export-menu { padding: 4px; }
+    .export-menu-item { border-radius: 7px; font-size: 12.5px; }
+    .export-menu-item:hover, .avatar-dropdown-item:hover { background: var(--color-surface-2); color: var(--ink); }
+    .avatar-dropdown { min-width: 220px; padding: 4px; }
+    .avatar-dropdown-header { text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--ink-3); border-bottom-color: var(--line); }
+    .avatar-dropdown-item { border-radius: 7px; font-size: 12.5px; }
+    .sku-custom-trigger { border: 1px solid var(--ctl-border); color: var(--ink); border-radius: var(--ctl-r); box-shadow: none; font-weight: 600; font-size: 12.5px; height: var(--ctl-h); padding: 0 12px; }
+    .sku-custom-trigger:hover { border-color: var(--ctl-hover); box-shadow: none; }
+    .sku-custom-wrap.open .sku-custom-trigger { border-color: var(--theme-primary); box-shadow: 0 0 0 3px var(--theme-primary-glow); }
+    .sku-custom-option { border-bottom: none; font-weight: 500; border-radius: 7px; margin: 0 4px; }
+    .sku-custom-option:hover, .sku-custom-option.selected { background: var(--color-surface-2); color: var(--ink); }
+    .sku-custom-option.selected { font-weight: 650; }
+
+    /* ── Custom dropdown (replaces every native <select>) ─────────── */
+    .sd-select { position: relative; display: inline-flex; min-width: 0; vertical-align: middle; }
+    .sd-select > select.sd-native {
+      position: absolute !important; inset: 0; width: 100% !important; height: 100% !important;
+      opacity: 0 !important; pointer-events: none !important; margin: 0 !important;
+    }
+    .sd-trigger {
+      display: inline-flex; align-items: center; gap: 8px; width: 100%; min-width: 0;
+      cursor: pointer; text-align: left; padding-right: 10px;
+    }
+    .sd-trigger:disabled { opacity: .55; cursor: not-allowed; }
+    .sd-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sd-value.placeholder { color: var(--ink-3); }
+    .sd-chevron { flex-shrink: 0; color: var(--ink-3); transition: transform .18s; }
+    .sd-select.open .sd-chevron { transform: rotate(180deg); }
+    .sd-menu {
+      position: fixed; z-index: 100000; min-width: 180px; max-width: min(360px, calc(100vw - 24px));
+      max-height: 320px; overflow-y: auto; padding: 4px;
+      background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--pop-shadow);
+      font-family: 'Inter', system-ui, sans-serif;
+      animation: sdIn .12s ease-out;
+    }
+    @keyframes sdIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+    @media (prefers-reduced-motion: reduce) { .sd-menu { animation: none; } }
+    .sd-menu-title { padding: 8px 10px 6px; font-size: 11px; font-weight: 600; color: var(--ink-3); }
+    .sd-group { padding: 8px 10px 4px; font-size: 11px; font-weight: 600; color: var(--ink-3); }
+    .sd-sep { height: 1px; background: var(--line); margin: 4px 6px; }
+    .sd-option {
+      display: flex; align-items: center; gap: 10px; width: 100%;
+      padding: 8px 10px; border-radius: 7px; border: none; background: none;
+      font: 500 12.5px/1.3 'Inter', system-ui, sans-serif; color: var(--ink); text-align: left; cursor: pointer;
+    }
+    .sd-option .sd-opt-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sd-option .sd-check { flex-shrink: 0; color: var(--theme-primary); visibility: hidden; }
+    .sd-option[aria-selected="true"] { font-weight: 650; }
+    .sd-option[aria-selected="true"] .sd-check { visibility: visible; }
+    .sd-option.active, .sd-option:hover { background: var(--color-surface-2); }
+    .sd-option:disabled { color: var(--ink-3); cursor: not-allowed; background: none; }
+
+    /* Client switcher flavour */
+    .sd-select.sd-client { min-width: 190px; }
+    .sd-client .sd-trigger { height: 38px; padding-left: 6px; border-radius: 10px !important; }
+    .sd-badge {
+      width: 26px; height: 26px; border-radius: 7px; flex-shrink: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 750; color: #fff; background: var(--theme-primary); letter-spacing: -.02em;
+    }
+    .sd-badge.all { background: var(--color-surface-2); color: var(--ink-2); border: 1px solid var(--line); }
+    .sd-two-line { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.2; }
+    .sd-two-line small { font-size: 10.5px; color: var(--ink-3); font-weight: 500; }
+    .sd-two-line b { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── Revenue by category ───────────────────────────────────────── */
+    .cat-list { display: flex; flex-direction: column; gap: 2px; }
+    .cat-row { display: grid; grid-template-columns: minmax(140px, 260px) 1fr auto 52px; align-items: center; gap: 12px; padding: 5px 4px; border-radius: 6px; }
+    .cat-row:hover { background: var(--color-surface-2); }
+    .cat-name { font-size: 12px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cat-bar-track { height: 8px; border-radius: 99px; background: #edf2f7; overflow: hidden; }
+    .cat-bar { height: 100%; border-radius: 99px; background: var(--theme-primary); min-width: 2px; }
+    .cat-val { font-size: 12px; font-weight: 600; color: var(--ink); text-align: right; }
+    .cat-share { font-size: 11px; color: var(--ink-3); text-align: right; font-variant-numeric: tabular-nums; }
+    .cat-more { align-self: flex-start; margin-top: 10px; }
+
+    /* ── Platform split rows ───────────────────────────────────────── */
+    .stat-bar-rev { color: var(--ink); font-size: 13px; }
+    .stat-bar-bg { height: 8px; background: #edf2f7; }
+
+    /* ── AI insights sidebar ───────────────────────────────────────── */
+    .ai-panel { border-color: var(--line); border-radius: 14px; box-shadow: var(--card-shadow); }
+    .ai-panel::before { background: var(--theme-primary); }
+    .ai-icon { background: var(--theme-primary); box-shadow: none; }
+    .ai-label { text-transform: none; letter-spacing: -.005em; font-size: 13.5px; font-weight: 650; color: var(--ink); }
+    .ai-sub { font-size: 11px; color: var(--ink-3); }
+    #aiInsightsList .skel { display: block; height: 14px; border-radius: 6px; margin-bottom: 9px; }
+    #aiInsightsList .skel:nth-child(1) { width: 92%; }
+    #aiInsightsList .skel:nth-child(2) { width: 78%; }
+    #aiInsightsList .skel:nth-child(3) { width: 64%; }
+    .ai-insight { border-radius: 10px; }
+    .ai-confidence { background: var(--color-surface-2); border-color: var(--line); border-radius: 10px; }
+    .conf-val { color: var(--ink-2); }
+
+    /* ── Tables ────────────────────────────────────────────────────── */
+    table th { color: var(--ink-3); font-weight: 600; }
+    table td { color: var(--ink); }
+    /* figures in tables: the UI font with aligned digits, not a code font */
+    table td, table td * { font-family: 'Inter', system-ui, sans-serif !important; }
+    table td [style*="font-mono"], table td [style*="monospace"] { font-weight: 600; }
+
+    /* ── All Clients overview cards ────────────────────────────────── */
+    .ac-card { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+    .ac-card-head { display: flex; align-items: center; gap: 12px; }
+    .ac-avatar { width: 38px; height: 38px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-weight: 750; font-size: 14px; flex-shrink: 0; }
+    .ac-card-name { flex: 1; min-width: 0; }
+    .ac-card-name div { font-size: 15px; font-weight: 650; color: var(--ink); letter-spacing: -.01em; }
+    .ac-card-name span { font-size: 11.5px; color: var(--ink-3); }
+    .ac-open { height: 30px; font-size: 12px; }
+    .ac-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .ac-metric--lead { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 10px; }
+    .ac-metric--lead .ac-metric-label { width: 100%; }
+    .ac-metric { background: var(--color-surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+    .ac-metric-label { font-size: 11px; color: var(--ink-3); font-weight: 550; margin-bottom: 4px; }
+    .ac-metric-value { font-size: 16px; font-weight: 700; color: var(--ink); letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ac-metric--lead .ac-metric-value { font-size: 22px; }
+
+    /* ── Phones: stop sideways overflow, stack the grids ───────────── */
+    @media (max-width: 768px) {
+      .layout { grid-template-columns: minmax(0, 1fr); }
+      .main { min-width: 0; padding: 14px 14px 88px; overflow-x: hidden; }
+      .tab-panel, .tab-panel > *, #allClientsPanel, #allClientsPanel > * { min-width: 0; max-width: 100%; }
+      .kpi-grid, .kpi-grid-5, .mid-grid, .bot-grid, .campaign-cards { grid-template-columns: 1fr !important; }
+      .main [style*="grid-template-columns:repeat("], .main [style*="grid-template-columns: repeat("],
+      .main [style*="grid-template-columns:1fr 1fr"], .main [style*="grid-template-columns:1.2fr"] { grid-template-columns: 1fr !important; }
+      .tab-toolbar > *, .card-header > * { max-width: 100%; }
+      .date-range-wrap { width: 100%; }
+      .date-range-wrap .date-input { flex: 1; min-width: 0; }
+      .sku-pills, .insight-filter-pills { max-width: 100%; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+      .sku-pills .sku-pill { flex-shrink: 0; }
+      .sku-custom-wrap { min-width: 0; max-width: none; width: 100%; flex-basis: 100%; }
+      .header { gap: 8px; }
+      .header-controls { gap: 6px; min-width: 0; }
+      .header-controls > div:has(> .live-dot), .header-controls .tag-admin { display: none !important; }
+      .header-controls .btn-primary { font-size: 0; gap: 0; padding: 0 11px; }
+      .header-controls .btn-primary svg { width: 15px; height: 15px; }
+      .sd-select.sd-client { min-width: 0; max-width: 160px; }
+      .sd-client .sd-two-line small { display: none; }
+      .cat-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; }
+      .cat-bar-track { grid-column: 1 / -1; grid-row: 2; }
+      .cat-share { display: none; }
+      .table-wrap { overflow-x: auto; }
+    }
+    @media (max-width: 480px) {
+      .header-logo > div:not(.logo-mark):not([id]) { display: none; }
+    }
   </style>
 </head>
 <body>
@@ -1760,7 +2074,7 @@
           <span class="card-title">Revenue by Category</span>
           <span class="card-badge">All product lines in the current selection</span>
         </div>
-        <div id="psCategoryList" style="display:flex;flex-direction:column;gap:2px;max-height:640px;overflow-y:auto;">
+        <div id="psCategoryList" class="cat-list">
           <div class="skel skel-row" style="height:22px;"></div>
           <div class="skel skel-row" style="height:22px;"></div>
           <div class="skel skel-row" style="height:22px;"></div>
@@ -1776,6 +2090,24 @@
     <div class="card card-sm" style="margin-bottom:16px;">
       <div class="tab-toolbar" style="margin-bottom:10px;">
         <span class="tab-title">SKU Performance</span>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:10px;">
+        <span class="fetch-badge loading" id="fetchBadge">
+          <span class="fetch-dot"></span>
+          <span id="fetchBadgeText">Loading</span>
+        </span>
+        <div class="export-wrap" id="skuExportWrap">
+          <button class="export-btn" onclick="toggleExportMenu('sku')">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export
+          </button>
+          <div class="export-menu" id="skuExportMenu">
+            <div class="export-menu-header">Download as CSV</div>
+            <div class="export-menu-item all" onclick="exportTable('sku','all')">↓ All tables</div>
+            <div class="export-menu-item" onclick="exportTable('sku','skus')">SKU Breakdown</div>
+            <div class="export-menu-item" onclick="exportTable('sku','cities')">Top Cities</div>
+          </div>
+        </div>
+        </div>
       </div>
       <div class="sku-selector-bar">
         <div class="sku-custom-wrap" id="skuCustomWrap">
@@ -1804,22 +2136,7 @@
           <span class="date-sep">→</span>
           <input type="date" class="date-input" id="dateTo" />
         </div>
-        <span class="fetch-badge loading" id="fetchBadge" style="margin-left:auto;">
-          <span class="fetch-dot"></span>
-          <span id="fetchBadgeText">Loading</span>
-        </span>
-        <div class="export-wrap" id="skuExportWrap">
-          <button class="export-btn" onclick="toggleExportMenu('sku')">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Export
-          </button>
-          <div class="export-menu" id="skuExportMenu">
-            <div class="export-menu-header">Download as CSV</div>
-            <div class="export-menu-item all" onclick="exportTable('sku','all')">↓ All tables</div>
-            <div class="export-menu-item" onclick="exportTable('sku','skus')">SKU Breakdown</div>
-            <div class="export-menu-item" onclick="exportTable('sku','cities')">Top Cities</div>
-          </div>
-        </div>
+
       </div>
     </div>
 
@@ -2689,14 +3006,14 @@
       <!-- ── Top toolbar ── -->
       <div class="card" style="margin-bottom:14px;">
         <div class="card-header">
-          <span class="card-title">PROJECTIONS INSIGHTS</span>
+          <span class="card-title">Projections Insights</span>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
             <!-- Date range for all panels -->
             <span style="font-size:11px;color:#94a3b8;">From</span>
-            <input type="date" id="projDateFrom" class="date-input" style="font-size:11px;" onchange="fetchAndRenderProjections(true)">
+            <input type="date" id="projDateFrom" class="date-input" onchange="fetchAndRenderProjections(true)">
             <span style="font-size:11px;color:#94a3b8;">to</span>
-            <input type="date" id="projDateTo"   class="date-input" style="font-size:11px;" onchange="fetchAndRenderProjections(true)">
-            <button class="btn btn-ghost" style="font-size:10px;padding:4px 10px;" onclick="openProjCostModal()" title="Configure SKU costs &amp; overhead">⚙ Cost Structure</button>
+            <input type="date" id="projDateTo"   class="date-input" onchange="fetchAndRenderProjections(true)">
+            <button class="btn btn-ghost" onclick="openProjCostModal()" title="Configure SKU costs &amp; overhead">⚙ Cost Structure</button>
 <span class="fetch-badge" id="projFetchBadge"><span id="projFetchText">Loading…</span></span>
             <div class="export-wrap" id="projExportWrap">
               <button class="export-btn" onclick="toggleExportMenu('proj')">
@@ -2728,24 +3045,24 @@
 
         <!-- KPI cards -->
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px;">
-          <div class="card">
-            <div class="card-header"><span class="card-title">Net Profit</span></div>
-            <div style="font-size:24px;font-weight:800;margin-top:6px;" id="projKpiProfit">—</div>
+          <div class="kpi-card">
+            <div class="kpi-label">Net Profit</div>
+            <div class="kpi-value" style="margin-top:8px;" id="projKpiProfit">—</div>
             <div style="font-size:11px;color:#94a3b8;margin-top:4px;" id="projKpiProfitSub">selected period</div>
           </div>
-          <div class="card">
-            <div class="card-header"><span class="card-title">Lost to Returns</span></div>
-            <div style="font-size:24px;font-weight:800;margin-top:6px;color:#dc2626;" id="projKpiReturnLoss">—</div>
+          <div class="kpi-card">
+            <div class="kpi-label">Lost to Returns</div>
+            <div class="kpi-value" style="margin-top:8px;color:#dc2626;" id="projKpiReturnLoss">—</div>
             <div style="font-size:11px;color:#94a3b8;margin-top:4px;">COGS sunk on cancelled orders</div>
           </div>
-          <div class="card">
-            <div class="card-header"><span class="card-title">Ad Spend</span></div>
-            <div style="font-size:24px;font-weight:800;margin-top:6px;" id="projKpiAdSpend">—</div>
+          <div class="kpi-card">
+            <div class="kpi-label">Ad Spend</div>
+            <div class="kpi-value" style="margin-top:8px;" id="projKpiAdSpend">—</div>
             <div style="font-size:11px;color:#94a3b8;margin-top:4px;" id="projKpiAdSpendSub">—</div>
           </div>
-          <div class="card">
-            <div class="card-header"><span class="card-title">Profitability</span></div>
-            <div style="font-size:18px;font-weight:800;margin-top:6px;" id="projKpiStatus">—</div>
+          <div class="kpi-card">
+            <div class="kpi-label">Profitability</div>
+            <div class="kpi-value" style="margin-top:8px;" id="projKpiStatus">—</div>
             <div style="font-size:11px;color:#94a3b8;margin-top:4px;" id="projKpiStatusSub">—</div>
           </div>
         </div>
@@ -3047,27 +3364,27 @@
       </div>
       <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px;" id="invKpiStrip">
         <div class="kpi-card">
-          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;">Total SKUs</div>
+          <div class="kpi-label" style="margin-bottom:6px;">Total SKUs</div>
           <div id="invKpiSkus" style="font-size:22px;font-weight:800;color:#0f172a;">—</div>
           <div class="kpi-sub">across all warehouses</div>
         </div>
         <div class="kpi-card kpi-card--warn">
-          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;">Low Stock</div>
+          <div class="kpi-label" style="margin-bottom:6px;">Low Stock</div>
           <div id="invKpiLow" style="font-size:22px;font-weight:800;color:#d97706;">—</div>
           <div class="kpi-sub">at or below alert threshold</div>
         </div>
         <div class="kpi-card kpi-card--danger">
-          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;">Out of Stock</div>
+          <div class="kpi-label" style="margin-bottom:6px;">Out of Stock</div>
           <div id="invKpiOut" style="font-size:22px;font-weight:800;color:#dc2626;">—</div>
           <div class="kpi-sub">quantity at zero or below</div>
         </div>
         <div class="kpi-card">
-          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;">Warehouses</div>
+          <div class="kpi-label" style="margin-bottom:6px;">Warehouses</div>
           <div id="invKpiWarehouses" style="font-size:22px;font-weight:800;color:#0f172a;">—</div>
           <div class="kpi-sub">active locations</div>
         </div>
         <div class="kpi-card">
-          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;">Avg. Days in Hand</div>
+          <div class="kpi-label" style="margin-bottom:6px;">Avg. Days in Hand</div>
           <div id="invKpiAvgDays" style="font-size:22px;font-weight:800;color:#0f172a;">—</div>
           <div id="invKpiAvgDaysSub" class="kpi-sub"></div>
         </div>
@@ -3146,7 +3463,7 @@
     <div class="card card-sm">
       <div class="card-header" style="margin-bottom:10px;">
         <span class="card-title">Platform Health</span>
-        <span style="font-size:10px;color:#94a3b8;">This SKU</span>
+        <span id="platformHealthScope" style="font-size:10px;color:#94a3b8;">Selected range</span>
       </div>
       <div id="platformHealthList" style="display:flex;flex-direction:column;gap:10px;">
         <span class="skel skel-row" style="display:block;height:24px;"></span>
@@ -4392,20 +4709,25 @@ function setBadge(mode) {
 }
 
 // ─── FORMAT HELPERS ───────────────────────────────────────────────
+// Full numbers with Indian digit grouping everywhere a person reads a
+// value (₹2,92,42,089 · 1,10,000). Short forms (L / Cr / K) are kept only
+// for chart axis ticks, where full numbers would overlap — fmtAxisRevenue.
 function fmtRevenue(n) {
   n = Number(n) || 0;
-  if (n >= 10000000) return '₹' + (n / 10000000).toFixed(2).replace(/\.?0+$/, '') + ' Cr';
-  if (n >= 100000)   return '₹' + (n / 100000).toFixed(2).replace(/\.?0+$/, '') + ' Lakhs';
-  if (n >= 10000)    return '₹' + (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
-  if (n >= 1000)     return '₹' + Math.round(n).toLocaleString('en-IN');
-  return '₹' + Math.round(n);
+  const sign = n < 0 ? '−' : '';
+  return sign + '₹' + Math.round(Math.abs(n)).toLocaleString('en-IN');
 }
 function fmtUnits(n) {
   n = Number(n) || 0;
-  if (n >= 100000) return (n / 100000).toFixed(1).replace(/\.0$/, '') + ' L units';
-  if (n >= 10000)  return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
-  if (n >= 1000)   return Math.round(n).toLocaleString('en-IN');
-  return String(Math.round(n));
+  return Math.round(n).toLocaleString('en-IN');
+}
+function fmtAxisRevenue(n) {
+  n = Number(n) || 0;
+  const a = Math.abs(n), sign = n < 0 ? '−' : '';
+  if (a >= 10000000) return sign + '₹' + +(a / 10000000).toFixed(2) + ' Cr';
+  if (a >= 100000)   return sign + '₹' + +(a / 100000).toFixed(1) + ' L';
+  if (a >= 1000)     return sign + '₹' + +(a / 1000).toFixed(1) + 'K';
+  return sign + '₹' + Math.round(a);
 }
 function fmtRoas(r)  { return r.toFixed(1) + 'x'; }
 function pctDelta(now, prev) {
@@ -4417,7 +4739,11 @@ function deltaHtml(pct, suffix = '%') {
   const up  = parseFloat(pct) >= 0;
   const cls = up ? 'up' : 'down';
   const arrow = up ? '▲' : '▼';
-  return `<span class="kpi-delta ${cls}">${arrow} ${Math.abs(pct)}${suffix} vs last period</span>`;
+  // A previous period with almost no data produces meaningless
+  // percentages (seen live: ▲ 285021.8%). Cap the display.
+  const mag = Math.abs(parseFloat(pct));
+  const shown = (suffix === '%' && mag > 999) ? '999+' : Math.abs(pct);
+  return `<span class="kpi-delta ${cls}">${arrow} ${shown}${suffix} vs last period</span>`;
 }
 function roasColor(r) {
   if (r >= 4) return '#059669';
@@ -4540,6 +4866,12 @@ function renderDoughnut(byPlatform) {
   const data      = platforms.map(p => +(p.totalRevenue / total * 100).toFixed(1));
   const colors    = platforms.map(p => getPlatformMeta(p.platform).color || '#94a3b8');
 
+  // A chart whose dataset is gone (seen after switching All Clients →
+  // client) can't be patched in place — rebuild it instead of throwing.
+  if (state.doughnutChart && !(state.doughnutChart.data && state.doughnutChart.data.datasets && state.doughnutChart.data.datasets[0])) {
+    try { state.doughnutChart.destroy(); } catch (_) {}
+    state.doughnutChart = null;
+  }
   if (state.doughnutChart) {
     state.doughnutChart.data.labels   = labels;
     state.doughnutChart.data.datasets[0].data            = data;
@@ -4669,7 +5001,7 @@ function renderLineChart(weekly) {
           callbacks: {
             label: ctx => {
               const val = ctx.parsed.y;
-              return ' ' + ctx.dataset.label + ': ₹' + val.toFixed(2) + 'L';
+              return ' ' + ctx.dataset.label + ': ' + fmtRevenue(val * 100000);
             }
           }
         }
@@ -4692,6 +5024,12 @@ function renderLineChart(weekly) {
     }
   };
 
+  // Rebuild instead of patching if the existing chart lost its datasets
+  // (otherwise this throws and the trend card stays blank).
+  if (state.lineChart && !(state.lineChart.data && state.lineChart.data.datasets && state.lineChart.data.datasets[0] && state.lineChart.data.datasets[1])) {
+    try { state.lineChart.destroy(); } catch (_) {}
+    state.lineChart = null;
+  }
   if (state.lineChart) {
     state.lineChart.data.labels = weeks;
     state.lineChart.data.datasets[0].data = thisData;
@@ -5078,6 +5416,13 @@ async function renderSidebarSummary(scopes, tabKey) {
 function renderPlatformHealth(byPlatform, campaigns) {
   const list = document.getElementById('platformHealthList');
   if (!list) return;
+  const scopeEl = document.getElementById('platformHealthScope');
+  if (scopeEl) scopeEl.textContent = activeTab === 'daily_targets' ? 'Selected day'
+    : activeTab === 'sku_performance' && state.sku ? 'This SKU' : 'Selected range';
+  if (!byPlatform || !byPlatform.length) {
+    list.innerHTML = '<div class="empty-note">No platform revenue in this range.</div>';
+    return;
+  }
 
   // Build a lookup by platform string for quick access
   const byPlatformMap = {};
@@ -5145,7 +5490,10 @@ function renderPlatformHealth(byPlatform, campaigns) {
     // Skip groups with no data at all
     if (!groupRev && groupRoas == null) return '';
 
-    const isExpanded = group.children.length > 1;
+    // Only break a group down when 2+ sub-platforms actually have data —
+    // otherwise the child row just repeats the parent ("Amazon ₹X" twice).
+    const childrenWithData = group.children.filter(cp => (byPlatformMap[cp]?.totalRevenue || 0) > 0 || subRoas(cp) != null);
+    const isExpanded = childrenWithData.length > 1;
     const isLast     = gi === HEALTH_GROUPS.length - 1;
 
     // ROAS badge — consistently formatted
@@ -6036,7 +6384,7 @@ function renderPS(data) {
   document.getElementById('psKpiUnitsDelta').innerHTML = prevUnt != null
     ? deltaHtml(pctDelta(totalUnits, prevUnt))
     : '';
-  document.getElementById('psKpiUnitsSub').innerHTML = 'Avg order: ' + (totalOrders ? fmtUnits(Math.round(totalUnits/totalOrders)) : '—') + ' units';
+  document.getElementById('psKpiUnitsSub').innerHTML = 'Avg order: ' + (totalOrders ? (function (u) { return fmtUnits(u) + (u === 1 ? ' unit' : ' units'); })(Math.round(totalUnits/totalOrders)) : '—');
   document.getElementById('psKpiOrders').innerHTML = totalOrders.toLocaleString('en-IN');
   const prevOrd = data.prevOrders;
   document.getElementById('psKpiOrdersDelta').innerHTML = prevOrd != null
@@ -6053,9 +6401,10 @@ function renderPS(data) {
   const pendingOrders   = platforms.reduce((s, p) => s + (p.pendingCount  || p.pending  || 0), 0);
   const fulfilledEl = document.getElementById('psKpiFulfilled');
   if (fulfilledEl) {
-    fulfilledEl.innerHTML = fulfilledOrders > 0
-      ? fulfilledOrders.toLocaleString('en-IN')
-      : totalOrders.toLocaleString('en-IN');
+    // Show the real fulfilled count. This used to fall back to the TOTAL
+    // order count whenever nothing was marked fulfilled, which displayed
+    // "1,17,718 fulfilled" next to "0% fulfillment rate".
+    fulfilledEl.innerHTML = fulfilledOrders.toLocaleString('en-IN');
     document.getElementById('psKpiFulfilledDelta').innerHTML = '';
     const fulfilledPct = Math.round(fulfilledOrders / (totalOrders || 1) * 100);
     const pendingPct   = Math.round(pendingOrders   / (totalOrders || 1) * 100);
@@ -6102,18 +6451,27 @@ function renderPS(data) {
       catEl.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:12px;padding:20px 0;">No category data.</div>';
     } else {
       const maxCatRev = Math.max(...categories.map(c => c.revenue));
-      const CAT_COLORS = ['#3b5bdb','#d4a72c','#2f9e44','#4c6ef5','#1098ad','#a67c1e','#1864ab','#0ca678','#748ffc','#12b886','#7048e8','#15aabf','#495057','#364fc7','#087f5b','#5c940d','#e8590c','#9c36b5','#0b7285','#c92a2a'];
-      catEl.innerHTML = categories.map((c, i) => {
+      const totalCatRev = categories.reduce((t, c) => t + (c.revenue || 0), 0);
+      // One colour (the client's theme) instead of 20 rainbow colours —
+      // the bar length already carries the ranking.
+      const LIMIT = 15;
+      const showAll = !!psState.showAllCategories;
+      const rows = showAll ? categories : categories.slice(0, LIMIT);
+      catEl.innerHTML = rows.map((c) => {
         const pct = maxCatRev > 0 ? (c.revenue / maxCatRev * 100).toFixed(1) : 0;
-        const color = CAT_COLORS[i % CAT_COLORS.length];
-        return '<div style="display:grid;grid-template-columns:160px 1fr;align-items:center;gap:10px;padding:3px 0;">' +
-          '<span style="font-size:11px;color:#475569;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + c.category + '">' + c.category + '</span>' +
-          '<div style="display:flex;align-items:center;gap:8px;">' +
-            '<div style="height:16px;border-radius:3px;background:' + color + ';width:' + pct + '%;min-width:2px;"></div>' +
-            '<span style="font-size:10.5px;color:#64748b;flex-shrink:0;">' + fmtRevenue(c.revenue) + '</span>' +
-          '</div>' +
+        const share = totalCatRev > 0 ? (c.revenue / totalCatRev * 100).toFixed(1) : '0.0';
+        const safe = String(c.category).replace(/"/g, '&quot;');
+        return '<div class="cat-row">' +
+          '<span class="cat-name" title="' + safe + '">' + c.category + '</span>' +
+          '<div class="cat-bar-track"><div class="cat-bar" style="width:' + pct + '%;"></div></div>' +
+          '<span class="cat-val">' + fmtRevenue(c.revenue) + '</span>' +
+          '<span class="cat-share">' + share + '%</span>' +
         '</div>';
-      }).join('');
+      }).join('') +
+      (categories.length > LIMIT
+        ? '<button class="btn btn-ghost cat-more" onclick="psState.showAllCategories=!psState.showAllCategories; renderPS(psState._lastData);">' +
+            (showAll ? 'Show top ' + LIMIT : 'Show all ' + categories.length + ' products') + '</button>'
+        : '');
     }
   }
 }
@@ -8278,7 +8636,7 @@ function renderCancellationTracker(cancelled, totalOrders) {
 
   if (meta) meta.textContent = cancelled.length
     ? cancelled.length + ' cancelled order' + (cancelled.length !== 1 ? 's' : '') +
-      ' · ₹' + (totalCancelledRev/100000).toFixed(2) + 'L lost · ' + cancelRate + '% cancel rate'
+      ' · ' + fmtRevenue(totalCancelledRev) + ' lost · ' + cancelRate + '% cancel rate'
     : 'No cancelled or refunded orders in this date range';
 
   if (!cancelled.length) {
@@ -8441,7 +8799,7 @@ function renderCancelDayLog() {
     const rangeText = fromRaw === toRaw && fromRaw ? fromRaw : fromLabel + ' → ' + toLabel;
     meta.textContent = sorted.length + ' cancellation' + (sorted.length !== 1 ? 's' : '') +
       ' · ' + rangeText +
-      ' · ₹' + (totalRev/100000).toFixed(2) + 'L lost';
+      ' · ' + fmtRevenue(totalRev) + ' lost';
   }
 
   if (!sorted.length) {
@@ -8915,7 +9273,9 @@ function lineChartOptions(prefix, suffix, decimals) {
     plugins: {
       legend: { position: 'top', align: 'end', labels: { color: '#64748b', font: { size: 10 }, boxWidth: 20, padding: 12 } },
       tooltip: { backgroundColor: '#fff', borderColor: '#dce5ef', borderWidth: 1, titleColor: '#0f172a', bodyColor: '#64748b',
-        callbacks: { label: ctx => ' ' + prefix + ctx.parsed.y.toFixed(decimals) + suffix } }
+        callbacks: { label: ctx => (suffix === 'L' && prefix === '₹')
+          ? ' ' + fmtRevenue(ctx.parsed.y * 100000)          // data is in lakhs; show the full amount
+          : ' ' + prefix + ctx.parsed.y.toFixed(decimals) + suffix } }
     },
     scales: {
       x: { grid: { color: 'rgba(220,229,239,.7)' }, ticks: { color: '#94a3b8', font: { size: 10 } } },
@@ -9292,6 +9652,9 @@ function rememberClient(slug) {
 function recallClient() {
   try { return localStorage.getItem(LAST_CLIENT_KEY); } catch (_) { return null; }
 }
+function isAdminUser() {
+  return state.isAdmin === true || (window.semyaUser && window.semyaUser.role === 'admin');
+}
 function currentClientName() {
   const c = _clientList.find(x => x.slug === state.clientSlug);
   return (c && c.name) || 'this brand';
@@ -9333,9 +9696,10 @@ function renderClientSwitcher() {
       : '<option value="" selected>No clients</option>';
     return;
   }
-  // "All Clients" only makes sense when there's more than one to compare.
-  const allOpt = _clientList.length > 1
-    ? '<option value="__all__"' + (state.clientSlug === '__all__' ? ' selected' : '') + '>⭐ All Clients</option>'
+  // "All Clients" (the client overview cards) is for Semya admins — shown
+  // whatever the number of clients. Client users only ever see their own.
+  const allOpt = isAdminUser()
+    ? '<option value="__all__"' + (state.clientSlug === '__all__' ? ' selected' : '') + '>All Clients</option>'
     : '';
   sw.innerHTML = allOpt + _clientList.map(c =>
     '<option value="' + c.slug + '"' + (c.slug === state.clientSlug ? ' selected' : '') + '>' + c.name + '</option>'
@@ -9354,6 +9718,8 @@ let _fetchGeneration = 0;
 async function switchClient(newSlug) {
   if (!newSlug || newSlug === state.clientSlug) return;
   rememberClient(newSlug);
+  const _sw = document.getElementById('clientSwitcher');
+  if (_sw && _sw.value !== newSlug) _sw.value = newSlug;
 
   // ── All Clients overview ────────────────────────────────────────
   if (newSlug === '__all__') {
@@ -9728,7 +10094,7 @@ async function fetchAndRenderAllClients(tabKey) {
     );
 
     // Render a grid of cards — 2-col on wide, 1-col on narrow
-    compEl.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;">' +
+    compEl.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:16px;">' +
       results.map(r => {
         const { client, data } = r.value || {};
         return _renderAllClientsCard(client, data, _allClientsActiveTab);
@@ -9748,12 +10114,7 @@ function _renderAllClientsCard(client, data, tabKey) {
   const slug = client?.slug || '';
 
   // Format helpers scoped to this function
-  const fmtL = n => {
-    if (!n) return '₹0';
-    if (n >= 100000) return '₹' + (n/100000).toFixed(2) + ' L';
-    if (n >= 1000)   return '₹' + (n/1000).toFixed(1) + 'K';
-    return '₹' + Math.round(n);
-  };
+  const fmtL = n => fmtRevenue(n || 0);
   const pct = (a, b) => b > 0 ? ((a/b)*100).toFixed(1) + '%' : '—';
   const PLAT_COLOR = { amazon:'#ff9900', acutas:'#ff9900', flipkart:'#0077ff', blinkit:'#fbbf24', meta:'#1877f2', google:'#34a853' };
 
@@ -9779,9 +10140,14 @@ function _renderAllClientsCard(client, data, tabKey) {
         const orders  = (data?.platforms||[]).reduce((s,p) => s + (p.orderCount||0), 0);
         const growth  = prev != null && prev > 0 ? (((total-prev)/prev)*100) : null;
         const growthHtml = growth !== null
-          ? '<span style="font-size:11px;font-weight:600;color:' + (growth>=0?'#059669':'#dc2626') + ';margin-left:6px;">' + (growth>=0?'▲':'▼') + ' ' + Math.abs(growth).toFixed(1) + '%</span>'
+          ? '<span style="font-size:11px;font-weight:600;color:' + (growth>=0?'#059669':'#dc2626') + ';margin-left:6px;">' + (growth>=0?'▲':'▼') + ' ' + (Math.abs(growth) > 999 ? '999+' : Math.abs(growth).toFixed(1)) + '% vs last period</span>'
           : '';
-        kpiHtml = '<div class="kpi-value revenue-kpi" style="font-size:22px;">' + fmtL(total) + growthHtml + '</div>';
+        kpiHtml =
+          '<div class="ac-metrics">' +
+            '<div class="ac-metric ac-metric--lead"><div class="ac-metric-label">Net revenue</div><div class="ac-metric-value">' + fmtL(total) + '</div>' + growthHtml + '</div>' +
+            '<div class="ac-metric"><div class="ac-metric-label">Units</div><div class="ac-metric-value">' + fmtUnits(units) + '</div></div>' +
+            '<div class="ac-metric"><div class="ac-metric-label">Orders</div><div class="ac-metric-value">' + orders.toLocaleString('en-IN') + '</div></div>' +
+          '</div>';
         // Platform breakdown rows
         const platforms = (data?.platforms||[]).slice(0,4);
         subHtml = platforms.length
@@ -9952,15 +10318,15 @@ function _renderAllClientsCard(client, data, tabKey) {
     }
   }
 
+  const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+  const accent = (client && client.theme && client.theme.primary) || 'var(--theme-primary)';
   return (
-    '<div class="card" style="padding:18px 20px;">' +
-      // Card header: client name + "View" button
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
-        '<div style="font-size:14px;font-weight:700;color:#0f172a;">' + name + '</div>' +
-        '<button data-slug="' + slug + '" data-tab="' + _allClientsActiveTab + '" onclick="_allClientsCardClick(this)" ' +
-          'style="font-size:10px;font-weight:600;padding:4px 10px;border-radius:6px;border:1.5px solid var(--color-border);background:var(--color-surface-2);color:var(--theme-primary);cursor:pointer;white-space:nowrap;">' +
-          'Open →' +
-        '</button>' +
+    '<div class="card ac-card">' +
+      // Card header: client identity + open button
+      '<div class="ac-card-head">' +
+        '<span class="ac-avatar" style="background:' + accent + ';">' + initials + '</span>' +
+        '<div class="ac-card-name"><div>' + name + '</div><span>' + (ALL_CLIENTS_TAB_LABELS[tabKey] || '').replace('All Clients — ', '') + '</span></div>' +
+        '<button class="btn btn-ghost ac-open" data-slug="' + slug + '" data-tab="' + _allClientsActiveTab + '" onclick="_allClientsCardClick(this)">Open dashboard</button>' +
       '</div>' +
       kpiHtml +
       subHtml +
@@ -10766,7 +11132,7 @@ function renderProjChart(series, projection) {
       },
       scales: {
         x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 }, maxRotation: 0, autoSkip: true } },
-        y: { grid: { color: 'rgba(220,229,239,0.5)', drawBorder: false }, ticks: { color: '#94a3b8', font: { size: 10 }, callback: v => fmtRevenue(v) } },
+        y: { grid: { color: 'rgba(220,229,239,0.5)', drawBorder: false }, ticks: { color: '#94a3b8', font: { size: 10 }, callback: v => fmtAxisRevenue(v) } },
       },
     },
   });
@@ -11084,7 +11450,7 @@ function _renderBEProjection(rows) {
   const fL = (v, forceSign) => {
     const sign   = v < 0 ? '−' : (forceSign && v > 0 ? '+' : '');
     const abs    = Math.abs(v);
-    const s      = abs >= 100000 ? '₹'+(abs/100000).toFixed(2)+' L' : '₹'+abs.toLocaleString('en-IN',{maximumFractionDigits:0});
+    const s      = '₹' + abs.toLocaleString('en-IN', { maximumFractionDigits: 0 });
     return sign + s;
   };
 
@@ -11537,7 +11903,7 @@ function downloadCostTemplate(e) {
 
 
 // ─── BOOT ─────────────────────────────────────────────────────────
-const FRONTEND_BUILD = 'V39-client-autoselect-fast-fetch'; // bump alongside backend health version
+const FRONTEND_BUILD = 'V40-full-numbers-ui-polish'; // bump alongside backend health version
 console.log('[Semya] Frontend build:', FRONTEND_BUILD);
 
 let _bootStarted = false;
@@ -13362,6 +13728,282 @@ function _buildPrompt(data) {
         _pwaInstallPrompt = null;
       });
     }
+  </script>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       UI KIT: custom dropdowns (2026-10-23)
+       Every native <select> is wrapped with a styled trigger + menu, so
+       no dropdown falls back to the browser's grey system list. The real
+       <select> stays in the DOM (hidden underneath) and stays the source
+       of truth: existing code that reads .value, sets .value, rewrites
+       its <option>s or listens for 'change' keeps working unchanged.
+       ═══════════════════════════════════════════════════════════════ -->
+  <script>
+  (function () {
+    'use strict';
+    const CHEVRON = '<svg class="sd-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+    const CHECK   = '<svg class="sd-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    const GRID    = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>';
+    const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const enhanced = new Set();
+    let openInst = null;
+
+    // ── Client switcher flavour: initials badge in the client's colour ──
+    function clientInfo(value) {
+      try { return (_clientList || []).find(c => c.slug === value) || null; } catch (_) { return null; }
+    }
+    function initials(name) {
+      return String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+    }
+    function clientBadge(value, label) {
+      if (value === '__all__') return '<span class="sd-badge all">' + GRID + '</span>';
+      const c = clientInfo(value);
+      const color = (c && c.theme && c.theme.primary) || '';
+      return '<span class="sd-badge"' + (color ? ' style="background:' + esc(color) + '"' : '') + '>' + esc(initials(label)) + '</span>';
+    }
+    const FLAVOURS = {
+      clientSwitcher: {
+        wrapClass: 'sd-client',
+        title: 'Switch client',
+        trigger(opt) {
+          if (!opt || !opt.value) return '<span class="sd-value placeholder">' + esc(opt ? opt.text : 'Select client') + '</span>';
+          const sub = opt.value === '__all__' ? 'Overview' : 'Client';
+          return clientBadge(opt.value, opt.text) + '<span class="sd-two-line"><small>' + sub + '</small><b>' + esc(opt.text) + '</b></span>';
+        },
+        option(opt) { return opt.value ? clientBadge(opt.value, opt.text) : ''; },
+        sepAfter(opt) { return opt.value === '__all__'; },
+      },
+    };
+
+    function enhance(sel) {
+      if (!sel || enhanced.has(sel) || sel.multiple || sel.size > 1 || sel.dataset.sdSkip !== undefined) return;
+      enhanced.add(sel);
+      const flavour = FLAVOURS[sel.id] || null;
+      const wrap = document.createElement('div');
+      wrap.className = 'sd-select' + (flavour ? ' ' + flavour.wrapClass : '');
+      // Carry layout-related inline styles over to the wrapper
+      ['width', 'flex', 'minWidth', 'maxWidth', 'margin', 'marginLeft', 'marginRight', 'marginTop', 'marginBottom', 'alignSelf'].forEach(k => {
+        if (sel.style[k]) wrap.style[k] = sel.style[k];
+      });
+      if (sel.style.width === '100%') wrap.style.display = 'flex';
+      sel.parentNode.insertBefore(wrap, sel);
+      wrap.appendChild(sel);
+      sel.classList.add('sd-native');
+      sel.tabIndex = -1;
+      sel.setAttribute('aria-hidden', 'true');
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'sd-trigger';
+      btn.setAttribute('aria-haspopup', 'listbox');
+      btn.setAttribute('aria-expanded', 'false');
+      if (sel.title) btn.title = sel.title;
+      if (sel.style.height) btn.style.height = sel.style.height;
+      const lbl = sel.id && document.querySelector('label[for="' + sel.id + '"]');
+      if (lbl) btn.setAttribute('aria-label', lbl.textContent.trim());
+      wrap.appendChild(btn);
+
+      const inst = { sel, wrap, btn, flavour, menu: null, active: -1, lastKey: '' };
+      sel._sd = inst;
+      btn.addEventListener('click', e => { e.stopPropagation(); inst.menu ? close(inst) : open(inst); });
+      btn.addEventListener('keydown', e => onKey(inst, e));
+      sel.addEventListener('change', () => sync(inst));
+      new MutationObserver(() => sync(inst)).observe(sel, { childList: true, subtree: true, attributes: true, characterData: true });
+      sync(inst);
+    }
+
+    function selectedOpt(sel) { return sel.options[sel.selectedIndex] || null; }
+
+    function sync(inst) {
+      const { sel, btn, wrap, flavour } = inst;
+      const opt = selectedOpt(sel);
+      const key = (opt ? opt.value + '|' + opt.text : '') + '|' + sel.disabled + '|' + sel.style.display;
+      wrap.style.display = sel.style.display === 'none' ? 'none' : (sel.style.width === '100%' ? 'flex' : '');
+      btn.disabled = !!sel.disabled;
+      if (key === inst.lastKey) return;
+      inst.lastKey = key;
+      btn.innerHTML = flavour
+        ? flavour.trigger(opt) + CHEVRON
+        : '<span class="sd-value' + (opt && opt.value === '' && sel.options.length > 1 ? ' placeholder' : '') + '">' + esc(opt ? opt.text : '') + '</span>' + CHEVRON;
+      if (inst.menu) renderMenu(inst);
+    }
+
+    function items(sel) {
+      const out = [];
+      for (const node of sel.children) {
+        if (node.tagName === 'OPTGROUP') {
+          out.push({ group: node.label });
+          for (const o of node.children) if (o.tagName === 'OPTION') out.push({ opt: o });
+        } else if (node.tagName === 'OPTION') out.push({ opt: node });
+      }
+      return out;
+    }
+
+    function renderMenu(inst) {
+      const { sel, flavour, menu } = inst;
+      let html = flavour && flavour.title ? '<div class="sd-menu-title">' + esc(flavour.title) + '</div>' : '';
+      items(sel).forEach(it => {
+        if (it.group !== undefined) { html += '<div class="sd-group">' + esc(it.group) + '</div>'; return; }
+        const o = it.opt;
+        if (o.hidden || o.style.display === 'none') return;
+        const idx = Array.prototype.indexOf.call(sel.options, o);
+        html += '<button type="button" class="sd-option" role="option" data-idx="' + idx + '" aria-selected="' + (idx === sel.selectedIndex) + '"' + (o.disabled ? ' disabled' : '') + '>' +
+          (flavour && flavour.option ? flavour.option(o) : '') +
+          '<span class="sd-opt-label">' + esc(o.text) + '</span>' + CHECK + '</button>';
+        if (flavour && flavour.sepAfter && flavour.sepAfter(o)) html += '<div class="sd-sep"></div>';
+      });
+      menu.innerHTML = html || '<div class="sd-menu-title">No options</div>';
+      setActive(inst, sel.selectedIndex);
+    }
+
+    function position(inst) {
+      const r = inst.btn.getBoundingClientRect();
+      const m = inst.menu;
+      m.style.minWidth = Math.max(r.width, 180) + 'px';
+      const mh = Math.min(m.scrollHeight, 320);
+      const below = window.innerHeight - r.bottom - 8;
+      const top = (below < mh && r.top > below) ? Math.max(8, r.top - mh - 6) : r.bottom + 6;
+      m.style.top = top + 'px';
+      const w = m.offsetWidth;
+      let left = r.left;
+      if (left + w > window.innerWidth - 8) left = Math.max(8, r.right - w);
+      m.style.left = left + 'px';
+    }
+
+    function open(inst) {
+      if (openInst) close(openInst);
+      if (inst.sel.disabled) return;
+      const m = document.createElement('div');
+      m.className = 'sd-menu';
+      m.setAttribute('role', 'listbox');
+      inst.menu = m;
+      document.body.appendChild(m);
+      renderMenu(inst);
+      position(inst);
+      m.addEventListener('click', e => {
+        const b = e.target.closest('.sd-option');
+        if (!b || b.disabled) return;
+        e.stopPropagation();
+        choose(inst, +b.dataset.idx);
+      });
+      m.addEventListener('mousemove', e => {
+        const b = e.target.closest('.sd-option');
+        if (b) setActive(inst, +b.dataset.idx, true);
+      });
+      inst.wrap.classList.add('open');
+      inst.btn.setAttribute('aria-expanded', 'true');
+      openInst = inst;
+      const cur = m.querySelector('[aria-selected="true"]');
+      if (cur) cur.scrollIntoView({ block: 'nearest' });
+    }
+
+    function close(inst, refocus) {
+      if (!inst || !inst.menu) return;
+      inst.menu.remove();
+      inst.menu = null;
+      inst.wrap.classList.remove('open');
+      inst.btn.setAttribute('aria-expanded', 'false');
+      if (openInst === inst) openInst = null;
+      if (refocus) inst.btn.focus();
+    }
+
+    function choose(inst, idx) {
+      const { sel } = inst;
+      if (idx < 0 || idx >= sel.options.length) return;
+      const changed = sel.selectedIndex !== idx;
+      sel.selectedIndex = idx;
+      close(inst, true);
+      sync(inst);
+      if (changed) {
+        sel.dispatchEvent(new Event('input', { bubbles: true }));
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }
+
+    function setActive(inst, idx, fromMouse) {
+      inst.active = idx;
+      if (!inst.menu) return;
+      inst.menu.querySelectorAll('.sd-option').forEach(b => b.classList.toggle('active', +b.dataset.idx === idx));
+      if (!fromMouse) {
+        const el = inst.menu.querySelector('.sd-option.active');
+        if (el) el.scrollIntoView({ block: 'nearest' });
+      }
+    }
+
+    function move(inst, dir) {
+      const opts = Array.from(inst.menu.querySelectorAll('.sd-option:not(:disabled)')).map(b => +b.dataset.idx);
+      if (!opts.length) return;
+      let pos = opts.indexOf(inst.active);
+      pos = pos === -1 ? (dir > 0 ? 0 : opts.length - 1) : Math.min(opts.length - 1, Math.max(0, pos + dir));
+      setActive(inst, opts[pos]);
+    }
+
+    function onKey(inst, e) {
+      const k = e.key;
+      if (!inst.menu) {
+        if (k === 'ArrowDown' || k === 'ArrowUp' || k === 'Enter' || k === ' ') { e.preventDefault(); open(inst); }
+        return;
+      }
+      if (k === 'Escape') { e.preventDefault(); close(inst, true); }
+      else if (k === 'Tab') close(inst);
+      else if (k === 'ArrowDown') { e.preventDefault(); move(inst, 1); }
+      else if (k === 'ArrowUp') { e.preventDefault(); move(inst, -1); }
+      else if (k === 'Home') { e.preventDefault(); inst.active = -1; move(inst, 1); }
+      else if (k === 'End') { e.preventDefault(); inst.active = -1; move(inst, -1); }
+      else if (k === 'Enter' || k === ' ') { e.preventDefault(); if (inst.active >= 0) choose(inst, inst.active); }
+      else if (k.length === 1) {
+        // type-ahead: jump to the next option starting with that letter
+        const ch = k.toLowerCase();
+        const opts = Array.from(inst.sel.options).map((o, i) => ({ t: o.text.trim().toLowerCase(), i, d: o.disabled }));
+        const start = inst.active + 1;
+        const hit = opts.slice(start).concat(opts.slice(0, start)).find(o => !o.d && o.t.startsWith(ch));
+        if (hit) setActive(inst, hit.i);
+      }
+    }
+
+    document.addEventListener('click', e => {
+      if (openInst && !openInst.menu.contains(e.target) && !openInst.wrap.contains(e.target)) close(openInst);
+    }, true);
+    window.addEventListener('resize', () => { if (openInst) position(openInst); });
+    document.addEventListener('scroll', e => {
+      if (openInst && !(openInst.menu && openInst.menu.contains(e.target))) close(openInst);
+    }, true);
+
+    // Programmatic changes (code doing sel.value = 'x') fire no event —
+    // a light check keeps each trigger's label in step.
+    setInterval(() => {
+      enhanced.forEach(sel => {
+        if (!sel.isConnected) { enhanced.delete(sel); return; }
+        if (sel._sd) sync(sel._sd);
+      });
+    }, 400);
+
+    // Old filter-menu triggers carried a text "▾"; the new control draws its own chevron.
+    function tidyTriggers(root) {
+      (root.querySelectorAll ? root : document).querySelectorAll('.status-filter-wrap > .sku-pill').forEach(btn => {
+        btn.childNodes.forEach(n => { if (n.nodeType === 3 && n.nodeValue.includes('▾')) n.nodeValue = n.nodeValue.replace(/\s*▾\s*/g, ' '); });
+      });
+    }
+
+    function scan(root) {
+      (root.querySelectorAll ? root : document).querySelectorAll('select').forEach(enhance);
+      if (root.tagName === 'SELECT') enhance(root);
+    }
+    function init() {
+      scan(document);
+      tidyTriggers(document);
+      new MutationObserver(muts => {
+        for (const m of muts) for (const n of m.addedNodes) {
+          if (n.nodeType !== 1) continue;
+          if (n.tagName === 'SELECT' || (n.querySelector && n.querySelector('select'))) scan(n);
+          if (n.querySelector && n.querySelector('.status-filter-wrap')) tidyTriggers(n);
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+    window.sdSelectRefresh = sel => sel && sel._sd && (sel._sd.lastKey = '', sync(sel._sd));
+  })();
   </script>
 
 </body>

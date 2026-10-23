@@ -1039,7 +1039,13 @@ async function aggregatePlatformSales(rows, excludeStatuses = new Set(), exclude
     if (row.standard_order_id) {
       byPlatform[p]._orderIds.add(row.standard_order_id);
       const st = (row.standard_status || '').toLowerCase();
-      if (st === 'delivered' || st === 'paid') {
+      // Fulfilled = left the seller: delivered, paid (Shopify), fulfilled,
+      // completed, or any Amazon "Shipped…" status — except returns.
+      // Previously only exact 'delivered'/'paid' counted, so Amazon's
+      // "Shipped" / "Shipped - Delivered to Buyer" were never fulfilled
+      // and the dashboard showed a 0% fulfillment rate.
+      const isReturn = st.includes('return');
+      if (!isReturn && (st === 'delivered' || st === 'paid' || st === 'fulfilled' || st === 'completed' || st === 'complete' || st.startsWith('shipped') || st.includes('delivered'))) {
         byPlatform[p]._fulfilledIds.add(row.standard_order_id);
       } else if (st === 'pending') {
         if (!byPlatform[p]._pendingIds) byPlatform[p]._pendingIds = new Set();
