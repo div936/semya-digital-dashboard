@@ -14,10 +14,11 @@
   <meta name="apple-mobile-web-app-title" content="Semya" />
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="assets/semya-logo.jpg" />
-  <title>Neat Everyday — SKU Performance | Semya Digital</title>
+  <title>Performance Dashboard | Semya Digital</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="semya_auth_guard.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     /* ─── NEAT EVERYDAY THEME TOKENS — LIGHT ────────────────────── */
     :root {
@@ -1379,9 +1380,9 @@
   <header class="header">
     <!-- Left: Logo -->
     <div class="header-logo">
-      <div class="logo-mark" id="logoMark" style="overflow:hidden;"><img id="logoImg" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover;border-radius:10px;" /><span id="logoText">NE</span></div>
+      <div class="logo-mark" id="logoMark" style="overflow:hidden;"><img id="logoImg" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover;border-radius:10px;" /><span id="logoText">SD</span></div>
       <div>
-        <div class="logo-text">Neat Everyday</div>
+        <div class="logo-text">Semya Digital</div>
         <div class="logo-sub">Semya Digital</div>
       </div>
       <!-- Only shown to admins while "View as Client" is on (Settings
@@ -1452,7 +1453,7 @@
 
       <!-- Client Switcher -->
       <select class="select-styled" id="clientSwitcher" title="Switch client">
-        <option value="neat-everyday" selected>Neat Everyday</option>
+        <option value="" selected>Loading clients…</option>
       </select>
 
       <!-- Data Upload -->
@@ -2664,6 +2665,17 @@
       .pl-bar-seg   { height:100%; transition:width .4s; }
       .pl-legend    { display:flex; gap:12px; flex-wrap:wrap; font-size:10px; color:#64748b; margin-bottom:14px; }
       .pl-legend-dot { width:8px; height:8px; border-radius:2px; display:inline-block; margin-right:3px; }
+      /* ── Break-Even Projection ────────────────────────────────── */
+      .be-proj-grid   { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:16px; }
+      @media(max-width:640px){ .be-proj-grid { grid-template-columns:1fr 1fr; } }
+      .be-stat-card   { background:var(--color-surface-alt,#f8fafc); border:1px solid var(--color-border,#e2e8f0); border-radius:8px; padding:12px 14px; }
+      .be-stat-label  { font-size:10px; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px; }
+      .be-stat-val    { font-size:18px; font-weight:700; color:#1e293b; line-height:1.1; }
+      .be-stat-sub    { font-size:10px; color:#94a3b8; margin-top:3px; }
+      .be-input-grid  { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+      @media(max-width:640px){ .be-input-grid { grid-template-columns:1fr 1fr; } }
+      .be-input-group label { font-size:11px; color:#64748b; display:block; margin-bottom:3px; }
+      .be-input-group input { width:100%; padding:7px 10px; border:1px solid var(--color-border,#e2e8f0); border-radius:6px; font-size:12px; background:var(--color-surface,#fff); color:var(--color-text,#1e293b); box-sizing:border-box; }
       /* ── Cost modal ────────────────────────────────────────────── */
       .proj-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:900; display:flex; align-items:center; justify-content:center; }
       .proj-modal-box     { background:var(--color-surface,#fff); border-radius:var(--radius-lg,12px); padding:24px; width:640px; max-width:95vw; max-height:85vh; overflow-y:auto; box-shadow:0 8px 40px rgba(0,0,0,.2); }
@@ -2685,7 +2697,7 @@
             <span style="font-size:11px;color:#94a3b8;">to</span>
             <input type="date" id="projDateTo"   class="date-input" style="font-size:11px;" onchange="fetchAndRenderProjections(true)">
             <button class="btn btn-ghost" style="font-size:10px;padding:4px 10px;" onclick="openProjCostModal()" title="Configure SKU costs &amp; overhead">⚙ Cost Structure</button>
-            <span class="fetch-badge" id="projFetchBadge"><span id="projFetchText">Loading…</span></span>
+<span class="fetch-badge" id="projFetchBadge"><span id="projFetchText">Loading…</span></span>
             <div class="export-wrap" id="projExportWrap">
               <button class="export-btn" onclick="toggleExportMenu('proj')">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -2848,6 +2860,44 @@
             </table>
           </div>
         </div>
+
+        <!-- ── Break-Even Projection ── -->
+        <div class="card" style="margin-top:14px;" id="projBreakevenCard">
+          <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+            <span class="card-title">📈 Break-Even Projection</span>
+            <button onclick="toggleBEInputs()" id="projBEToggle"
+              style="font-size:11px;color:#6366f1;background:none;border:1px solid #6366f1;border-radius:4px;padding:3px 10px;cursor:pointer;white-space:nowrap;">
+              ⚙ Configure Expenses
+            </button>
+          </div>
+
+          <!-- Expense input panel -->
+          <div id="projBEInputs" style="display:none;border-top:1px solid var(--color-border,#e2e8f0);margin-top:12px;padding-top:14px;">
+            <p style="font-size:12px;color:#64748b;margin-bottom:12px;">Enter your monthly fixed costs. These will be used to calculate your real break-even point.</p>
+            <div class="be-input-grid" style="margin-bottom:12px;">
+              <div class="be-input-group"><label>Warehouse &amp; Storage (₹/mo)</label><input type="number" id="beWarehouse" min="0" step="100" placeholder="0" oninput="_updateBETotal()"></div>
+              <div class="be-input-group"><label>Transportation &amp; Logistics (₹/mo)</label><input type="number" id="beTransport" min="0" step="100" placeholder="0" oninput="_updateBETotal()"></div>
+              <div class="be-input-group"><label>Labor (₹/mo)</label><input type="number" id="beLabor" min="0" step="100" placeholder="0" oninput="_updateBETotal()"></div>
+              <div class="be-input-group"><label>Salary (₹/mo)</label><input type="number" id="beSalary" min="0" step="1000" placeholder="0" oninput="_updateBETotal()"></div>
+              <div class="be-input-group"><label>Monthly Ad Spend Budget (₹/mo)</label><input type="number" id="beAdSpend" min="0" step="1000" placeholder="0" oninput="_updateBETotal()"></div>
+              <div class="be-input-group"><label>Other Overhead (₹/mo)</label><input type="number" id="beOther" min="0" step="100" placeholder="0" oninput="_updateBETotal()"></div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+              <span style="font-size:12px;color:#64748b;">Total monthly fixed costs: <strong id="beTotalDisplay" style="color:#1e293b;">₹0</strong></span>
+              <button onclick="saveBEConfig()"
+                style="background:#6366f1;color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;">
+                Save &amp; Calculate
+              </button>
+            </div>
+          </div>
+
+          <!-- Projection output -->
+          <div id="projBESummary" style="margin-top:12px;">
+            <div style="text-align:center;color:#94a3b8;padding:14px 0;font-size:12px;">
+              Click <strong>⚙ Configure Expenses</strong> to enter your monthly costs and see the break-even projection.
+            </div>
+          </div>
+        </div><!-- /break-even card -->
 
       </div><!-- /projPanel_platform_pl -->
 
@@ -3256,7 +3306,7 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
           <div>
             <label id="caBrandNameFieldLabel" style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">Client Name</label>
-            <input type="text" id="brandNameInput" placeholder="Neat Everyday" value="Neat Everyday"
+            <input type="text" id="brandNameInput" placeholder="Client name" value=""
               style="width:100%;padding:8px 12px;border:1.5px solid var(--color-border);border-radius:var(--radius-sm);font-size:13px;font-family:var(--font-display);color:#1e293b;" />
           </div>
           <div>
@@ -4187,7 +4237,11 @@ function startAutoRefresh() {
     if (document.hidden) return; // skip while tab is in the background
     if (!state.clientSlug) return;
     tabCache = {}; // force fresh data instead of serving stale cached tabs
-    fetchAndRender().catch(err => console.warn('[auto-refresh] failed:', err.message));
+    // Refresh whichever tab is on screen. This used to call
+    // fetchAndRender() — the SKU Performance loader — no matter which
+    // tab was open, so Platform Sales never auto-refreshed and a hidden
+    // SKU query ran every 5 minutes.
+    try { showTab(activeTab || 'platform_sales', true); } catch (err) { console.warn('[auto-refresh] failed:', err.message); }
   }, AUTO_REFRESH_MS);
 
   // If the tab was hidden and becomes visible again after more than
@@ -4199,7 +4253,7 @@ function startAutoRefresh() {
       hiddenAt = Date.now();
     } else if (hiddenAt && Date.now() - hiddenAt > AUTO_REFRESH_MS && state.clientSlug) {
       tabCache = {};
-      fetchAndRender().catch(() => {});
+      try { showTab(activeTab || 'platform_sales', true); } catch (_) {}
       hiddenAt = null;
     }
   });
@@ -5274,7 +5328,7 @@ async function fetchAndRender() {
       }
     }
   } catch (err) {
-    console.warn('[semya] API fetch failed, using mock data:', err.message);
+    console.warn('[semya] SKU performance fetch failed:', err.message);
   }
 
   // Fall back — don't wipe existing SKU list on empty result
@@ -5398,7 +5452,7 @@ function showTab(tabKey, force) {
 }
 
 // ─── Tab permissions / access lock ─────────────────────────────
-async function loadTabPermissions() {
+async function loadTabPermissions(opts = {}) {
   const { clientSlug } = state; if (!clientSlug) return;
   try {
     const cfg = await apiFetch('/clients/' + clientSlug + '/dashboard-config');
@@ -5406,9 +5460,12 @@ async function loadTabPermissions() {
     _lastDashboardConfig = cfg;
     applyLockBadgesToNav();
     applyBranding(cfg);
-    // If we already landed on a tab before this resolved (unlikely,
-    // but boot() calls this before showTab), re-check the current one.
-    if (activeTab) showTab(activeTab);
+    // If we already landed on a tab before this resolved, re-check the
+    // current one. boot() passes rerender:false because it opens the
+    // first tab itself right after — activeTab defaults to
+    // 'platform_sales', so re-rendering here fired every Platform Sales
+    // request twice on page load.
+    if (activeTab && opts.rerender !== false) showTab(activeTab);
   } catch (e) {
     console.warn('[tab-permissions]', e.message);
   }
@@ -5492,12 +5549,17 @@ async function applyBranding(cfg) {
 function setHeaderBranding(name, tagline, logoUrl, theme) {
   const nameEl = document.querySelector('.logo-text');
   const tagEl  = document.querySelector('.logo-sub');
-  if (nameEl) nameEl.textContent = name || 'Neat Everyday';
+  if (nameEl) nameEl.textContent = name || 'Semya Digital';
   if (tagEl)  tagEl.textContent  = tagline || 'Semya Digital';
 
-  // Keep state.clientName in sync so dynamic labels (platform pills, dropdowns) update
-  state.clientName = name || null;
-  const clientFirst = (name || '').split(' ')[0];
+  // Keep state.clientName in sync so dynamic labels (platform pills, dropdowns) update.
+  // Use the SELECTED CLIENT's name, not the header name — for admins the
+  // header shows Semya's own branding, which turned "Daluci Amazon" into
+  // "Semya Amazon" on every platform label.
+  let selectedClientName = null;
+  try { selectedClientName = (_clientList.find(c => c.slug === state.clientSlug) || {}).name || null; } catch (_) {}
+  state.clientName = selectedClientName || name || null;
+  const clientFirst = (state.clientName || '').split(' ')[0];
   const amzOptEl = document.getElementById('dmRangePlatformAmazonOpt');
   if (amzOptEl) amzOptEl.textContent = clientFirst ? 'Amazon (' + clientFirst + ' Amazon)' : 'Amazon';
   const acutasOptEl = document.getElementById('dmRangePlatformAcutasOpt');
@@ -9216,35 +9278,82 @@ document.getElementById('uploadDrawer').addEventListener('click', e => { if (e.t
 
 
 // ─── CLIENT SWITCHER ────────────────────────────────────────────────
-async function loadClientSwitcher() {
-  const sw = document.getElementById('clientSwitcher');
-  if (!sw) return;
+// The client list always comes from the server (/auth/clients): every
+// client for an admin, or just their own client for a client user. There
+// is NO hardcoded fallback client any more — a hardcoded 'neat-everyday'
+// default kept requesting a client that had been deleted, so every tab
+// got 404s while the switcher showed "All Clients" and nothing loaded.
+const LAST_CLIENT_KEY = 'semya_last_client';
+let _clientList = [];
+
+function rememberClient(slug) {
+  try { if (slug && slug !== '__all__') localStorage.setItem(LAST_CLIENT_KEY, slug); } catch (_) {}
+}
+function recallClient() {
+  try { return localStorage.getItem(LAST_CLIENT_KEY); } catch (_) { return null; }
+}
+function currentClientName() {
+  const c = _clientList.find(x => x.slug === state.clientSlug);
+  return (c && c.name) || 'this brand';
+}
+
+async function fetchClientList() {
   try {
     const resp = await apiFetch('/auth/clients');
-    const clients = resp?.clients || [];
-    if (clients.length) {
-      sw.innerHTML =
-        '<option value="__all__"' + (state.clientSlug === '__all__' ? ' selected' : '') + '>⭐ All Clients</option>' +
-        clients.map(c =>
-          '<option value="' + c.slug + '"' + (c.slug === state.clientSlug ? ' selected' : '') + '>' + c.name + '</option>'
-        ).join('');
-    } else {
-      // Fetch succeeded but returned nothing usable — still show
-      // something rather than leaving the switcher blank.
-      sw.innerHTML = '<option value="' + state.clientSlug + '" selected>' + (document.querySelector('.logo-text')?.textContent || state.clientSlug) + '</option>';
-    }
+    _clientList = Array.isArray(resp?.clients) ? resp.clients : [];
   } catch (e) {
     console.warn('[client-switcher] failed to load client list:', e.message);
-    // Fall back to showing just the current client rather than an
-    // empty/hidden control — the switcher should never just vanish.
-    sw.innerHTML = '<option value="' + state.clientSlug + '" selected>' + (document.querySelector('.logo-text')?.textContent || state.clientSlug) + '</option>';
   }
+  return _clientList;
+}
+
+// Decide which client to open on page load, in priority order:
+//   1. a slug in the URL (/clients/<slug>/…) or the user's own client
+//   2. the client this browser last had selected, if it still exists
+//   3. the first client the server returns
+// Anything not in the server's list is ignored, so a deleted client can
+// never be selected again.
+function pickInitialClient(preferredSlug) {
+  const valid = slug => !!slug && _clientList.some(c => c.slug === slug);
+  if (valid(preferredSlug)) return preferredSlug;
+  const last = recallClient();
+  if (valid(last)) return last;
+  if (_clientList.length) return _clientList[0].slug;
+  // Server unreachable or returned nothing: keep a URL/user slug if we
+  // have one so the tabs can still try; otherwise nothing to load.
+  return preferredSlug || null;
+}
+
+function renderClientSwitcher() {
+  const sw = document.getElementById('clientSwitcher');
+  if (!sw) return;
+  if (!_clientList.length) {
+    sw.innerHTML = state.clientSlug
+      ? '<option value="' + state.clientSlug + '" selected>' + state.clientSlug + '</option>'
+      : '<option value="" selected>No clients</option>';
+    return;
+  }
+  // "All Clients" only makes sense when there's more than one to compare.
+  const allOpt = _clientList.length > 1
+    ? '<option value="__all__"' + (state.clientSlug === '__all__' ? ' selected' : '') + '>⭐ All Clients</option>'
+    : '';
+  sw.innerHTML = allOpt + _clientList.map(c =>
+    '<option value="' + c.slug + '"' + (c.slug === state.clientSlug ? ' selected' : '') + '>' + c.name + '</option>'
+  ).join('');
+  sw.value = state.clientSlug || '';
+}
+
+async function loadClientSwitcher() {
+  await fetchClientList();
+  renderClientSwitcher();
+  return _clientList;
 }
 
 let _fetchGeneration = 0;
 
 async function switchClient(newSlug) {
   if (!newSlug || newSlug === state.clientSlug) return;
+  rememberClient(newSlug);
 
   // ── All Clients overview ────────────────────────────────────────
   if (newSlug === '__all__') {
@@ -10326,14 +10435,203 @@ function _projDateParams() {
 }
 
 function _projDefaultDates() {
-  // Default: last 90 days
+  // Default: last 3 months → today
   const to   = new Date();
-  const from = new Date(to); from.setDate(from.getDate() - 89);
+  const from = new Date(to); from.setMonth(from.getMonth() - 3);
   const fmt  = d => d.toISOString().slice(0, 10);
   const fromEl = document.getElementById('projDateFrom');
   const toEl   = document.getElementById('projDateTo');
   if (fromEl && !fromEl.value) fromEl.value = fmt(from);
   if (toEl   && !toEl.value)   toEl.value   = fmt(to);
+}
+
+// ── SKU Excel upload → Projections ───────────────────────────────
+async function uploadSkuExcel(inputEl) {
+  const file = inputEl.files[0];
+  if (!file) return;
+  inputEl.value = ''; // allow re-upload of same file
+
+  const { clientSlug } = state;
+  if (!clientSlug) { alert('No client selected.'); return; }
+
+  setBadgeProj('loading');
+  const btn = document.getElementById('projExcelBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Parsing…'; }
+
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+
+    const res = await fetch(`${API_BASE}/clients/${clientSlug}/projections/from-excel`, {
+      method: 'POST',
+      credentials: 'include',
+      body: fd,
+    });
+    const resp = await res.json();
+    if (!res.ok) throw new Error(resp.error || 'Upload failed');
+
+    // Store as last projections response so sidebar / exports work
+    _projLast = resp;
+
+    // Render overview using existing function
+    renderProjOverview(resp);
+    setBadgeProj(resp.totals?.revenue > 0 ? 'live' : 'empty');
+
+    // Override badge text to show "From Excel"
+    const badgeText = document.getElementById('projFetchText');
+    if (badgeText) {
+      badgeText.textContent = `📊 ${resp.rowsParsed} SKUs`;
+      badgeText.style.color = '#6366f1';
+    }
+    const badge = document.getElementById('projFetchBadge');
+    if (badge) badge.style.borderColor = '#6366f1';
+
+    // Render SKU break-even tab using Excel skuDetails
+    if (resp.skuDetails?.length) _renderProjBEFromExcel(resp.skuDetails);
+
+    // Render Platform P&L from Excel platformPL
+    if (resp.platformPL?.length) _renderProjPLFromExcel(resp.platformPL, resp.totals);
+
+    // Trigger AI sidebar
+    updateSidebarForTab('projections_insights');
+
+    // Show unpriced note if any
+    const note = document.getElementById('projUnpricedNote');
+    if (note && resp.unpricedSkus?.length) {
+      note.style.display = '';
+      note.innerHTML = `⚠️ <b>${resp.unpricedSkus.length} SKU(s)</b> skipped — no selling price found: ${resp.unpricedSkus.map(s => s.sku).join(', ')}`;
+    } else if (note) {
+      note.style.display = 'none';
+    }
+
+  } catch (e) {
+    setBadgeProj('empty');
+    const badgeText = document.getElementById('projFetchText');
+    if (badgeText) { badgeText.textContent = 'Upload failed'; badgeText.style.color = '#ef4444'; }
+    console.error('[uploadSkuExcel]', e.message);
+    alert('Failed to parse Excel: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '📊 Upload SKU Excel'; }
+  }
+}
+
+// ── Render SKU Break-Even table from Excel data ──────────────────
+function _renderProjBEFromExcel(skuDetails) {
+  const tbody = document.getElementById('projBETbody');
+  if (!tbody) return;
+
+  const fmt = v => '₹' + Math.round(v).toLocaleString('en-IN');
+  const pct = v => v != null ? (v * 100).toFixed(1) + '%' : '—';
+
+  tbody.innerHTML = skuDetails.map(s => {
+    const profClass = s.profit >= 0 ? 'color:#16a34a' : 'color:#dc2626';
+    const beUnits   = s.settlePct > 0 && s.price > 0
+      ? Math.ceil(s.adSpendDay / (s.price * s.settlePct))
+      : null;
+
+    return `<tr onclick="openProjDetailFromExcel(${JSON.stringify(s).replace(/"/g,'&quot;')})">
+      <td><b>${s.sku}</b><br><span style="font-size:10px;color:#94a3b8;">${s.name}</span></td>
+      <td>${s.asin || '—'}</td>
+      <td>${fmt(s.price)}</td>
+      <td>${pct(s.settlePct)}</td>
+      <td>${fmt(s.revPerDay)}/day</td>
+      <td>${fmt(s.adSpendDay)}/day</td>
+      <td style="${profClass}">${fmt(s.netProfitDay)}/day</td>
+      <td>${beUnits != null ? beUnits + ' units' : '—'}</td>
+      <td><span style="font-size:10px;padding:2px 6px;border-radius:4px;background:${s.inventoryStatus?.includes('Sufficient') ? '#dcfce7' : '#fef9c3'};color:${s.inventoryStatus?.includes('Sufficient') ? '#166534' : '#854d0e'}">${s.inventoryStatus}</span></td>
+    </tr>`;
+  }).join('');
+
+  // Update table header to match Excel columns
+  const titleEl = document.getElementById('projBETableTitle');
+  if (titleEl) titleEl.textContent = 'SKU Break-Even (from Excel)';
+
+  // Show pills for team members
+  const teams = [...new Set(skuDetails.map(s => s.teamMember).filter(Boolean))];
+  const pillsEl = document.getElementById('projBEPills');
+  if (pillsEl && teams.length) {
+    pillsEl.innerHTML = '<span style="font-size:11px;color:#94a3b8;margin-right:4px;">Team:</span>'
+      + teams.map(t => `<span class="proj-pill" style="cursor:default;">${t}</span>`).join('');
+  }
+}
+
+// ── Render Platform P&L from Excel data ─────────────────────────
+function _renderProjPLFromExcel(platformPL, totals) {
+  const barsEl = document.getElementById('projPLBars');
+  const tbodyEl = document.getElementById('projPLTbody');
+  if (!barsEl || !tbodyEl) return;
+
+  const fmt = v => '₹' + Math.round(v).toLocaleString('en-IN');
+  const totalRev = totals?.revenue || platformPL.reduce((a, p) => a + p.revenue, 0);
+
+  barsEl.innerHTML = platformPL.map(p => {
+    const pct  = totalRev > 0 ? ((p.revenue / totalRev) * 100).toFixed(1) : 0;
+    const mPct = p.revenue > 0 ? ((p.profit / p.revenue) * 100).toFixed(1) : 0;
+    const color = p.profit >= 0 ? '#6366f1' : '#ef4444';
+    return `
+      <div style="margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
+          <b>${p.platform}</b>
+          <span>${fmt(p.revenue)} &nbsp;·&nbsp; <span style="color:${color}">${mPct}% margin</span></span>
+        </div>
+        <div style="background:#e2e8f0;border-radius:4px;height:8px;">
+          <div style="background:${color};width:${pct}%;height:100%;border-radius:4px;transition:width .3s;"></div>
+        </div>
+      </div>`;
+  }).join('');
+
+  tbodyEl.innerHTML = platformPL.map(p => {
+    const mPct = p.revenue > 0 ? ((p.profit / p.revenue) * 100).toFixed(1) : 0;
+    const profClass = p.profit >= 0 ? 'color:#16a34a' : 'color:#dc2626';
+    return `<tr>
+      <td><b>${p.platform}</b></td>
+      <td>${fmt(p.revenue)}</td>
+      <td>${fmt(p.cogs)}</td>
+      <td>${fmt(p.adSpend)}</td>
+      <td style="${profClass}">${fmt(p.profit)}</td>
+      <td style="${profClass}">${mPct}%</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Open per-SKU detail panel from Excel data ────────────────────
+function openProjDetailFromExcel(s) {
+  const panel = document.getElementById('projDetailPanel');
+  const overlay = document.getElementById('projDetailOverlay');
+  const skuEl = document.getElementById('projDetailSku');
+  const body = document.getElementById('projDetailBody');
+  if (!panel) return;
+
+  if (skuEl) skuEl.textContent = s.sku + ' · ' + s.name;
+
+  const fmt = v => '₹' + Math.round(v).toLocaleString('en-IN');
+  const pct = v => v != null ? (v * 100).toFixed(1) + '%' : '—';
+
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:4px 0 12px;">
+      <div><div style="font-size:10px;color:#94a3b8">Daily Revenue</div><div style="font-size:18px;font-weight:700">${fmt(s.revPerDay)}</div></div>
+      <div><div style="font-size:10px;color:#94a3b8">Daily Ad Spend</div><div style="font-size:18px;font-weight:700;color:#dc2626">${fmt(s.adSpendDay)}</div></div>
+      <div><div style="font-size:10px;color:#94a3b8">Gross Profit/Day</div><div style="font-size:16px;font-weight:600">${fmt(s.grossProfitDay)}</div></div>
+      <div><div style="font-size:10px;color:#94a3b8">Net Profit/Day</div><div style="font-size:16px;font-weight:600;color:${s.netProfitDay >= 0 ? '#16a34a' : '#dc2626'}">${fmt(s.netProfitDay)}</div></div>
+      <div><div style="font-size:10px;color:#94a3b8">Selling Price</div><div style="font-size:14px">${fmt(s.price)}</div></div>
+      <div><div style="font-size:10px;color:#94a3b8">Margin %</div><div style="font-size:14px">${pct(s.settlePct)}</div></div>
+      <div><div style="font-size:10px;color:#94a3b8">FBA Stock</div><div style="font-size:14px">${Math.round(s.fbaStock)} units</div></div>
+      <div><div style="font-size:10px;color:#94a3b8">Days on Hand</div><div style="font-size:14px">${Math.round(s.doh)} days</div></div>
+    </div>
+    <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">Monthly Run-Rate (×30)</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px;background:var(--color-bg-subtle,#f8fafc);border-radius:6px;margin-bottom:12px;">
+      <div><div style="font-size:10px;color:#94a3b8">Revenue</div><b>${fmt(s.revenue)}</b></div>
+      <div><div style="font-size:10px;color:#94a3b8">Ad Spend</div><b style="color:#dc2626">${fmt(s.adSpend)}</b></div>
+      <div><div style="font-size:10px;color:#94a3b8">COGS</div><b>${fmt(s.cogs)}</b></div>
+      <div><div style="font-size:10px;color:#94a3b8">Net Profit</div><b style="color:${s.profit >= 0 ? '#16a34a' : '#dc2626'}">${fmt(s.profit)}</b></div>
+    </div>
+    ${s.targetROAS ? `<div style="font-size:11px;margin-bottom:4px;">Target ROAS: <b>${s.targetROAS}</b> &nbsp;·&nbsp; Target ACOS: <b>${pct(s.targetACOS)}</b></div>` : ''}
+    ${s.nextSteps  ? `<div style="font-size:11px;padding:8px;background:#fffbeb;border-radius:6px;color:#92400e;"><b>Next Steps:</b> ${s.nextSteps}</div>` : ''}
+    <div style="font-size:11px;margin-top:8px;color:#94a3b8">ASIN: ${s.asin || '—'} &nbsp;·&nbsp; Team: ${s.teamMember || '—'} &nbsp;·&nbsp; Status: ${s.inventoryStatus}</div>
+  `;
+
+  if (overlay) overlay.style.display = 'block';
+  panel.classList.add('open');
 }
 
 // ── Main entry: fetch overview ────────────────────────────────────
@@ -10365,6 +10663,8 @@ async function fetchAndRenderProjections(forceRefresh) {
 function renderProjOverview(resp) {
   if (!resp) return;
   const { totals, projection, unpricedSkus, unpricedRevenue, series } = resp;
+
+
 
   const note = document.getElementById('projUnpricedNote');
   if (unpricedSkus && unpricedSkus.length) {
@@ -10680,7 +10980,247 @@ async function fetchAndRenderPlatformPL() {
   }
 }
 
+// ── Break-Even Projection ─────────────────────────────────────────
+let _lastPLRows = [];
+
+function toggleBEInputs() {
+  const panel = document.getElementById('projBEInputs');
+  const btn   = document.getElementById('projBEToggle');
+  if (!panel) return;
+  const opening = panel.style.display === 'none';
+  panel.style.display = opening ? '' : 'none';
+  if (btn) btn.textContent = opening ? '✕ Close' : '⚙ Configure Expenses';
+  if (opening) _loadBEConfig();
+}
+
+function _loadBEConfig() {
+  const key = 'semya_be_' + (state.clientSlug || 'default');
+  let cfg = {};
+  try { cfg = JSON.parse(localStorage.getItem(key) || '{}'); } catch {}
+  const fields = { beWarehouse:'warehouse', beTransport:'transport', beLabor:'labor',
+                   beSalary:'salary', beAdSpend:'adspend', beOther:'other' };
+  Object.entries(fields).forEach(([id, k]) => {
+    const el = document.getElementById(id);
+    if (el) el.value = cfg[k] || '';
+  });
+  _updateBETotal();
+}
+
+function _updateBETotal() {
+  const ids = ['beWarehouse','beTransport','beLabor','beSalary','beAdSpend','beOther'];
+  const total = ids.reduce((s, id) => s + (parseFloat(document.getElementById(id)?.value || 0) || 0), 0);
+  const el = document.getElementById('beTotalDisplay');
+  if (el) el.textContent = '₹' + total.toLocaleString('en-IN', {maximumFractionDigits:0});
+}
+
+function saveBEConfig() {
+  const key = 'semya_be_' + (state.clientSlug || 'default');
+  const cfg = {
+    warehouse: parseFloat(document.getElementById('beWarehouse')?.value) || 0,
+    transport: parseFloat(document.getElementById('beTransport')?.value) || 0,
+    labor:     parseFloat(document.getElementById('beLabor')?.value)     || 0,
+    salary:    parseFloat(document.getElementById('beSalary')?.value)    || 0,
+    adspend:   parseFloat(document.getElementById('beAdSpend')?.value)   || 0,
+    other:     parseFloat(document.getElementById('beOther')?.value)     || 0,
+  };
+  try { localStorage.setItem(key, JSON.stringify(cfg)); } catch {}
+  // close panel and re-render
+  const panel = document.getElementById('projBEInputs');
+  const btn   = document.getElementById('projBEToggle');
+  if (panel) panel.style.display = 'none';
+  if (btn)   btn.textContent = '⚙ Configure Expenses';
+  _renderBEProjection(_lastPLRows);
+}
+
+function _renderBEProjection(rows) {
+  const el = document.getElementById('projBESummary');
+  if (!el) return;
+
+  const key = 'semya_be_' + (state.clientSlug || 'default');
+  let cfg = {};
+  try { cfg = JSON.parse(localStorage.getItem(key) || '{}'); } catch {}
+
+  const fixedMonthly = (cfg.warehouse||0)+(cfg.transport||0)+(cfg.labor||0)+
+                       (cfg.salary||0)+(cfg.adspend||0)+(cfg.other||0);
+
+  if (!fixedMonthly) {
+    el.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:14px 0;font-size:12px;">Click <strong>⚙ Configure Expenses</strong> above to enter your monthly costs and see the break-even projection.</div>';
+    return;
+  }
+  if (!rows.length) {
+    el.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:14px 0;font-size:12px;">No platform data loaded yet — load the Platform P&amp;L tab first.</div>';
+    return;
+  }
+
+  // Aggregate across platforms
+  const totalRev     = rows.reduce((s,r) => s+(r.revenue||0), 0);
+  const totalCOGS    = rows.reduce((s,r) => s+(r.cogs||0), 0);
+  const totalFees    = rows.reduce((s,r) => s+(r.totalFees||0), 0);
+  const totalAdAct   = rows.reduce((s,r) => s+(r.adSpend||0), 0);
+
+  // Date range → monthly run-rate multiplier
+  const fromVal = document.getElementById('projFrom')?.value || '';
+  const toVal   = document.getElementById('projTo')?.value   || '';
+  let periodDays = 30;
+  if (fromVal && toVal) {
+    const diff = (new Date(toVal) - new Date(fromVal)) / 86400000;
+    if (diff > 0) periodDays = Math.round(diff) + 1;
+  }
+  const mf = 30 / periodDays;   // multiply actuals → monthly run rate
+
+  const mRev   = totalRev   * mf;
+  const mCOGS  = totalCOGS  * mf;
+  const mFees  = totalFees  * mf;
+  const mAdAct = totalAdAct * mf;
+  const mVarCost = mCOGS + mFees + mAdAct;
+  const mGross   = mRev - mVarCost;           // gross profit before fixed costs
+  const mNet     = mGross - fixedMonthly;     // true net after all costs
+  const grossPct = mRev > 0 ? mGross / mRev : 0;
+
+  // Break-even revenue needed = fixed costs / gross margin %
+  const beRevNeeded = grossPct > 0 ? fixedMonthly / grossPct : 0;
+  const revGap      = Math.max(0, beRevNeeded - mRev);
+
+  const fL = (v, forceSign) => {
+    const sign   = v < 0 ? '−' : (forceSign && v > 0 ? '+' : '');
+    const abs    = Math.abs(v);
+    const s      = abs >= 100000 ? '₹'+(abs/100000).toFixed(2)+' L' : '₹'+abs.toLocaleString('en-IN',{maximumFractionDigits:0});
+    return sign + s;
+  };
+
+  const plCol  = mNet >= 0 ? '#059669' : '#dc2626';
+  const grossCol = mGross >= 0 ? '#059669' : '#dc2626';
+
+  el.innerHTML = `
+    <div class="be-proj-grid">
+      <div class="be-stat-card">
+        <div class="be-stat-label">Monthly Revenue (run rate)</div>
+        <div class="be-stat-val" style="color:#059669;">${fL(mRev)}</div>
+        <div class="be-stat-sub">Extrapolated from ${periodDays}-day period</div>
+      </div>
+      <div class="be-stat-card">
+        <div class="be-stat-label">Monthly Variable Costs</div>
+        <div class="be-stat-val" style="color:#dc2626;">${fL(mVarCost)}</div>
+        <div class="be-stat-sub">COGS + platform fees + actual ad spend</div>
+      </div>
+      <div class="be-stat-card">
+        <div class="be-stat-label">Monthly Gross Profit</div>
+        <div class="be-stat-val" style="color:${grossCol};">${fL(mGross)}</div>
+        <div class="be-stat-sub">Gross margin ${(grossPct*100).toFixed(1)}% — before fixed costs</div>
+      </div>
+      <div class="be-stat-card">
+        <div class="be-stat-label">Monthly Fixed Costs</div>
+        <div class="be-stat-val" style="color:#d97706;">${fL(fixedMonthly)}</div>
+        <div class="be-stat-sub">Warehouse + labor + salary + overhead</div>
+      </div>
+      <div class="be-stat-card" style="border:2px solid ${plCol};">
+        <div class="be-stat-label">Monthly Net P&amp;L</div>
+        <div class="be-stat-val" style="color:${plCol};font-size:20px;">${fL(mNet)}</div>
+        <div class="be-stat-sub">${mNet >= 0 ? '✅ Profitable at current run rate' : '⚠️ Loss at current run rate'}</div>
+      </div>
+      <div class="be-stat-card">
+        <div class="be-stat-label">Break-Even Revenue Needed</div>
+        <div class="be-stat-val" style="color:#6366f1;">${beRevNeeded > 0 ? fL(beRevNeeded)+'/mo' : '—'}</div>
+        <div class="be-stat-sub">${mNet>=0 ? 'Already achieved ✓' : 'To cover all fixed + variable costs'}</div>
+      </div>
+    </div>
+
+    ${mNet < 0 ? `
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:14px;margin-bottom:10px;">
+      <div style="font-size:12px;font-weight:700;color:#dc2626;margin-bottom:10px;">📍 What needs to change to break even?</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px;">
+        <div>
+          <div style="color:#64748b;margin-bottom:2px;">Current monthly shortfall</div>
+          <div style="font-size:16px;font-weight:700;color:#dc2626;">${fL(mNet)}/mo</div>
+        </div>
+        <div>
+          <div style="color:#64748b;margin-bottom:2px;">Additional revenue needed</div>
+          <div style="font-size:16px;font-weight:700;color:#d97706;">${fL(revGap, true)}/mo</div>
+        </div>
+        <div>
+          <div style="color:#64748b;margin-bottom:2px;">Revenue increase required</div>
+          <div style="font-size:16px;font-weight:700;color:#1e293b;">${beRevNeeded>0&&mRev>0 ? ((beRevNeeded/mRev-1)*100).toFixed(0)+'% more revenue' : '—'}</div>
+        </div>
+        <div>
+          <div style="color:#64748b;margin-bottom:2px;">Or reduce fixed costs by</div>
+          <div style="font-size:16px;font-weight:700;color:#1e293b;">${fL(-mNet)}/mo to break even</div>
+        </div>
+      </div>
+    </div>` : `
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px;margin-bottom:10px;">
+      <div style="font-size:12px;font-weight:700;color:#059669;margin-bottom:4px;">✅ Already Profitable at current run rate</div>
+      <div style="font-size:12px;color:#166534;">Covering all fixed + variable costs with <strong>${fL(mNet)}/month</strong> net remaining. Keep scaling.</div>
+    </div>`}
+
+    ${mNet < 0 ? (() => {
+      // Growth scenario table
+      const ratio = fixedMonthly / (mGross > 0 ? mGross : 0.001);
+      const growthRates = [10, 20, 30, 50, 100];
+      const rows2 = growthRates.map(g => {
+        const gd = g / 100;
+        if (mGross <= 0) return { g, months: null, days: null, date: null };
+        // months to break-even: R0*grossPct*(1+g)^n = fixedMonthly → n = log(ratio)/log(1+g)
+        const n = Math.log(ratio) / Math.log(1 + gd);
+        if (!isFinite(n) || n > 120) return { g, months: null, days: null, date: null };
+        const months = Math.ceil(n);
+        const days   = months * 30;
+        const dt     = new Date(); dt.setDate(dt.getDate() + days);
+        const date   = dt.toLocaleDateString('en-IN', { month:'short', year:'numeric' });
+        return { g, months, days, date };
+      });
+      return `
+    <div style="border:1px solid var(--color-border,#e2e8f0);border-radius:8px;margin-bottom:10px;overflow:hidden;">
+      <div style="background:#f1f5f9;padding:10px 14px;font-size:12px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px;">
+        📅 Days to Break-Even — Growth Scenarios
+        <span style="font-size:10px;font-weight:400;color:#64748b;">(assuming revenue grows at the rate below, costs stay fixed)</span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead>
+            <tr style="border-bottom:1px solid var(--color-border,#e2e8f0);">
+              <th style="padding:9px 14px;text-align:left;color:#64748b;font-weight:600;">Monthly Revenue Growth</th>
+              <th style="padding:9px 14px;text-align:center;color:#64748b;font-weight:600;">Months</th>
+              <th style="padding:9px 14px;text-align:center;color:#64748b;font-weight:600;">~Days</th>
+              <th style="padding:9px 14px;text-align:center;color:#64748b;font-weight:600;">Est. Break-Even By</th>
+              <th style="padding:9px 14px;text-align:left;color:#64748b;font-weight:600;">Revenue at Break-Even</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows2.map((r,i) => {
+              if (!r.months) return `<tr style="border-bottom:1px solid var(--color-border,#e2e8f0);"><td style="padding:8px 14px;font-weight:700;color:#059669;">+${r.g}%/mo</td><td colspan="4" style="padding:8px 14px;color:#94a3b8;text-align:center;">Needs positive gross margin first</td></tr>`;
+              const revAtBE = mRev * Math.pow(1 + r.g/100, r.months - 1);
+              const bg = i === 0 ? '' : i === 1 ? '' : '';
+              return `<tr style="border-bottom:1px solid var(--color-border,#e2e8f0);${i===2?'background:#fefce8;':''}">
+                <td style="padding:8px 14px;font-weight:700;color:#059669;">+${r.g}%/mo</td>
+                <td style="padding:8px 14px;text-align:center;font-weight:600;">${r.months}</td>
+                <td style="padding:8px 14px;text-align:center;color:#6366f1;font-weight:700;">~${r.days} days</td>
+                <td style="padding:8px 14px;text-align:center;font-weight:600;color:#1e293b;">${r.date}</td>
+                <td style="padding:8px 14px;color:#059669;font-weight:600;">${fL(revAtBE)}/mo</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="padding:8px 14px;font-size:10px;color:#94a3b8;border-top:1px solid var(--color-border,#e2e8f0);">
+        Current monthly gross profit is ${fL(mGross)} (${(grossPct*100).toFixed(1)}% margin). Break-even requires gross profit to reach ${fL(fixedMonthly)}/mo. The highlighted row (~30%/mo growth) is a common stretch target.
+      </div>
+    </div>`;
+    })() : ''}
+
+    <div style="background:#f8fafc;border-radius:8px;padding:9px 12px;">
+      <div style="font-size:10px;color:#94a3b8;line-height:1.5;">
+        💡 <strong>How this is calculated:</strong> Revenue and COGS from the selected date range are extrapolated to a 30-day run rate.
+        Fixed costs (warehouse, transport, labor, salary, overhead) are taken from your inputs above.
+        Ad spend used is the <em>actual</em> spend in your order data, not the budgeted figure in the inputs.
+        Note: ${159 - rows.length > 0 ? 'some' : 'no'} SKUs are excluded due to missing cost prices — add them in ⚙ Cost Structure → Bulk Upload to improve accuracy.
+      </div>
+    </div>
+  `;
+}
+
 function renderPlatformPL(rows) {
+  _lastPLRows = rows;
+  _renderBEProjection(rows);   // refresh projection whenever PL data reloads
   const barsEl = document.getElementById('projPLBars');
   const tbody  = document.getElementById('projPLTbody');
   if (!rows.length) {
@@ -10906,22 +11446,81 @@ function handleProjFileDrop(event) {
   if (file) uploadCostFile(file);
 }
 
+// Convert Inventory_SKU.xlsx → standard CSV (SKU, Cost_Price_INR, Effective_From)
+// so any backend version can process it without format-detection logic.
+async function _convertInventorySkuToStandardCsv(file) {
+  const buf = await file.arrayBuffer();
+  const wb  = XLSX.read(buf, { type: 'array' });
+  const ws  = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+  if (!rows.length) return null;
+
+  const headers = Object.keys(rows[0]);
+  const hasSettlement = headers.some(h => /settlement/i.test(h));
+  const hasDealPrice  = headers.some(h => /deal.?price.?amazon/i.test(h));
+  if (!hasSettlement || !hasDealPrice) return null; // not Inventory_SKU format
+
+  // Omit Effective_From column — backend defaults to today when absent,
+  // and avoids SheetJS parsing ISO dates as serial numbers on the backend.
+  const csvRows = ['SKU,Cost_Price_INR'];
+  let converted = 0, skipped = 0;
+
+  for (const row of rows) {
+    const sku = String(row['SKU'] || '').trim();
+    if (!sku) { skipped++; continue; }
+
+    const price = parseFloat(String(row['Deal Price Amazon'] || '0').replace(/[₹,\s]/g, ''));
+    if (!price || price <= 0) { skipped++; continue; }
+
+    const settlRaw = parseFloat(String(row['% PRICESettlement'] || '0').replace(/[%,\s]/g, ''));
+    const settlPct = settlRaw > 1 ? settlRaw / 100 : settlRaw; // normalise 16 → 0.16
+    const cogs = Math.round(price * (1 - settlPct) * 100) / 100;
+
+    csvRows.push(`${sku},${cogs}`);
+    converted++;
+  }
+
+  if (!converted) return null;
+  console.log(`[Semya] Converted ${converted} SKUs from Inventory_SKU format (${skipped} skipped, no price)`);
+  return { csvBlob: new Blob([csvRows.join('\n')], { type: 'text/csv' }), converted, skipped };
+}
+
 async function uploadCostFile(file) {
   if (!file) return;
   const statusEl = document.getElementById('projUploadStatus');
-  if (statusEl) { statusEl.style.display = ''; statusEl.innerHTML = '⏳ Uploading…'; }
+  if (statusEl) { statusEl.style.display = ''; statusEl.innerHTML = '⏳ Reading file…'; }
   const { clientSlug } = state;
   try {
+    let uploadFile = file;
+    let conversionNote = '';
+
+    // If SheetJS is available and the file is xlsx/xls, try Inventory_SKU conversion
+    if (typeof XLSX !== 'undefined' && /\.(xlsx?|xls)$/i.test(file.name)) {
+      if (statusEl) statusEl.innerHTML = '⏳ Detecting format…';
+      const converted = await _convertInventorySkuToStandardCsv(file);
+      if (converted) {
+        uploadFile = new File([converted.csvBlob], 'sku_costs_converted.csv', { type: 'text/csv' });
+        conversionNote = ` <span style="color:#6366f1">[Auto-converted from Inventory_SKU: ${converted.converted} SKUs]</span>`;
+        if (statusEl) statusEl.innerHTML = `⏳ Uploading ${converted.converted} SKUs…`;
+      }
+    }
+
     const form = new FormData();
-    form.append('file', file);
+    form.append('file', uploadFile);
     const resp = await fetch(API_BASE + '/clients/' + clientSlug + '/projections/costs/bulk', {
       method: 'POST',
-      headers: authHeaders(),
+      headers: { 'Authorization': `Bearer ${getToken()}` },
       body: form,
     });
     const json = await resp.json();
-    if (!resp.ok) throw new Error(json.error || 'Upload failed');
-    if (statusEl) statusEl.innerHTML = '✅ Uploaded: ' + (json.inserted || 0) + ' rows' + (json.skipped ? ', ' + json.skipped + ' skipped' : '');
+    if (!resp.ok) {
+      let errMsg = json.error || 'Upload failed';
+      if (json.parseErrors?.length) errMsg += `<br><small>First error: ${json.parseErrors[0]?.reason || JSON.stringify(json.parseErrors[0])}</small>`;
+      if (statusEl) statusEl.innerHTML = '❌ ' + errMsg;
+      return;
+    }
+    const fmtNote = conversionNote || (json.formatType ? ` <span style="color:#6366f1">[${json.formatType}]</span>` : '');
+    if (statusEl) statusEl.innerHTML = `✅ Saved ${json.imported || 0} SKU costs${json.skipped ? ', ' + json.skipped + ' skipped' : ''}.${fmtNote} Projections will now use live revenue + these costs.`;
     loadSkuCosts();
     tabCache['projections_insights'] = null;
     _projBERows = [];
@@ -10938,10 +11537,16 @@ function downloadCostTemplate(e) {
 
 
 // ─── BOOT ─────────────────────────────────────────────────────────
-const FRONTEND_BUILD = 'V38-onclick-quote-fix'; // bump alongside backend health version
+const FRONTEND_BUILD = 'V39-client-autoselect-fast-fetch'; // bump alongside backend health version
 console.log('[Semya] Frontend build:', FRONTEND_BUILD);
 
+let _bootStarted = false;
 async function boot(user) {
+  // Run once per page load. boot() used to be triggered twice — by the
+  // auth guard's ready event AND by a 400ms fallback timer — so every
+  // tab's requests went out twice, doubling the load on the server.
+  if (_bootStarted) return;
+  _bootStarted = true;
   // Reset dashboard to its own default blue theme at boot so the
   // login-page's Noir theme never bleeds into the admin dashboard.
   // Done with direct CSS variable writes (not applyThemeColour) to
@@ -10955,7 +11560,11 @@ async function boot(user) {
   _r.style.setProperty('--theme-accent-soft',  'rgba(14,165,233,0.09)');
   _r.style.setProperty('--color-border-glow',  'rgba(14,165,233,0.18)');
   state.token      = user && user.token ? user.token : getToken();
-  state.clientSlug = (user && user.clientSlug) || (window.location.pathname.match(/\/clients\/([^/]+)/)||[])[1] || 'neat-everyday';
+  // Client is resolved from the server's list below (after warmServer),
+  // never from a hardcoded default. Remember any URL/user slug as the
+  // preferred choice.
+  const preferredSlug = (user && user.clientSlug) || (window.location.pathname.match(/\/clients\/([^/]+)/)||[])[1] || null;
+  state.clientSlug = null;
   initDates();
   const from = state.dateFrom; const to = state.dateTo;
   const today = todayIST();
@@ -10977,8 +11586,19 @@ async function boot(user) {
   showWakeToast(true, 'Connecting…');
   await warmServer();
   showWakeToast(false);
-  loadClientSwitcher();
-  loadTabPermissions();
+  await fetchClientList();
+  state.clientSlug = pickInitialClient(preferredSlug);
+  rememberClient(state.clientSlug);
+  renderClientSwitcher();
+  if (!state.clientSlug) {
+    setBadge('empty');
+    showWakeToast(true, 'No clients found for this account. Add a client in Client Administration.');
+    return;
+  }
+  // Loads the client's config (tab permissions + branding). Awaited so the
+  // first tab renders once, instead of rendering and then re-rendering
+  // when permissions arrive a moment later.
+  await loadTabPermissions({ rerender: false });
   startAutoRefresh();
   startNotifPolling();
   showTab('platform_sales');
@@ -11002,7 +11622,9 @@ if (window.semyaUser) {
     }
     boot(e.detail);
   });
-  setTimeout(function() { if (!state.clientSlug) boot({}); }, 400);
+  // Safety net only: the auth guard always dispatches semya:auth-ready
+  // (or redirects to login). This fires only if it never does.
+  setTimeout(function() { if (!_bootStarted) boot({}); }, 15000);
 }
 // ═══════════════════════════════════════════════════════════════════
 // UNIFIED EXPORT ENGINE
@@ -12575,7 +13197,7 @@ function _buildPrompt(data) {
     ? data.dateFrom + ' to ' + data.dateTo
     : 'the selected period';
 
-  let prompt = 'You are an expert e-commerce analytics advisor for Neat Everyday, a D2C brand in India.\n';
+  let prompt = 'You are an expert e-commerce analytics advisor for ' + currentClientName() + ', a D2C brand in India.\n';
   prompt += 'Analyse the following dashboard data for the period ' + dateRange + ' and give a concise, sharp, actionable insight.\n\n';
   prompt += 'Tab being viewed: ' + (TAB_LABELS[data.tab] || data.tab) + '\n';
   prompt += 'Date range: ' + dateRange + '\n';

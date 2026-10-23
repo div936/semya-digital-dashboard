@@ -15,6 +15,7 @@ import { rbacMiddleware, requireTab } from '../middleware/rbac.js';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { detectSuspiciousPatterns } from '../lib/fraudDetector.js';
 import { backfillLocationByOrder, normaliseStateName, inferCategory } from '../lib/columnMapper.js';
+import { fetchRowsByDate, fetchAllByKeyset } from '../lib/fetchRows.js';
 
 const router = Router({ mergeParams: true });
 
@@ -34,33 +35,11 @@ async function loadClientCategories(clientId, req) {
 }
 
 // ─── PAGINATED FETCH ──────────────────────────────────────────────
-// Supabase free tier caps rows at 1000 per request (project-level Max Rows setting).
-// This helper fetches ALL rows by requesting pages until an empty page is returned.
-// BUG FIX: every caller of this MUST include a deterministic, unique
-// .order() clause (e.g. .order('id'), since id is the UUID primary
-// key) in the query it builds. Without one, Postgres/PostgREST make
-// NO guarantee about row order between separate query executions —
-// meaning two consecutive calls to this exact function, with zero
-// data changes in between, can genuinely return different rows on
-// each page boundary (some rows silently skipped, others counted
-// twice). This showed up in production as a plain page refresh
-// producing a different total revenue figure with no upload, import,
-// or cleanup having happened in between — confirmed the cause was
-// exactly this: none of this file's five callers had an .order()
-// clause at all before this comment was added.
-async function fetchAllRows(buildQuery, pageSize = 2000) {
-  const allRows = [];
-  let from = 0;
-  while (true) {
-    const { data, error } = await buildQuery(from, from + pageSize - 1);
-    if (error) throw new Error(error.message);
-    if (!data || data.length === 0) break;
-    allRows.push(...data);
-    if (data.length < pageSize) break; // last page
-    from += pageSize;
-  }
-  return allRows;
-}
+// All "fetch every row in a date range" reads go through fetchRowsByDate()
+// in lib/fetchRows.js — parallel per-day chunks with keyset (id > last)
+// paging. It replaced an OFFSET-paged helper that fetched one page at a
+// time and took ~25s per month of data, which made any multi-month range
+// time out on the dashboard. See the header comment in that file.
 
 // ─── PLATFORM GROUPS ──────────────────────────────────────────────
 // Top-level filter pills group several raw data sources together:
@@ -229,32 +208,15 @@ router.get(
     // needed for platform-sales. Only fraud-patterns route uses raw_extras.
     const selectCols = 'platform, order_date, cancelled_date, standard_revenue, standard_units, standard_status, financial_status, standard_sku, standard_product_name, standard_order_id, standard_discount';
 
-    const data = await fetchAllRows((from, to) => {
-      let q = supabaseAdmin
-        .from('revenue_data')
-        .select(selectCols)
-        .eq('client_id', client.id)
-        .order('id')
-        .range(from, to);
-      // FIX: two separate .or() calls with the same PostgREST key causes
-      // the second to silently overwrite the first — the FROM filter was
-      // being completely ignored, returning all rows up to the TO date
-      // regardless of the FROM date. Combined into one .or() with nested
-      // AND so both bounds are enforced in a single filter parameter.
-      if (req.query.from || req.query.to) {
-        const from = req.query.from;
-        const to   = req.query.to;
-        if (from && to) {
-          q = q.or(`and(order_date.gte.${from},order_date.lte.${to}),order_date.is.null`);
-        } else if (from) {
-          q = q.or(`order_date.gte.${from},order_date.is.null`);
-        } else {
-          q = q.or(`order_date.lte.${to},order_date.is.null`);
-        }
-      }
-      if (platform)            q = q.in('platform', expandPlatform(platform));
-      return q;
-    }).catch(e => { throw e; });
+    // Rows in [from, to] plus undated rows (same semantics as before).
+    const data = await fetchRowsByDate(supabaseAdmin, {
+      table: 'revenue_data',
+      select: selectCols,
+      clientId: client.id,
+      from, to,
+      includeNullDates: true,
+      filter: q => platform ? q.in('platform', expandPlatform(platform)) : q,
+    });
 
     // `excludeStatuses` is an optional comma-separated list, e.g.
     // ?excludeStatuses=Cancelled,Pending — nothing is excluded unless
@@ -316,25 +278,22 @@ router.get(
 
       // Fast aggregate — only fetch what we need for prev period delta
       const prevPlatformFilter = platform ? expandPlatform(platform) : null;
-      let prevQ = supabaseAdmin
-        .from('revenue_data')
-        .select('standard_revenue, standard_units, standard_order_id, standard_status')
-        .eq('client_id', client.id)
-        .gte('order_date', prevFromStr)
-        .lte('order_date', prevToStr);
       // Do NOT exclude Cancelled here — Total Orders counts all orders including
       // voided/refunded to match Shopify. Revenue still excludes cancelled below.
-      if (prevPlatformFilter) prevQ = prevQ.in('platform', prevPlatformFilter);
-
+      // (Previously paged by re-awaiting one builder with no .order(), which
+      // is both slow and non-deterministic across pages.)
       let prevRows = [];
-      let prevFrom2 = 0;
-      const prevPageSize = 2000;
-      while (true) {
-        const { data: batch, error } = await prevQ.range(prevFrom2, prevFrom2 + prevPageSize - 1);
-        if (error || !batch || batch.length === 0) break;
-        prevRows = prevRows.concat(batch);
-        if (batch.length < prevPageSize) break;
-        prevFrom2 += prevPageSize;
+      try {
+        prevRows = await fetchRowsByDate(supabaseAdmin, {
+          table: 'revenue_data',
+          select: 'standard_revenue, standard_units, standard_order_id, standard_status',
+          clientId: client.id,
+          from: prevFromStr, to: prevToStr,
+          includeNullDates: false,
+          filter: q => prevPlatformFilter ? q.in('platform', prevPlatformFilter) : q,
+        });
+      } catch (e) {
+        console.warn('[platform-sales] previous-period fetch failed:', e.message);
       }
       // Revenue: exclude cancelled. Orders: count all (including cancelled).
       const prevNonCancel = (prevRows || []).filter(r => r.standard_status !== 'Cancelled' && r.standard_status !== 'Returned' && Number(r.standard_revenue) > 0);
@@ -371,12 +330,21 @@ router.get(
     // revenue from the SAME dates that platform actually has spend
     // recorded for — a fair like-for-like ratio instead of months of
     // revenue divided by a few days of spend.
-    const { data: campaignRowsForRoas } = await supabaseAdmin
-      .from('campaign_data')
-      .select('platform, campaign_date, standard_spend')
-      .eq('client_id', client.id)
-      .gte('campaign_date', req.query.from || '1900-01-01')
-      .lte('campaign_date', req.query.to || '2999-12-31');
+    // Paginated — a plain query here was silently capped at PostgREST's
+    // max-rows (1,000 by default), under-counting spend for wide ranges.
+    let campaignRowsForRoas = [];
+    try {
+      campaignRowsForRoas = await fetchRowsByDate(supabaseAdmin, {
+        table: 'campaign_data',
+        select: 'platform, campaign_date, standard_spend',
+        clientId: client.id,
+        dateCol: 'campaign_date',
+        from, to,
+        includeNullDates: false,
+      });
+    } catch (e) {
+      console.warn('[platform-sales] campaign spend fetch failed:', e.message);
+    }
 
     const spendDatesByPlatform = {};
     const spendTotalByPlatform = {};
@@ -430,35 +398,23 @@ router.get(
     const includeAllStatuses = req.query.includeAllStatuses === 'true';
 
     const [revenueRows, campaignRows] = await Promise.all([
-      fetchAllRows((rangeFrom, rangeTo) => {
-        // Include raw_extras only when fetching all statuses (AI Insights
-        // cancellation tracker) — it's large JSONB and not needed for
-        // normal sku-performance aggregation.
-        const cols = includeAllStatuses
+      // Include raw_extras only when fetching all statuses (AI Insights
+      // cancellation tracker) — it's large JSONB and not needed for
+      // normal sku-performance aggregation.
+      fetchRowsByDate(supabaseAdmin, {
+        table: 'revenue_data',
+        select: includeAllStatuses
           ? 'standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, cancelled_date, standard_status, standard_product_name, standard_order_id, financial_status, risk_level, tags, raw_extras'
-          : 'standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status, standard_product_name, standard_order_id, financial_status, risk_level, tags';
-        let q = supabaseAdmin
-          .from('revenue_data')
-          .select(cols)
-          .eq('client_id', client.id)
-          .order('order_date', { ascending: false, nullsFirst: false })
-          .range(rangeFrom, rangeTo);
-        if (sku)      q = q.eq('standard_sku', sku);
-        if (platform) q = q.in('platform', expandPlatform(platform));
-        // Date filter — apply as hard bounds (not OR-with-null) for performance.
-        // Rows with null order_date are edge cases (undated uploads); including
-        // them regardless of date range keeps historical behaviour but costs
-        // a full table scan. Only rows with null date get the OR-with-null
-        // treatment; rows with a real date get a direct range filter.
-        if (from && to) {
-          q = q.or(`and(order_date.gte.${from},order_date.lte.${to}),order_date.is.null`);
-        } else if (from) {
-          q = q.or(`order_date.gte.${from},order_date.is.null`);
-        } else if (to) {
-          q = q.or(`order_date.lte.${to},order_date.is.null`);
-        }
-        return q;
-      }),
+          : 'standard_sku, platform, standard_revenue, standard_units, standard_city, standard_state, order_date, standard_status, standard_product_name, standard_order_id, financial_status, risk_level, tags',
+        clientId: client.id,
+        from, to,
+        includeNullDates: true,
+        filter: q => {
+          if (sku)      q = q.eq('standard_sku', sku);
+          if (platform) q = q.in('platform', expandPlatform(platform));
+          return q;
+        },
+      }).then(rows => rows.reverse()), // newest first, undated last — same order as before
       (() => {
         let cq = supabaseAdmin
           .from('campaign_data')
@@ -566,23 +522,26 @@ router.get(
       ? new Set(req.query.excludeStatuses.split(',').map(s => s.trim()).filter(Boolean))
       : new Set();
 
-    // Use fetchAllRows (paginated) instead of a plain query — Supabase's
+    // Use fetchRowsByDate (paginated) instead of a plain query — Supabase's
     // default 1,000-row limit was silently truncating large campaign datasets
     // (18,120+ Meta rows), causing the ROAS date range note to only show
     // the most recent ~1,000 rows instead of the full selected period.
-    const campaigns = await fetchAllRows((rangeFrom, rangeTo) => {
-      let query = supabaseAdmin
-        .from('campaign_data')
-        .select('*')
-        .eq('client_id', client.id)
-        .order('campaign_date', { ascending: false })
-        .range(rangeFrom, rangeTo);
-      if (from && to) query = query.gte('campaign_date', from).lte('campaign_date', to);
-      else if (from)  query = query.gte('campaign_date', from);
-      else if (to)    query = query.lte('campaign_date', to);
-      if (platform) query = query.in('platform', expandPlatform(platform));
-      return query;
-    }).catch(e => { throw e; });
+    // Undated campaigns are only included when no date filter is set
+    // (same as before). Newest first, undated last.
+    const campaigns = (await fetchRowsByDate(supabaseAdmin, {
+      table: 'campaign_data',
+      select: '*',
+      clientId: client.id,
+      dateCol: 'campaign_date',
+      from, to,
+      includeNullDates: !(from || to),
+      filter: q => platform ? q.in('platform', expandPlatform(platform)) : q,
+    })).sort((a, b) => {
+      if (a.campaign_date === b.campaign_date) return 0;
+      if (!a.campaign_date) return 1;
+      if (!b.campaign_date) return -1;
+      return a.campaign_date < b.campaign_date ? 1 : -1;
+    });
 
     // Surface how many campaigns were excluded for having no date at
     // all, whenever a date filter is active — otherwise a narrow range
@@ -606,26 +565,14 @@ router.get(
     // a second, smaller query rather than joining in SQL because
     // revenue_data and campaign_data aren't guaranteed to share a key —
     // platform + date range is the only reliable overlap.
-    const revenueRows = await fetchAllRows((rangeFrom, rangeTo) => {
-      let q = supabaseAdmin
-        .from('revenue_data')
-        .select('platform, standard_revenue, standard_units, standard_sku, standard_status, standard_fulfillment_channel, order_date, standard_order_id')
-        .eq('client_id', client.id)
-        .order('id')
-        .range(rangeFrom, rangeTo);
-      // FIX: combined into single .or() — see platform-sales fix above
-      if (from || to) {
-        if (from && to) {
-          q = q.or(`and(order_date.gte.${from},order_date.lte.${to}),order_date.is.null`);
-        } else if (from) {
-          q = q.or(`order_date.gte.${from},order_date.is.null`);
-        } else {
-          q = q.or(`order_date.lte.${to},order_date.is.null`);
-        }
-      }
-      if (platform) q = q.in('platform', expandPlatform(platform));
-      return q;
-    }).catch((e) => { throw e; });
+    const revenueRows = await fetchRowsByDate(supabaseAdmin, {
+      table: 'revenue_data',
+      select: 'platform, standard_revenue, standard_units, standard_sku, standard_status, standard_fulfillment_channel, order_date, standard_order_id',
+      clientId: client.id,
+      from, to,
+      includeNullDates: true,
+      filter: q => platform ? q.in('platform', expandPlatform(platform)) : q,
+    });
 
     const revenueFiltered = excludeStatuses.size
       ? revenueRows.filter(r => !r.standard_status || !excludeStatuses.has(r.standard_status))
@@ -865,26 +812,17 @@ router.get(
     const { client } = req.semya;
     const { from, to, sku, platform } = req.query;
 
-    const geoRows = await fetchAllRows((rangeFrom, rangeTo) => {
-      let q = supabaseAdmin
-        .from('revenue_data')
-        .select('standard_city, standard_state, standard_revenue, standard_units, standard_sku, standard_status, platform, standard_order_id')
-        .eq('client_id', client.id)
-        .order('id')
-        .range(rangeFrom, rangeTo);
-      // FIX: combined into single .or() — see platform-sales fix above
-      if (from || to) {
-        if (from && to) {
-          q = q.or(`and(order_date.gte.${from},order_date.lte.${to}),order_date.is.null`);
-        } else if (from) {
-          q = q.or(`order_date.gte.${from},order_date.is.null`);
-        } else {
-          q = q.or(`order_date.lte.${to},order_date.is.null`);
-        }
-      }
-      if (sku)      q = q.eq('standard_sku', sku);
-      if (platform) q = q.in('platform', expandPlatform(platform));
-      return q;
+    const geoRows = await fetchRowsByDate(supabaseAdmin, {
+      table: 'revenue_data',
+      select: 'standard_city, standard_state, standard_revenue, standard_units, standard_sku, standard_status, platform, standard_order_id',
+      clientId: client.id,
+      from, to,
+      includeNullDates: true,
+      filter: q => {
+        if (sku)      q = q.eq('standard_sku', sku);
+        if (platform) q = q.in('platform', expandPlatform(platform));
+        return q;
+      },
     }).catch(e => { return res.status(500).json({ error: 'Failed to fetch geographic data.' }); });
 
     if (res.headersSent) return;
@@ -1021,24 +959,13 @@ router.get(
     // trying to extract them individually via SQL operators is brittle
     // and easy to miss. The real speedup comes from excluding the
     // platforms with no PII, not from column projection.
-    const rows = await fetchAllRows((rangeFrom, rangeTo) => {
-      let q = supabaseAdmin
-        .from('revenue_data')
-        .select('platform, standard_status, standard_revenue, standard_sku, order_date, raw_extras')
-        .eq('client_id', client.id)
-        .not('platform', 'in', '(amazon,acutas)')
-        .order('id')
-        .range(rangeFrom, rangeTo);
-      if (from || to) {
-        if (from && to) {
-          q = q.or(`and(order_date.gte.${from},order_date.lte.${to}),order_date.is.null`);
-        } else if (from) {
-          q = q.or(`order_date.gte.${from},order_date.is.null`);
-        } else {
-          q = q.or(`order_date.lte.${to},order_date.is.null`);
-        }
-      }
-      return q;
+    const rows = await fetchRowsByDate(supabaseAdmin, {
+      table: 'revenue_data',
+      select: 'platform, standard_status, standard_revenue, standard_sku, order_date, raw_extras',
+      clientId: client.id,
+      from, to,
+      includeNullDates: true,
+      filter: q => q.not('platform', 'in', '(amazon,acutas)'),
     }).catch((e) => { return res.status(500).json({ error: 'Failed to fetch data for pattern detection: ' + e.message }); });
 
     if (res.headersSent) return;
@@ -1221,31 +1148,34 @@ async function aggregatePlatformSales(rows, excludeStatuses = new Set(), exclude
 
     // Fetch cancelled rows whose cancelled_date falls in the period
     // but whose order_date is OUTSIDE the period (already included above)
-    let reversalQ = supabaseAdmin
-      .from('revenue_data')
-      .select('platform, standard_revenue, standard_order_id, cancelled_date, standard_status')
-      .eq('client_id', client.id)
-      .eq('standard_status', 'Cancelled')
-      .not('cancelled_date', 'is', null);
+    const buildReversalQ = () => {
+      let reversalQ = supabaseAdmin
+        .from('revenue_data')
+        .select('id, platform, standard_revenue, standard_order_id, cancelled_date, standard_status')
+        .eq('client_id', client.id)
+        .eq('standard_status', 'Cancelled')
+        .not('cancelled_date', 'is', null);
 
-    if (req.query.from) reversalQ = reversalQ.gte('cancelled_date', req.query.from);
-    if (req.query.to)   reversalQ = reversalQ.lte('cancelled_date', req.query.to);
+      if (req.query.from) reversalQ = reversalQ.gte('cancelled_date', req.query.from);
+      if (req.query.to)   reversalQ = reversalQ.lte('cancelled_date', req.query.to);
 
-    // Exclude rows already in the main query (order placed IN period)
-    // Those cancelled orders are NOT double-counted — their revenue was
-    // already set to 0 in the first pass. We only want rows placed
-    // BEFORE the period (order_date < from) that were cancelled in it.
-    if (req.query.from) {
-      reversalQ = reversalQ.or(`order_date.lt.${req.query.from},order_date.is.null`);
-    }
+      // Exclude rows already in the main query (order placed IN period)
+      // Those cancelled orders are NOT double-counted — their revenue was
+      // already set to 0 in the first pass. We only want rows placed
+      // BEFORE the period (order_date < from) that were cancelled in it.
+      // (No lower bound → no order_date exclusion.)
+      if (req.query.from) {
+        reversalQ = reversalQ.or(`order_date.lt.${req.query.from},order_date.is.null`);
+      }
 
-    if (req.query.to && !req.query.from) {
-      // No lower bound — skip the order_date exclusion
-    }
+      if (platform) reversalQ = reversalQ.in('platform', expandPlatform(platform));
+      return reversalQ;
+    };
 
-    if (platform) reversalQ = reversalQ.in('platform', expandPlatform(platform));
-
-    const { data: reversalRows, error: revErr } = await reversalQ;
+    // Paginated — was a single un-paged query, silently capped at max-rows.
+    let reversalRows = null, revErr = null;
+    try { reversalRows = await fetchAllByKeyset(buildReversalQ); }
+    catch (e) { revErr = e; console.warn('[platform-sales] reversal fetch failed:', e.message); }
     if (!revErr && reversalRows) {
       // Track which order IDs we've already applied a reversal for to
       // avoid subtracting the same order twice (multi-line-item orders
